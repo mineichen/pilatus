@@ -1,0 +1,5 @@
+/target
+/data
+/docker/build
+/pilatus_running
+Cargo.lock

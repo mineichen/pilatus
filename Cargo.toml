@@ -1,0 +1,9 @@
+[workspace]
+
+members = [
+  "pilatus",
+  "pilatus-axum",
+  "pilatus-axum-rt",
+  "pilatus-engineering",
+  "pilatus-rt",
+]

@@ -1,0 +1,44 @@
+[package]
+edition = "2021"
+name = "pilatus-axum-rt"
+version = "0.1.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0"
+async-stream = "0.3"
+async_zip = { version = "0.0.15", default-features = false, features = [
+  "deflate",
+  "tokio",
+] }
+axum = { version = "0.6", features = ["ws"] }
+bytes = "1"
+chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
+hyper = { version = "0.14", features = ["client"] }
+image = { version = "0.24", default-features = false, features = ["png"] }
+minfac = "0.0.1"
+pilatus = { path = "../pilatus", features = ["tokio"] }
+pilatus-axum = { path = "../pilatus-axum" }
+pilatus-engineering = { path = "../pilatus-engineering", optional = true }
+sealedstruct = { git = "https://github.com/mineichen/sealedstruct.git", branch = "main", features = [
+  "serde",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
+tokio = { version = "1", features = ["sync", "macros"] }
+tokio-util = "0.7"
+tower = { version = "0.4" }
+tower-http = { version = "0.4", features = ["cors", "fs", "trace"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["serde", "v4"] }
+
+[dev-dependencies]
+pilatus = { path = "../pilatus", features = ["test"] }
+pilatus-rt = { path = "../pilatus-rt", features = ["test"] }
+tempfile = "3"
+tokio-tungstenite = "0.18"
+
+[features]
+engineering = ["dep:pilatus-engineering", "pilatus-axum/engineering"]

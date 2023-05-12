@@ -1,0 +1,151 @@
+//! Running devices are responsible for all file accesses in their folder
+//!
+//! If a Recipe is not running, the RecipeService is allowed to modify files (e.g. import/export)
+
+use std::{
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+    sync::Arc,
+};
+
+pub use device::*;
+use futures::{future::BoxFuture, FutureExt};
+use tracing::trace;
+
+use crate::{device::DeviceId, RelativeDirPath, RelativeFilePath, TransactionError};
+
+mod device;
+
+type InnerService = Box<dyn FileServiceTrait + Send + Sync>;
+type InnerFactory = Arc<dyn Fn(DeviceId) -> InnerService + Send + Sync>;
+
+#[derive(Clone)]
+pub struct FileServiceBuilder {
+    pub inner_factory: InnerFactory,
+}
+
+impl FileServiceBuilder {
+    pub fn with_validator<T: 'static, TValidator: Validator<State = T> + 'static>(
+        self,
+        validator: TValidator,
+    ) -> TypedFileServiceBuilder<T> {
+        TypedFileServiceBuilder::<T>::from(self).with_validator(validator)
+    }
+    pub fn build(self, device_id: DeviceId) -> FileService<()> {
+        TypedFileServiceBuilder::<()>::from(self).build(device_id)
+    }
+}
+
+impl<T> From<FileServiceBuilder> for TypedFileServiceBuilder<T> {
+    fn from(b: FileServiceBuilder) -> Self {
+        Self {
+            inner_factory: b.inner_factory,
+            validators: Vec::new(),
+        }
+    }
+}
+
+pub struct TypedFileServiceBuilder<T> {
+    inner_factory: InnerFactory,
+    pub validators: Vec<Box<dyn Validator<State = T>>>,
+}
+
+impl<T: 'static> TypedFileServiceBuilder<T> {
+    pub fn with_validator<TValidator: Validator<State = T> + 'static>(
+        mut self,
+        validator: TValidator,
+    ) -> Self {
+        self.validators.push(Box::new(validator));
+        self
+    }
+
+    pub fn build(self, device_id: DeviceId) -> FileService<T> {
+        FileService {
+            inner: (self.inner_factory)(device_id),
+            validators: Arc::new(self.validators),
+        }
+    }
+}
+
+pub trait Validator: Send + Sync {
+    type State;
+
+    fn is_responsible(&self, path: &RelativeFilePath) -> bool;
+    fn validate<'a>(
+        &self,
+        data: &'a [u8],
+        ctx: &'a mut Self::State,
+    ) -> BoxFuture<'a, Result<(), anyhow::Error>>;
+}
+
+pub struct FileService<T = ()> {
+    inner: Box<dyn FileServiceTrait + Send + Sync>,
+    validators: Arc<Vec<Box<dyn Validator<State = T>>>>,
+}
+
+impl<T> Deref for FileService<T> {
+    type Target = Box<dyn FileServiceTrait + Send + Sync>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+impl<T> DerefMut for FileService<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+#[async_trait::async_trait]
+pub trait FileServiceTrait {
+    async fn has_file(&self, filename: &RelativeFilePath) -> Result<bool, TransactionError>;
+    async fn add_file_unchecked(
+        &mut self,
+        file_path: &RelativeFilePath,
+        data: &[u8],
+    ) -> Result<(), anyhow::Error>;
+    async fn remove_file(&self, filename: &RelativeFilePath) -> Result<(), TransactionError>;
+    async fn get_file(&self, filename: &RelativeFilePath) -> Result<Vec<u8>, TransactionError>;
+    async fn list_files(
+        &self,
+        path: &RelativeDirPath,
+    ) -> Result<Vec<RelativeFilePath>, TransactionError>;
+    fn get_filepath(&self, file_path: &RelativeFilePath) -> PathBuf;
+}
+
+pub trait FileServiceExt {
+    fn has_validator_for(&self, path: &RelativeFilePath) -> bool;
+    fn add_file_validated<'a>(
+        &'a mut self,
+        file_path: &'a RelativeFilePath,
+        data: &'a [u8],
+    ) -> BoxFuture<'a, Result<(), anyhow::Error>>;
+}
+
+impl<T: AsMut<FileService<T>> + AsRef<FileService<T>> + Send + Sync> FileServiceExt for T {
+    fn has_validator_for(&self, path: &RelativeFilePath) -> bool {
+        self.as_ref()
+            .validators
+            .iter()
+            .any(|p| p.is_responsible(path))
+    }
+    fn add_file_validated<'a>(
+        &'a mut self,
+        file_path: &'a RelativeFilePath,
+        data: &'a [u8],
+    ) -> BoxFuture<'a, Result<(), anyhow::Error>> {
+        trace!(filename = ?file_path, "Create file validated");
+        async move {
+            let validators = self.as_mut().validators.clone();
+
+            validators
+                .iter()
+                .find(|x| x.is_responsible(file_path))
+                .ok_or_else(|| anyhow::anyhow!("Coultn't find responsible validator"))?
+                .validate(data, self)
+                .await?;
+            self.as_mut().add_file_unchecked(file_path, data).await
+        }
+        .boxed()
+    }
+}
