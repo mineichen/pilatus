@@ -1,14 +1,11 @@
-use pilatus::web::{
+use pilatus_axum::{
     extract::{InjectAll, Json},
     DeviceTopicDiscovery, IntoResponse, ServiceCollectionExtensions,
 };
 use serde::Serialize;
 
-mod topic_discovery;
-
 pub(super) fn register_services(c: &mut minfac::ServiceCollection) {
     c.register_web("web", |r| r.http("/config", |r| r.get(component_paths)));
-    topic_discovery::register_services(c);
 }
 
 #[derive(Serialize)]
