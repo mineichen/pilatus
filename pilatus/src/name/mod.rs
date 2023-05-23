@@ -3,7 +3,7 @@ use std::fmt::{Debug, Display};
 use sealedstruct::{ValidationError, ValidationErrors, ValidationResultExtensions};
 use serde::{Deserialize, Serialize};
 
-pub(crate)mod name_wrapper;
+pub(crate) mod name_wrapper;
 
 #[derive(
     PartialEq,

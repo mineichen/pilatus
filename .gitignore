@@ -3,3 +3,5 @@
 /docker/build
 /pilatus_running
 Cargo.lock
+/examples/stream/data/
+!examples/stream/data/config.json

@@ -163,8 +163,8 @@ impl RecipeRunnerImpl {
             *self.state.next_recipe_id.lock().expect("Not poisoned") = Some(tx);
             self.run_devices(
                 active_devices,
-                |info| info!("{}", info),
-                |error| error!("{}", error),
+                |info| info!(info),
+                |error| error!(error),
             )
             .await?;
 

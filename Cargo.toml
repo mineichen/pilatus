@@ -6,4 +6,5 @@ members = [
   "pilatus-axum-rt",
   "pilatus-engineering",
   "pilatus-rt",
+  "examples/stream"
 ]

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Show heartbeat</title>
+</head>
+<body>
+<h1>Heartbeats of bitcoin</h1>
+<div id="data"></div>
+<script>
+    const addr = `ws://${location.host}${(location.port!=='') ? `:${location.port}` : ''}/api/coinbase`;
+    console.log("Connecting to", addr);
+    const exampleSocket = new WebSocket(addr);
+    exampleSocket.onmessage = (e) => {
+        let node = document.createElement("div");
+        node.innerHTML = e.data;
+        document.getElementById("data").prepend(node);
+    };
+
+</script>
+</body>
+
+</html> 
