@@ -161,12 +161,8 @@ impl RecipeRunnerImpl {
             let (tx, rx) = oneshot::channel();
             // Allow new recipe via self.select_recipe()
             *self.state.next_recipe_id.lock().expect("Not poisoned") = Some(tx);
-            self.run_devices(
-                active_devices,
-                |info| info!(info),
-                |error| error!(error),
-            )
-            .await?;
+            self.run_devices(active_devices, |info| info!(info), |error| error!(error))
+                .await?;
 
             futures::future::join_all(self.finalizer.iter().map(|x| x.finalize_recipe_execution()))
                 .await;

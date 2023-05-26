@@ -11,7 +11,7 @@ use pilatus_axum::{
 };
 use tracing::debug;
 
-use crate::producer::{SubscribeMessage, Heartbeat};
+use crate::producer::{Heartbeat, SubscribeMessage};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.register_web("coinbase", |b| b.http("", |f| f.get(stream_coinbase)));
