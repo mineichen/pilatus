@@ -2,7 +2,7 @@
 // https://github.com/microsoft/vscode-dev-containers/tree/v0.195.0/containers/rust
 {
     "name": "Pilatus",
-    "image": "mineichen/pilatus-build:0.0.1.69",
+    "image": "mineichen/pilatus-build:0.0.1.70",
     "runArgs": [
         "--cap-add=SYS_PTRACE",
         "--security-opt",
@@ -37,6 +37,4 @@
             ]
         }
     }
-    // Comment out to run as root instead.
-    //"remoteUser": "root"
 }

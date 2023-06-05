@@ -7,7 +7,7 @@ use coinbase_pro_rs::structs::wsfeed::{Full, Level2, Match, Message, Ticker};
 use futures::channel::mpsc;
 use tracing::{debug, error, warn};
 
-use super::{queryable::Queryable, HandleResult, Heartbeat, NewTopicRegistrationState};
+use super::{HandleResult, Heartbeat, NewTopicRegistrationState};
 
 #[derive(Default, Debug)]
 pub(super) struct SenderCollection {
