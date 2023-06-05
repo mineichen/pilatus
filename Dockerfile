@@ -1,45 +1,10 @@
-FROM rust:1.69
+FROM rust:1.70-bookworm as builder
 
-# Install mold linker
-RUN apt-get update && \
-    apt-get install -y cmake clang && \
-    rm -rf /var/lib/apt/lists/* && \
-    git clone https://github.com/rui314/mold.git && \
-    mkdir mold/build && \
-    cd mold/build && \
-    git checkout v1.7.1 && \
-    ../install-build-deps.sh && \
-    cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=c++ .. && \
-    cmake --build . -j $(nproc) && \
-    cmake --install .
-
-# Install "just" command
-RUN git config --global pull.rebase true && \
-    mkdir -p /usr/temp/src/pilatus && \
-    cargo install --locked just && \
-    rm -rf /usr/local/cargo/registry
-
-WORKDIR /usr/temp/src/pilatus
-
-ENV NIGHTLY_VERSION "2023-04-29"
-ENV DOCKER_BUILDKIT 1
-
-RUN rustup toolchain add nightly-${NIGHTLY_VERSION} && \
-    rustup default nightly-${NIGHTLY_VERSION} && \
-    rustup component add rustfmt && \
-    rustup component add clippy && \
-    rustup component add miri && \
-    rustup default $RUST_VERSION && \
-    rustup component add rustfmt && \
-    rustup component add clippy && \
-    cargo install tokio-console --locked && \
+RUN cargo install tokio-console --locked && \
+    cargo install just --locked && \
     cargo install cargo-udeps --locked && \
-    cargo install cargo-outdated --locked && \
-    apt update && apt install -y vim jq htop && \
-    rm -rf /usr/local/cargo/registry && \
-    rm -rf /var/lib/apt/lists/*
+    cargo install cargo-outdated --locked 
 
-# Install Docker-CLI
 RUN apt update && \
     apt-get install -y ca-certificates curl gnupg && \
     mkdir -m 0755 -p /etc/apt/keyrings && \
@@ -50,3 +15,20 @@ RUN apt update && \
     apt-get update && \
     apt-get install -y docker-ce-cli && \
     rm -rf /var/lib/apt/lists/*
+
+
+FROM rust:1.70-bookworm
+
+ENV DOCKER_BUILDKIT 1
+
+RUN rustup toolchain add nightly -c rustfmt -c clippy -c miri && \
+    rustup component add rustfmt && \
+    rustup component add clippy && \    
+    apt update && apt install -y vim htop mold && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/cargo/bin/tokio-console /usr/local/cargo/bin/tokio-console
+COPY --from=builder /usr/local/cargo/bin/just /usr/local/cargo/bin/just
+COPY --from=builder /usr/local/cargo/bin/cargo-udeps /usr/local/cargo/bin/cargo-udeps
+COPY --from=builder /usr/local/cargo/bin/cargo-outdated /usr/local/cargo/bin/cargo-outdated
+COPY --from=builder /usr/bin/docker /usr/bin/docker
