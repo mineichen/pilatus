@@ -1,5 +1,6 @@
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
+    ffi::OsStr,
     io,
     path::PathBuf,
     str::FromStr,
@@ -204,10 +205,11 @@ impl RecipeServiceImpl {
                 variables = serde_json::from_slice(&data).map_err(|e| InvalidFormat(e.into()));
                 continue;
             }
-            let filename = entry.filename;
-            let (recipe_id, rest) = filename.split_once('/').ok_or_else(|| {
+            let filename = PathBuf::from(entry.filename);
+            let mut filename_iter = filename.iter().filter_map(OsStr::to_str);
+            let recipe_id = filename_iter.next().ok_or_else(|| {
                 InvalidFormat(anyhow!(
-                    "All files except variables.json must be in a subfolder"
+                    "All files except variables.json must be in a subfolder. Got: {filename:?}"
                 ))
             })?;
 
@@ -215,8 +217,8 @@ impl RecipeServiceImpl {
                 .parse::<RecipeId>()
                 .map_err(|e| InvalidFormat(e.into()))?;
 
-            match rest {
-                "recipe.json" => {
+            match filename_iter.next() {
+                Some("recipe.json") if filename_iter.next().is_none() => {
                     let mut cursor = Cursor::new(&mut data);
                     copy(
                         &mut entry.reader.take(MAX_JSON_FILE_SIZE_LIMIT as _),
@@ -235,16 +237,11 @@ impl RecipeServiceImpl {
 
                     recipes.insert(recipe_id, recipe);
                 }
-                filename => {
-                    let (device_id, filename) = filename.split_once('/').ok_or_else(|| {
-                        InvalidFormat(anyhow!(
-                            "all files except recipe.json in {recipe_id} must be in a subfolder"
-                        ))
-                    })?;
+                Some(device_id) => {
                     Uuid::from_str(device_id).map_err(|e| InvalidFormat(e.into()))?;
                     let mut path = root.join(device_id);
-                    let relative =
-                        RelativeFilePath::new(filename).map_err(|e| InvalidFormat(e.into()))?;
+                    let relative = RelativeFilePath::new(filename_iter.collect::<PathBuf>())
+                        .map_err(|e| InvalidFormat(e.into()))?;
                     path.push(relative.as_path());
 
                     trace!("Create dir all {path:?}");
@@ -257,6 +254,11 @@ impl RecipeServiceImpl {
                     )
                     .await?;
                     trace!("Copied file to {path:?}");
+                }
+                _ => {
+                    return Err(InvalidFormat(anyhow!(
+                        "all files except recipe.json in {recipe_id} must be in a subfolder. Got {filename:?}"
+                    )));
                 }
             };
         }
