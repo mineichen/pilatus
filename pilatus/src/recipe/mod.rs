@@ -10,8 +10,6 @@ mod recipes;
 mod service;
 mod variables;
 
-use std::borrow::Borrow;
-
 pub use device::*;
 pub use device_config::DeviceConfig;
 pub use entry_io::*;
@@ -95,7 +93,7 @@ impl UntypedDeviceParamsWithVariables {
     }
 
     pub fn from_serializable(x: impl Serialize) -> serde_json::Result<Self> {
-        let inner = serde_json::to_value(x.borrow())?;
+        let inner = serde_json::to_value(x)?;
         debug_assert_eq!(Ok(()), check_recursive(&inner));
         Ok(Self(inner))
     }

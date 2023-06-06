@@ -11,7 +11,7 @@ async-trait = "0.1"
 axum = { version = "0.6", features = ["ws"] }
 bytes = "1"
 futures = "0.3"
-jpeg-encoder = { version = "0.5", features = ["simd"] }
+jpeg-encoder = { version = "0.5", features = ["simd"], optional = true }
 minfac = "0.0.1"
 pilatus = { path = "../pilatus" }
 pilatus-engineering = { path = "../pilatus-engineering", optional = true }
@@ -21,4 +21,4 @@ tracing = "0.1"
 uuid = { version = "1", features = ["serde", "v4"] }
 
 [features]
-engineering = ["pilatus-engineering"]
+engineering = ["pilatus-engineering", "jpeg-encoder"]

@@ -38,13 +38,6 @@ tracing-subscriber = { version = "0.3", optional = true }
 tracing-appender = { version = "0.2", optional = true }
 leak-detect-allocator = { git = "https://github.com/lynnux/leak-detect-allocator.git", optional = true }
 
-# image
-jpeg-encoder = { version = "0.5", features = ["simd"] }
-sealedstruct = { git = "https://github.com/mineichen/sealedstruct.git", branch = "main", features = [
-    "serde",
-] }
-
-
 [dev-dependencies]
 hyper = { version = "0.14.23", features = ["client"] }
 pilatus = { path = "../pilatus", features = ["test"] }
