@@ -40,7 +40,7 @@ uuid = { version = "1", features = ["serde", "v4"] }
 pilatus = { path = "../pilatus", features = ["test"] }
 pilatus-rt = { path = "../pilatus-rt", features = ["test"] }
 tempfile = "3"
-tokio-tungstenite = "0.18"
+tokio-tungstenite = "0.19"
 
 [features]
 engineering = ["dep:pilatus-engineering", "pilatus-axum/engineering"]
