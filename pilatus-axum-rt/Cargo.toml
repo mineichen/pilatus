@@ -17,9 +17,7 @@ bytes = "1"
 chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
 hyper = { version = "0.14", features = ["client"] }
-image = { version = "0.24", default-features = false, features = [
-  "png",
-], optional = true }
+image = { version = "0.24", default-features = false, features = ["png"], optional = true }
 minfac = "0.0.1"
 pilatus = { path = "../pilatus", features = ["tokio"] }
 pilatus-axum = { path = "../pilatus-axum" }
@@ -43,4 +41,4 @@ tempfile = "3"
 tokio-tungstenite = "0.19"
 
 [features]
-engineering = ["dep:pilatus-engineering", "pilatus-axum/engineering"]
+engineering = ["dep:pilatus-engineering", "pilatus-axum/engineering", "image"]
