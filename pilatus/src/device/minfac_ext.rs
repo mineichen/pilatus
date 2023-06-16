@@ -45,7 +45,7 @@ where
                 device_type,
                 Arc::new(validator),
                 handler,
-            )) as Box<dyn DeviceHandler<DeviceResult>>,
+            )) as Box<dyn DeviceHandler>,
         );
     }
 }

@@ -25,7 +25,7 @@ pub use variables::VariableService;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     variables::register_services(c);
-    c.with::<AllRegistered<Box<dyn DeviceHandler<DeviceResult>>>>()
+    c.with::<AllRegistered<Box<dyn DeviceHandler>>>()
         .register(DeviceSpawnerService::new);
 
     c.with::<(Registered<DeviceSpawnerService>, Registered<ActorSystem>)>()
@@ -94,7 +94,7 @@ impl DeviceActions for DeviceActionsFassade {
 
 #[derive(Clone)]
 pub struct DeviceSpawnerService {
-    map: HashMap<&'static str, Box<dyn DeviceHandler<DeviceResult>>>,
+    map: HashMap<&'static str, Box<dyn DeviceHandler>>,
 }
 
 impl Debug for DeviceSpawnerService {
@@ -106,12 +106,12 @@ impl Debug for DeviceSpawnerService {
 }
 
 impl DeviceSpawnerService {
-    pub fn new(devices: impl Iterator<Item = Box<dyn DeviceHandler<DeviceResult>>>) -> Self {
+    pub fn new(devices: impl Iterator<Item = Box<dyn DeviceHandler>>) -> Self {
         Self {
             map: devices.map(|d| (d.get_device_type(), d)).collect(),
         }
     }
-    fn get_spawner(&self, device_type: &str) -> anyhow::Result<&dyn DeviceHandler<DeviceResult>> {
+    fn get_spawner(&self, device_type: &str) -> anyhow::Result<&dyn DeviceHandler> {
         self.map
             .get(device_type)
             .map(|f| f.as_ref())

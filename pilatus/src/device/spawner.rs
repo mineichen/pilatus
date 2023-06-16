@@ -4,11 +4,11 @@ use futures::{future::BoxFuture, FutureExt};
 use minfac::{Resolvable, ServiceCollection, WeakServiceProvider};
 use tokio::task::JoinHandle;
 
-use crate::{NotAppliedError, UpdateParamsMessageError};
-
 use super::{
-    ActorError, ActorErrorUnknownDevice, ActorSystem, DeviceContext, DeviceValidationContext,
+    ActorError, ActorErrorUnknownDevice, ActorSystem, DeviceContext, DeviceResult,
+    DeviceValidationContext,
 };
+use crate::{NotAppliedError, UpdateParamsMessageError};
 
 #[derive(thiserror::Error, Debug)]
 #[error("Error in variable {variable_name}")]
@@ -49,13 +49,13 @@ impl From<ActorError<UpdateParamsMessageError>> for UpdateDeviceError {
     }
 }
 
-pub trait DeviceHandler<T>: Send + Sync {
-    fn clone_box(&self) -> Box<dyn DeviceHandler<T>>;
+pub trait DeviceHandler: Send + Sync {
+    fn clone_box(&self) -> Box<dyn DeviceHandler>;
     fn spawn(
         &self,
         ctx: DeviceContext,
         provider: WeakServiceProvider,
-    ) -> BoxFuture<Result<JoinHandle<T>, SpawnError>>;
+    ) -> BoxFuture<Result<JoinHandle<DeviceResult>, SpawnError>>;
     fn validate(&self, ctx: DeviceContext) -> BoxFuture<Result<(), UpdateParamsMessageError>>;
     fn update(
         &self,
@@ -74,7 +74,7 @@ pub enum SpawnError {
     Validation(#[from] UpdateParamsMessageError),
 }
 
-impl<T> Clone for Box<dyn DeviceHandler<T>> {
+impl Clone for Box<dyn DeviceHandler> {
     fn clone(&self) -> Self {
         self.clone_box()
     }
@@ -147,18 +147,17 @@ where
     }
 }
 
-impl<T: 'static + Send, TParam: Any + Send + Sync, TDep, TFut> DeviceHandler<T>
-    for DepDeviceHandler<TDep, TFut, TParam>
+impl<TParam: Any + Send + Sync, TDep, TFut> DeviceHandler for DepDeviceHandler<TDep, TFut, TParam>
 where
     TDep: Resolvable + Send + 'static,
     TDep::ItemPreChecked: Send,
-    TFut: Future<Output = T> + Send + 'static,
+    TFut: Future<Output = DeviceResult> + Send + 'static,
 {
     fn spawn(
         &self,
         ctx: DeviceContext,
         provider: WeakServiceProvider,
-    ) -> BoxFuture<Result<JoinHandle<T>, SpawnError>> {
+    ) -> BoxFuture<Result<JoinHandle<DeviceResult>, SpawnError>> {
         // Todo: IO-Error is not optimal here
         async move {
             let param = (self.validator)
@@ -181,7 +180,7 @@ where
         col.with::<TDep>().register(|_| ());
     }
 
-    fn clone_box(&self) -> Box<dyn DeviceHandler<T>> {
+    fn clone_box(&self) -> Box<dyn DeviceHandler> {
         Box::new(self.clone())
     }
 
