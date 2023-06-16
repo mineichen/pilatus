@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use futures::stream::BoxStream;
 use futures::StreamExt;
 use minfac::{AllRegistered, Registered, ServiceCollection};
+use pilatus::device::DeviceContext;
 use pilatus::{
     clone_directory_deep, device::DeviceId, visit_directory_files, DeviceConfig, GenericConfig,
     InitRecipeListener, Name, ParameterUpdate, Recipe, RecipeExporter, RecipeId, RecipeImporter,
@@ -336,7 +337,7 @@ impl RecipeServiceImpl {
                 .resolve(params)
                 .map_err(|e| VariableError::from((recipe_id.clone(), e)))?;
             self.device_actions
-                .validate(&device_type, device_id, resolved_params)
+                .validate(&device_type, DeviceContext::new(device_id, resolved_params))
                 .await
                 .map_err(|e| VariableError::from((recipe_id, e)))?;
         }
@@ -345,7 +346,7 @@ impl RecipeServiceImpl {
             let edit_device_type = &recipes.get_device_or_error(device_id)?.device_type;
             let resolved = patched_vars.resolve(params)?;
             self.device_actions
-                .try_apply(edit_device_type, device_id, resolved)
+                .try_apply(edit_device_type, DeviceContext::new(device_id, resolved))
                 .await?;
         }
         Ok(patched_vars)

@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use pilatus::{
-    device::{ActorErrorUnknownDevice, DeviceId},
+    device::{ActorErrorUnknownDevice, DeviceContext, DeviceId},
     DeviceConfig, Recipe, RecipeId, Recipes, TransactionError, Variables,
 };
 
@@ -21,7 +21,7 @@ pub(super) async fn recipes_try_add_new_with_id(
                 break 'block true;
             };
             if device_actions
-                .validate(&device.device_type, id, params)
+                .validate(&device.device_type, DeviceContext::new(id, params))
                 .await
                 .is_err()
             {

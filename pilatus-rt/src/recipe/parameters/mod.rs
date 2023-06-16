@@ -49,12 +49,11 @@ impl DeviceActions for DeviceActionsFassade {
     fn validate(
         &self,
         device_type: &str,
-        id: DeviceId,
-        params: UntypedDeviceParamsWithoutVariables,
+        ctx: DeviceContext,
     ) -> BoxFuture<Result<(), TransactionError>> {
         let spawner = self.spawner_service.get_spawner(device_type);
         async move {
-            spawner?.validate(DeviceContext::new(id, params)).await?;
+            spawner?.validate(ctx).await?;
             Ok(())
         }
         .boxed()
@@ -62,13 +61,12 @@ impl DeviceActions for DeviceActionsFassade {
     fn try_apply(
         &self,
         device_type: &str,
-        id: DeviceId,
-        params: UntypedDeviceParamsWithoutVariables,
+        ctx: DeviceContext,
     ) -> BoxFuture<Result<(), TransactionError>> {
         let spawner = self.spawner_service.get_spawner(device_type);
         async move {
             spawner?
-                .update(DeviceContext::new(id, params), self.actor_system.clone())
+                .update(ctx, self.actor_system.clone())
                 .await
                 .map_err(|e| match e {
                     UpdateDeviceError::Validate(x) => x.into(),
@@ -82,12 +80,11 @@ impl DeviceActions for DeviceActionsFassade {
     fn spawn(
         &self,
         device_type: &str,
-        id: DeviceId,
-        params: UntypedDeviceParamsWithoutVariables,
+        ctx: DeviceContext,
         provider: WeakServiceProvider,
     ) -> BoxFuture<Result<JoinHandle<DeviceResult>, StartDeviceError>> {
         self.spawner_service
-            .spawn(device_type, id, params, provider)
+            .spawn(device_type, ctx, provider)
             .boxed()
     }
 }
@@ -120,14 +117,13 @@ impl DeviceSpawnerService {
     pub fn spawn(
         &self,
         device_type: &str,
-        id: DeviceId,
-        params: UntypedDeviceParamsWithoutVariables,
+        ctx: DeviceContext,
         provider: WeakServiceProvider,
     ) -> BoxFuture<Result<JoinHandle<DeviceResult>, StartDeviceError>> {
         let x = self
             .get_spawner(device_type)
             .map_err(|_| StartDeviceError::UnknownDeviceType);
-        async move { Ok(x?.spawn(DeviceContext::new(id, params), provider).await?) }.boxed()
+        async move { Ok(x?.spawn(ctx, provider).await?) }.boxed()
     }
 }
 pub struct ChangeParamsStrategy {
@@ -203,7 +199,7 @@ mod testutil {
     use futures::{future::BoxFuture, FutureExt};
 
     use pilatus::{
-        device::{DeviceId, DeviceResult},
+        device::{DeviceContext, DeviceId, DeviceResult},
         TransactionError, UntypedDeviceParamsWithoutVariables,
     };
 
@@ -240,16 +236,14 @@ mod testutil {
         fn validate(
             &self,
             _device_type: &str,
-            _id: DeviceId,
-            _params: UntypedDeviceParamsWithoutVariables,
+            _ctx: DeviceContext,
         ) -> BoxFuture<Result<(), super::TransactionError>> {
             async { (self.validator)() }.boxed()
         }
         fn try_apply(
             &self,
             _device_type: &str,
-            _id: DeviceId,
-            _params: UntypedDeviceParamsWithoutVariables,
+            _ctx: DeviceContext,
         ) -> BoxFuture<Result<(), TransactionError>> {
             futures::future::ready(Ok(())).boxed()
         }
@@ -257,8 +251,7 @@ mod testutil {
         fn spawn(
             &self,
             _device_type: &str,
-            _id: DeviceId,
-            _params: UntypedDeviceParamsWithoutVariables,
+            _ctx: DeviceContext,
             _provider: minfac::WeakServiceProvider,
         ) -> BoxFuture<Result<tokio::task::JoinHandle<DeviceResult>, StartDeviceError>> {
             unimplemented!()

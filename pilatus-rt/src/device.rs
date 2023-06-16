@@ -10,6 +10,7 @@ use futures::{
     FutureExt, TryFutureExt,
 };
 use minfac::{AllRegistered, Registered, ServiceCollection, WeakServiceProvider};
+use pilatus::device::DeviceContext;
 use pilatus::TransactionOptions;
 use pilatus::{
     device::{ActorSystem, DeviceId, FinalizeRecipeExecution, RecipeRunner, RecipeRunnerTrait},
@@ -204,7 +205,11 @@ impl RecipeRunnerImpl {
 
             match self
                 .spawner
-                .spawn(&device_type, id, resolved, self.provider.clone())
+                .spawn(
+                    &device_type,
+                    DeviceContext::new(id, resolved),
+                    self.provider.clone(),
+                )
                 .await
             {
                 Ok(x) => {
