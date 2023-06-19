@@ -79,10 +79,7 @@ impl Importer {
 
         let mut errors = HashSet::new();
 
-        let variable_conflicts = recipes_copy
-            .as_mut()
-            .add_without_conflicts(self.variables.clone())
-            .collect::<Vec<_>>();
+        let variable_conflicts = recipes_copy.as_mut().add(&self.variables);
 
         for (recipe_id, recipe) in self.recipes.iter() {
             if *recipe_id == active_id {

@@ -20,7 +20,7 @@ pub use minfac_ext::*;
 pub use spawner::*;
 pub use system::*;
 
-use crate::{RecipeId, UntypedDeviceParamsWithoutVariables, UpdateParamsMessageError};
+use crate::{RecipeId, UntypedDeviceParamsWithoutVariables, UpdateParamsMessageError, Variables};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     system::register_services(c);
@@ -87,17 +87,27 @@ impl<'a> DeviceValidationContext<'a> {
 #[non_exhaustive]
 pub struct DeviceContext {
     pub id: DeviceId,
+    variables: Variables,
     params: UntypedDeviceParamsWithoutVariables,
 }
 
 impl DeviceContext {
-    pub fn new(id: DeviceId, params: UntypedDeviceParamsWithoutVariables) -> Self {
-        Self { id, params }
+    pub fn new(
+        id: DeviceId,
+        variables: Variables,
+        params: UntypedDeviceParamsWithoutVariables,
+    ) -> Self {
+        Self {
+            id,
+            variables,
+            params,
+        }
     }
     #[cfg(feature = "test")]
     pub fn with_random_id(device: impl serde::Serialize) -> Self {
         Self::new(
             DeviceId::new_v4(),
+            Variables::default(),
             UntypedDeviceParamsWithoutVariables::from_serializable(&device).unwrap(),
         )
     }

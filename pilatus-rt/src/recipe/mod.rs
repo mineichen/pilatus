@@ -295,7 +295,9 @@ impl RecipeServiceTrait for RecipeServiceImpl {
 }
 
 impl RecipeServiceImpl {
-    pub async fn get_owned_devices_from_active(&self) -> (RecipeId, Vec<(DeviceId, DeviceConfig)>) {
+    pub async fn get_owned_devices_from_active(
+        &self,
+    ) -> (RecipeId, Vec<(DeviceId, DeviceConfig)>, Variables) {
         let mut recipes = self.recipes.lock().await;
         let (id, recipe) = recipes.get_active();
         (
@@ -305,6 +307,7 @@ impl RecipeServiceImpl {
                 .iter()
                 .map(|(k, v)| (*k, v.clone()))
                 .collect(),
+            recipes.as_ref().clone(),
         )
     }
 
@@ -337,7 +340,10 @@ impl RecipeServiceImpl {
                 .resolve(params)
                 .map_err(|e| VariableError::from((recipe_id.clone(), e)))?;
             self.device_actions
-                .validate(&device_type, DeviceContext::new(device_id, resolved_params))
+                .validate(
+                    &device_type,
+                    DeviceContext::new(device_id, patched_vars.clone(), resolved_params),
+                )
                 .await
                 .map_err(|e| VariableError::from((recipe_id, e)))?;
         }
@@ -346,7 +352,10 @@ impl RecipeServiceImpl {
             let edit_device_type = &recipes.get_device_or_error(device_id)?.device_type;
             let resolved = patched_vars.resolve(params)?;
             self.device_actions
-                .try_apply(edit_device_type, DeviceContext::new(device_id, resolved))
+                .try_apply(
+                    edit_device_type,
+                    DeviceContext::new(device_id, patched_vars.clone(), resolved),
+                )
                 .await?;
         }
         Ok(patched_vars)

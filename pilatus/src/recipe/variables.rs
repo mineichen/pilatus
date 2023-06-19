@@ -1,6 +1,7 @@
 use std::{
     borrow::Borrow,
     collections::{hash_map::Entry, HashMap},
+    sync::Arc,
 };
 
 use serde::{
@@ -59,29 +60,40 @@ pub type VariablesPatch = HashMap<String, Variable>;
 
 #[derive(Debug, Clone, Default)]
 pub struct Variables {
-    mappings: HashMap<String, Variable>,
+    mappings: Arc<HashMap<String, Variable>>,
 }
 
 impl Variables {
-    // Iterator must be consumed to have all variables added
-    pub fn add_without_conflicts(
-        &mut self,
-        other: Self,
-    ) -> impl Iterator<Item = VariableConflict> + '_ {
+    fn new(mappings: HashMap<String, Variable>) -> Self {
+        Self {
+            mappings: Arc::new(mappings),
+        }
+    }
+
+    pub fn add(&mut self, other: &Self) -> Vec<VariableConflict> {
+        let mappings = self.borrow_mappings();
         other
             .mappings
-            .into_iter()
-            .filter_map(|(k, other_value)| match self.mappings.entry(k) {
-                Entry::Occupied(o) => (&other_value != o.get()).then(|| VariableConflict {
+            .iter()
+            .filter_map(|(k, other_value)| match mappings.entry(k.into()) {
+                Entry::Occupied(o) => (other_value != o.get()).then(|| VariableConflict {
                     name: o.key().into(),
                     existing: other_value.clone(),
                     imported: o.get().clone(),
                 }),
                 Entry::Vacant(x) => {
-                    x.insert(other_value);
+                    x.insert(other_value.clone());
                     None
                 }
             })
+            .collect()
+    }
+
+    fn borrow_mappings(&mut self) -> &mut HashMap<String, Variable> {
+        if Arc::get_mut(&mut self.mappings).is_none() {
+            self.mappings = Arc::new(HashMap::clone(&self.mappings));
+        }
+        Arc::get_mut(&mut self.mappings).unwrap()
     }
 }
 
@@ -99,7 +111,7 @@ impl<'de> Deserialize<'de> for Variables {
     where
         D: serde::Deserializer<'de>,
     {
-        HashMap::deserialize(deserializer).map(|mappings| Self { mappings })
+        HashMap::deserialize(deserializer).map(Self::new)
     }
 }
 
@@ -118,14 +130,13 @@ impl UntypedDeviceParamsWithoutVariables {
 
 impl Variables {
     pub fn patch(&self, patch: VariablesPatch) -> Self {
-        Variables {
-            mappings: self
-                .mappings
+        Variables::new(
+            self.mappings
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .chain(patch.into_iter())
                 .collect(),
-        }
+        )
     }
 
     pub fn resolve(
@@ -218,9 +229,7 @@ mod tests {
             r#"{"_text": "value", "_number": 42, "placeholder": {"__var": "test"}}"#,
         )
         .unwrap();
-        let store = Variables {
-            mappings: [("test".into(), (42).into())].into_iter().collect(),
-        };
+        let store = Variables::new([("test".into(), (42).into())].into_iter().collect());
 
         #[derive(Deserialize)]
         struct Foo {

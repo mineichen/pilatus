@@ -15,13 +15,16 @@ pub(super) async fn recipes_try_add_new_with_id(
     device_actions: &dyn DeviceActions,
 ) -> Result<(), Recipe> {
     let is_err = 'block: {
+        let vars: &Variables = recipes.as_ref();
         for (&id, device) in new_recipe.devices.iter() {
-            let vars: &Variables = recipes.as_ref();
             let Ok(params) = vars.resolve(&device.params) else {
                 break 'block true;
             };
             if device_actions
-                .validate(&device.device_type, DeviceContext::new(id, params))
+                .validate(
+                    &device.device_type,
+                    DeviceContext::new(id, vars.clone(), params),
+                )
                 .await
                 .is_err()
             {

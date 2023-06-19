@@ -12,6 +12,7 @@ use futures::{
 use minfac::{AllRegistered, Registered, ServiceCollection, WeakServiceProvider};
 use pilatus::device::DeviceContext;
 use pilatus::TransactionOptions;
+use pilatus::Variables;
 use pilatus::{
     device::{ActorSystem, DeviceId, FinalizeRecipeExecution, RecipeRunner, RecipeRunnerTrait},
     prelude::*,
@@ -158,12 +159,18 @@ impl RecipeRunnerImpl {
         recipe_service: &RecipeServiceImpl,
     ) -> Result<(), anyhow::Error> {
         loop {
-            let (_recipe_id, active_devices) = recipe_service.get_owned_devices_from_active().await;
+            let (_recipe_id, active_devices, variables) =
+                recipe_service.get_owned_devices_from_active().await;
             let (tx, rx) = oneshot::channel();
             // Allow new recipe via self.select_recipe()
             *self.state.next_recipe_id.lock().expect("Not poisoned") = Some(tx);
-            self.run_devices(active_devices, |info| info!(info), |error| error!(error))
-                .await?;
+            self.run_devices(
+                active_devices,
+                variables,
+                |info| info!(info),
+                |error| error!(error),
+            )
+            .await?;
 
             futures::future::join_all(self.finalizer.iter().map(|x| x.finalize_recipe_execution()))
                 .await;
@@ -185,6 +192,7 @@ impl RecipeRunnerImpl {
     async fn run_devices(
         &self,
         active_devices: impl IntoIterator<Item = (DeviceId, DeviceConfig)>,
+        variables: Variables,
         mut info_logger: impl FnMut(String),
         mut error_logger: impl FnMut(String),
     ) -> Result<(), anyhow::Error> {
@@ -207,7 +215,7 @@ impl RecipeRunnerImpl {
                 .spawner
                 .spawn(
                     &device_type,
-                    DeviceContext::new(id, resolved),
+                    DeviceContext::new(id, variables.clone(), resolved),
                     self.provider.clone(),
                 )
                 .await
@@ -327,6 +335,7 @@ mod tests {
                 ]
                 .into_iter()
                 .collect::<Vec<_>>(),
+                Variables::default(),
                 move |x| messages_ref.push(x),
                 move |x| errors_ref.push(x),
             )
