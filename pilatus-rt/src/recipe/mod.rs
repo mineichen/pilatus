@@ -336,13 +336,10 @@ impl RecipeServiceImpl {
                 continue;
             }
 
-            let resolved_params = patched_vars
-                .resolve(params)
-                .map_err(|e| VariableError::from((recipe_id.clone(), e)))?;
             self.device_actions
                 .validate(
                     &device_type,
-                    DeviceContext::new(device_id, patched_vars.clone(), resolved_params),
+                    DeviceContext::new(device_id, patched_vars.clone(), params.clone()),
                 )
                 .await
                 .map_err(|e| VariableError::from((recipe_id, e)))?;
@@ -350,11 +347,10 @@ impl RecipeServiceImpl {
 
         if has_var_changes_on_active || recipes.has_device_on_active(device_id) {
             let edit_device_type = &recipes.get_device_or_error(device_id)?.device_type;
-            let resolved = patched_vars.resolve(params)?;
             self.device_actions
                 .try_apply(
                     edit_device_type,
-                    DeviceContext::new(device_id, patched_vars.clone(), resolved),
+                    DeviceContext::new(device_id, patched_vars.clone(), params.clone()),
                 )
                 .await?;
         }

@@ -21,7 +21,7 @@ use pilatus::{
 use tracing::{error, info};
 
 use crate::recipe::StartDeviceError;
-use crate::recipe::{DeviceSpawnerService, RecipeServiceImpl, VariableService};
+use crate::recipe::{DeviceSpawnerService, RecipeServiceImpl};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<(
@@ -36,21 +36,12 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 
     c.with::<(
         WeakServiceProvider,
-        Registered<VariableService>,
         Registered<Arc<RecipeRunnerState>>,
-        (
-            Registered<DeviceSpawnerService>,
-            AllRegistered<Arc<dyn FinalizeRecipeExecution>>,
-        ),
+        Registered<DeviceSpawnerService>,
+        AllRegistered<Arc<dyn FinalizeRecipeExecution>>,
     )>()
-    .register(|(provider, variable_store, state, (spawner, finalizer))| {
-        RecipeRunnerImpl::new(
-            variable_store,
-            provider,
-            state,
-            spawner,
-            finalizer.collect(),
-        )
+    .register(|(provider, state, spawner, finalizer)| {
+        RecipeRunnerImpl::new(provider, state, spawner, finalizer.collect())
     });
     c.with::<(Registered<RecipeRunnerImpl>, Registered<ActorSystem>)>()
         .register(|(recipe_runner, actor_system)| {
@@ -83,7 +74,6 @@ async fn run_devices_from_service(
 
 #[derive(Clone)]
 pub struct RecipeRunnerImpl {
-    variable_store: VariableService,
     provider: WeakServiceProvider,
     state: Arc<RecipeRunnerState>,
     spawner: DeviceSpawnerService,
@@ -129,14 +119,12 @@ impl RecipeRunnerImpl {
     }
 
     fn new(
-        variable_store: VariableService,
         provider: WeakServiceProvider,
         state: Arc<RecipeRunnerState>,
         spawner: DeviceSpawnerService,
         finalizer: Vec<Arc<dyn FinalizeRecipeExecution>>,
     ) -> Self {
         Self {
-            variable_store,
             provider,
             state,
             spawner,
@@ -199,23 +187,13 @@ impl RecipeRunnerImpl {
         let mut device_futures = Vec::new();
 
         for (id, device) in active_devices {
-            let resolved = match self.variable_store.resolve(&device.params).await {
-                Ok(x) => x,
-                Err(e) => {
-                    error!(
-                        device = device.get_device_type(),
-                        "Cannot resolve variables {e}"
-                    );
-                    continue;
-                }
-            };
             let device_type = device.get_device_type().to_string();
 
             match self
                 .spawner
                 .spawn(
                     &device_type,
-                    DeviceContext::new(id, variables.clone(), resolved),
+                    DeviceContext::new(id, variables.clone(), device.params.clone()),
                     self.provider.clone(),
                 )
                 .await
@@ -309,9 +287,7 @@ mod tests {
         let provider = collection.build().unwrap();
         let weak_provider: WeakServiceProvider = (&provider).into();
         let state = RecipeRunnerState::default();
-        let variable_store = VariableService::default();
         let runner = RecipeRunnerImpl::new(
-            variable_store,
             weak_provider,
             Arc::new(state),
             DeviceSpawnerService::new(provider.get_all()),

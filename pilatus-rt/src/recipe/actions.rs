@@ -5,8 +5,8 @@ use minfac::WeakServiceProvider;
 use tokio::task::JoinHandle;
 
 use pilatus::{
-    device::{DeviceContext, DeviceId, DeviceResult, SpawnError},
-    TransactionError, UntypedDeviceParamsWithoutVariables, UpdateParamsMessageError,
+    device::{DeviceContext, DeviceResult, SpawnError},
+    TransactionError, UpdateParamsMessageError,
 };
 
 pub trait DeviceActions: Debug + Send + Sync {

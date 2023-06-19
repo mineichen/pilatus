@@ -20,7 +20,7 @@ pub use minfac_ext::*;
 pub use spawner::*;
 pub use system::*;
 
-use crate::{RecipeId, UntypedDeviceParamsWithoutVariables, UpdateParamsMessageError, Variables};
+use crate::{RecipeId, UntypedDeviceParamsWithVariables, UpdateParamsMessageError, Variables};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     system::register_services(c);
@@ -66,8 +66,9 @@ pub struct DeviceValidationContext<'a> {
 }
 
 impl<'a> DeviceValidationContext<'a> {
-    pub fn params_as<T: DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
-        self.raw.params.params_as::<T>()
+    pub fn params_as<T: DeserializeOwned>(&self) -> Result<T, UpdateParamsMessageError> {
+        let resolved = self.raw.variables.resolve(&self.raw.params_with_vars)?;
+        Ok(resolved.params_as::<T>()?)
     }
 
     pub fn params_as_sealed<T: DeserializeOwned + Sealable>(
@@ -76,8 +77,9 @@ impl<'a> DeviceValidationContext<'a> {
     where
         T::Target:,
     {
-        self.raw
-            .params
+        let resolved = self.raw.variables.resolve(&self.raw.params_with_vars)?;
+
+        resolved
             .params_as::<T>()
             .map_err(Into::into)
             .and_then(|x| x.seal().map_err(Into::into))
@@ -88,19 +90,19 @@ impl<'a> DeviceValidationContext<'a> {
 pub struct DeviceContext {
     pub id: DeviceId,
     variables: Variables,
-    params: UntypedDeviceParamsWithoutVariables,
+    params_with_vars: UntypedDeviceParamsWithVariables,
 }
 
 impl DeviceContext {
     pub fn new(
         id: DeviceId,
         variables: Variables,
-        params: UntypedDeviceParamsWithoutVariables,
+        params_with_vars: UntypedDeviceParamsWithVariables,
     ) -> Self {
         Self {
             id,
             variables,
-            params,
+            params_with_vars,
         }
     }
     #[cfg(feature = "test")]
@@ -108,7 +110,7 @@ impl DeviceContext {
         Self::new(
             DeviceId::new_v4(),
             Variables::default(),
-            UntypedDeviceParamsWithoutVariables::from_serializable(&device).unwrap(),
+            UntypedDeviceParamsWithVariables::new(serde_json::to_value(&device).unwrap()),
         )
     }
 }
