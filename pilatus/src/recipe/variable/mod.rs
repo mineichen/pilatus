@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use anyhow::anyhow;
 use serde::{
     de::{DeserializeOwned, Error},
     Deserialize, Serialize,
@@ -13,6 +14,10 @@ use serde_json::Value;
 use crate::{recipe::UntypedDeviceParamsWithVariables, UpdateParamsMessageError};
 
 pub(crate) const JSON_VAR_KEYWORD: &str = "__var";
+
+mod maybe;
+
+pub use maybe::*;
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct VariableConflict {
@@ -41,19 +46,25 @@ impl<'a> From<&'a str> for Variable {
     }
 }
 
+impl TryFrom<serde_json::Value> for Variable {
+    type Error = anyhow::Error;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        if value.is_number() || value.is_string() {
+            Ok(Self(value))
+        } else {
+            Err(anyhow!("Just numbers and strings are supported"))
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for Variable {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let v = Value::deserialize(deserializer)?;
-        if v.is_number() || v.is_string() {
-            Ok(Self(v))
-        } else {
-            Err(<D::Error as serde::de::Error>::custom(
-                "Just numbers and strings are supported",
-            ))
-        }
+        v.try_into().map_err(<D::Error as serde::de::Error>::custom)
     }
 }
 pub type VariablesPatch = HashMap<String, Variable>;
@@ -143,7 +154,7 @@ impl Variables {
         &self,
         with_variables: &UntypedDeviceParamsWithVariables,
     ) -> Result<UntypedDeviceParamsWithoutVariables, UpdateParamsMessageError> {
-        self.resolve_value(&with_variables.0)
+        self.resolve_value(&with_variables.0, |_, v| v)
             .map(UntypedDeviceParamsWithoutVariables)
     }
 
@@ -151,59 +162,64 @@ impl Variables {
         self.mappings.get(k)
     }
 
-    fn resolve_value(&self, with_variables: &Value) -> Result<Value, UpdateParamsMessageError> {
-        Ok(match with_variables {
+    fn resolve_value(
+        &self,
+        with_variables: &Value,
+        generator: fn(&str, Value) -> Value,
+    ) -> Result<Value, UpdateParamsMessageError> {
+        match with_variables {
             x @ Value::Null | x @ Value::String(_) | x @ Value::Bool(_) | x @ Value::Number(_) => {
-                x.clone()
+                Ok(x.clone())
             }
 
-            Value::Array(x) => Value::Array(
+            Value::Array(x) => Ok(Value::Array(
                 x.iter()
-                    .map(|v| self.resolve_value(v))
+                    .map(|v| self.resolve_value(v, generator))
                     .collect::<Result<_, _>>()?,
-            ),
+            )),
             Value::Object(x) => {
                 let mut iter = x.iter();
                 if let Some((k, v)) = iter.next() {
                     if k == JSON_VAR_KEYWORD {
                         if let Some((k_other, _)) = iter.next() {
-                            return Err(UpdateParamsMessageError::InvalidFormat(
+                            Err(UpdateParamsMessageError::InvalidFormat(
                                 serde_json::Error::custom(format!(
                                     "Objects with __var mustn't contain anything else, got '{k_other}'"
                                 )),
-                            ));
-                        }
-                        if let Value::String(map_key) = v {
-                            if let Some(new_value) = self.mappings.get(map_key) {
-                                new_value.0.clone()
-                            } else {
-                                return Err(UpdateParamsMessageError::VariableError(format!(
-                                    "Unknown Variable: {map_key}"
-                                )));
-                            }
+                            ))
                         } else {
-                            return Err(UpdateParamsMessageError::VariableError(
-                                "Key starting with __var has to contain a string".into(),
-                            ));
+                            if let Value::String(map_key) = v {
+                                if let Some(new_value) = self.mappings.get(map_key) {
+                                    Ok((generator)(map_key, new_value.0.clone()))
+                                } else {
+                                    Err(UpdateParamsMessageError::VariableError(format!(
+                                        "Unknown Variable: {map_key}"
+                                    )))
+                                }
+                            } else {
+                                Err(UpdateParamsMessageError::VariableError(
+                                    "Key starting with __var has to contain a string".into(),
+                                ))
+                            }
                         }
                     } else {
-                        Value::Object(
+                        Ok(Value::Object(
                             x.iter()
                                 .map(|(k, v)| {
                                     debug_assert_ne!(k, JSON_VAR_KEYWORD);
                                     Result::<_, UpdateParamsMessageError>::Ok((
                                         k.clone(),
-                                        self.resolve_value(v)?,
+                                        self.resolve_value(v, generator)?,
                                     ))
                                 })
                                 .collect::<Result<_, _>>()?,
-                        )
+                        ))
                     }
                 } else {
-                    Value::Object(Default::default())
+                    Ok(Value::Object(Default::default()))
                 }
             }
-        })
+        }
     }
 }
 

@@ -8,7 +8,7 @@ mod ord_hash_map;
 mod recipe;
 mod recipes;
 mod service;
-mod variables;
+mod variable;
 
 pub use device::*;
 pub use device_config::DeviceConfig;
@@ -20,7 +20,7 @@ pub use recipes::*;
 use serde::{Deserialize, Serialize};
 pub use service::*;
 
-pub use variables::*;
+pub use variable::*;
 
 crate::name::name_wrapper::wrapped_name!(RecipeId);
 impl std::default::Default for RecipeId {
@@ -33,7 +33,7 @@ impl std::default::Default for RecipeId {
 /// If UntypedDeviceParamsWithVariables is constructible anyway, this is a bug.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub struct UntypedDeviceParamsWithVariables(serde_json::Value);
-pub use variables::UntypedDeviceParamsWithoutVariables;
+pub use UntypedDeviceParamsWithoutVariables;
 
 #[derive(Deserialize)]
 pub struct ParameterUpdate {
@@ -67,9 +67,13 @@ impl std::ops::DerefMut for UntypedDeviceParamsWithVariables {
 }
 
 impl UntypedDeviceParamsWithVariables {
-    #[cfg(feature = "test")]
+    #[cfg(any(test, feature = "test"))]
     pub fn new(inner: serde_json::Value) -> Self {
         Self(inner)
+    }
+    #[cfg(not(any(test, feature = "test")))]
+    fn new(value: serde_json::Value) -> Self {
+        Self(value)
     }
     pub fn variables_names(&self) -> impl Iterator<Item = String> {
         let mut result = Default::default();

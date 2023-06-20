@@ -4,7 +4,7 @@ use crate::device::{ActorError, ActorMessage};
 
 #[derive(thiserror::Error, Debug)]
 pub enum UpdateParamsMessageError {
-    #[error("Invalid field")]
+    #[error("Invalid field '{path}': {message}")]
     /// Path is the json-selector. E.g. "address.street.number"
     InvalidField { path: &'static str, message: String },
     #[error("unable to parse json to struct: {0}")]

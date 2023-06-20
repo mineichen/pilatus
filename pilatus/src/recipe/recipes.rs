@@ -12,7 +12,7 @@ use crate::{TransactionError, UntypedDeviceParamsWithVariables};
 
 use super::ord_hash_map::OrdHashMap;
 use super::recipe::Recipe;
-use super::variables::{Variables, VariablesPatch};
+use super::variable::{Variables, VariablesPatch};
 
 // Ensures Recipes to be unique and that there is always an active recipe
 #[derive(Debug, Clone, Serialize)]
