@@ -37,6 +37,13 @@ where
 {
     fn call(&self, _provider: WeakServiceProvider) -> io::Result<JoinHandle<T>> {
         let task = (self.handler)();
+        #[cfg(tokio_unstable)]
+        {
+            tokio::task::Builder::new()
+                .name(&format!("Hosted: {}", self.name))
+                .spawn(task)
+        }
+        #[cfg(not(tokio_unstable))]
         Ok(tokio::task::spawn(task))
     }
 
@@ -81,9 +88,14 @@ where
 {
     fn call(&self, provider: WeakServiceProvider) -> io::Result<JoinHandle<T>> {
         let task = (self.handler)(provider.resolve_unchecked::<TDep>());
-        tokio::task::Builder::new()
-            .name(&format!("Hosted: {}", self.name))
-            .spawn(task)
+        #[cfg(tokio_unstable)]
+        {
+            tokio::task::Builder::new()
+                .name(&format!("Hosted: {}", self.name))
+                .spawn(task)
+        }
+        #[cfg(not(tokio_unstable))]
+        Ok(tokio::task::spawn(task))
     }
 
     fn register_dummy_dependency(&self, col: &mut ServiceCollection) {

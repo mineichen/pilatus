@@ -168,10 +168,16 @@ where
                 .await
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             let task = (self.handler)(ctx, param, provider.resolve_unchecked::<TDep>());
-            tokio::task::Builder::new()
-                .name(&format!("Device {}", self.device_type))
-                .spawn(task)
-                .map_err(Into::into)
+
+            #[cfg(tokio_unstable)]
+            {
+                tokio::task::Builder::new()
+                    .name(&format!("Device: {}", self.device_type))
+                    .spawn(task)
+                    .map_err(Into::into)
+            }
+            #[cfg(not(tokio_unstable))]
+            Ok(tokio::task::spawn(task))
         }
         .boxed()
     }
