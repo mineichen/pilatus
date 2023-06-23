@@ -16,7 +16,7 @@ Currently, just a few modules are publicly available
 - Soon: Emulation of cameras
 
 Some extensions which are implemented, but not (yet) publicly available:
-- GigE/Ueye-Camera: Discovery, settings gige-params, subscribable image streams
+- GigE/Ueye-Camera: Discovery, settings gige-params, image streams
 - Image-Coordinates to 3D: Intrinsic calibration assistant, calibration plate management, origin determination
 - Matching: Find shapes in images, which can be teached entirely in the web-ui (inkl. collision-detection if part has to be grippable by robot)
 - Halcon: perform image analysis using hdpl-procedures, manage licenses, rust-bindings
