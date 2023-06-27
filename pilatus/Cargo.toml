@@ -27,6 +27,7 @@ tokio = { version = "1", features = [
   "rt",
   "sync",
   "time",
+  "tracing",
 ], optional = true }
 uuid = { version = "1", features = ["serde", "v4"] }
 tracing = "0.1"
