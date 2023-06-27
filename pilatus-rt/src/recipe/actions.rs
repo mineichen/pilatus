@@ -5,9 +5,11 @@ use minfac::WeakServiceProvider;
 use tokio::task::JoinHandle;
 
 use pilatus::{
-    device::{DeviceContext, DeviceResult, SpawnError},
-    TransactionError, UpdateParamsMessageError,
+    device::{DeviceContext, DeviceResult, SpawnError, WithInfallibleParamUpdate},
+    TransactionError, UntypedDeviceParamsWithVariables, UpdateParamsMessageError,
 };
+
+pub type DeviceActionSpawnOk = WithInfallibleParamUpdate<JoinHandle<DeviceResult>>;
 
 pub trait DeviceActions: Debug + Send + Sync {
     fn spawn(
@@ -15,12 +17,12 @@ pub trait DeviceActions: Debug + Send + Sync {
         device_type: &str,
         ctx: DeviceContext,
         provider: WeakServiceProvider,
-    ) -> BoxFuture<Result<JoinHandle<DeviceResult>, StartDeviceError>>;
+    ) -> BoxFuture<Result<DeviceActionSpawnOk, StartDeviceError>>;
     fn validate(
         &self,
         device_type: &str,
         ctx: DeviceContext,
-    ) -> BoxFuture<Result<(), TransactionError>>;
+    ) -> BoxFuture<Result<Option<UntypedDeviceParamsWithVariables>, TransactionError>>;
     fn try_apply(
         &self,
         device_type: &str,

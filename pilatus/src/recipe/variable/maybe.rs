@@ -24,6 +24,10 @@ impl<T> MaybeVar<T> {
             name: None,
         }
     }
+
+    pub fn into_resolved(self) -> T {
+        self.resolved
+    }
     pub fn assign_variable(&mut self, var_name: impl Into<String>) {
         self.name = Some(var_name.into())
     }
@@ -86,15 +90,6 @@ impl<T> DerefMut for MaybeVar<T> {
     }
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum UnresolveError {
-    // ParamsWithVariables should be stored in recipe if all VariablePatch do not overlap
-    #[error("RequireVariablePatch")]
-    RequireVariablePatch(UntypedDeviceParamsWithVariables, VariablesPatch),
-    #[error("Other: {0:?}")]
-    Other(anyhow::Error),
-}
-
 /// Renders Variables into a
 ///
 /// Because writing a custom Serializer is a lot of work, I choose to have more allocations and a separate loop to detect variable changes
@@ -117,18 +112,21 @@ impl Variables {
         serde_json::from_value(x).map_err(Into::into)
     }
 
-    pub fn unresolve_var(
+    pub fn unresolve_var<T: RawVariable>(
         &self,
-        x: MaybeVar<impl Serialize>,
-    ) -> Result<UntypedDeviceParamsWithVariables, UnresolveError> {
-        let json = serde_json::to_value(&x).map_err(|x| UnresolveError::Other(x.into()))?;
+        x: &MaybeVar<T::Variable>,
+    ) -> Result<(UntypedDeviceParamsWithVariables, Option<VariablesPatch>), anyhow::Error>
+    where
+        T::Variable: Serialize,
+    {
+        let json = serde_json::to_value(x)?;
         let mut patch = VariablesPatch::default();
         let v = self.remove_resolved(json, &mut patch)?;
         let params = UntypedDeviceParamsWithVariables::new(v);
         if patch.is_empty() {
-            Ok(params)
+            Ok((params, None))
         } else {
-            Err(UnresolveError::RequireVariablePatch(params, patch))
+            Ok((params, Some(patch)))
         }
     }
 
@@ -136,7 +134,7 @@ impl Variables {
         &self,
         v: JsonValue,
         patch: &mut VariablesPatch,
-    ) -> Result<JsonValue, UnresolveError> {
+    ) -> Result<JsonValue, anyhow::Error> {
         match v {
             x @ JsonValue::Null
             | x @ JsonValue::Bool(_)
@@ -155,21 +153,20 @@ impl Variables {
                 };
                 let var_name = var_name.to_string();
                 let Some(x) = o.remove("resolved") else {
-                    return Err(UnresolveError::Other(anyhow!("Expected value 'resolved' in {o:?}")));
+                    return Err(anyhow!("Expected value 'resolved' in {o:?}"));
                 };
-                let variable =
-                    crate::Variable::try_from(x).map_err(|e| UnresolveError::Other(e.into()))?;
+                let variable = crate::Variable::try_from(x)?;
 
                 if self.mappings.get(&var_name) != Some(&variable) {
                     match patch.entry(var_name) {
                         Entry::Occupied(o) => {
                             if o.get() != &variable {
-                                return Err(UnresolveError::Other(anyhow!(
+                                return Err(anyhow!(
                                     "Conflicting variables for {}: {:?} != {:?}",
                                     o.key(),
                                     o.get(),
                                     &variable
-                                )));
+                                ));
                             }
                         }
                         Entry::Vacant(v) => {
@@ -178,10 +175,19 @@ impl Variables {
                     }
                 }
 
-                return Ok(JsonValue::Object(o));
+                Ok(JsonValue::Object(o))
             }
         }
     }
+}
+
+// Todo: Add more types (move into submodule)
+pub trait RawVariable: Sized {
+    type Variable: Into<Self>;
+}
+
+impl RawVariable for i32 {
+    type Variable = i32;
 }
 
 #[cfg(test)]
@@ -197,20 +203,85 @@ mod tests {
         foo: i32,
     }
 
-    #[derive(serde::Serialize, serde::Deserialize)]
-    struct Bar {
-        bar: i32,
+    impl Default for Foo {
+        fn default() -> Self {
+            Self {
+                bar: Default::default(),
+                foo: 42,
+            }
+        }
     }
 
     #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(default)]
     struct FooVar {
-        foo: MaybeVar<i32>,
-        bar: MaybeVar<BarVar>,
+        foo: MaybeVar<<i32 as RawVariable>::Variable>,
+        bar: MaybeVar<<Bar as RawVariable>::Variable>,
+    }
+
+    impl Default for FooVar {
+        fn default() -> Self {
+            Foo::default().into()
+        }
+    }
+
+    impl From<Foo> for FooVar {
+        fn from(value: Foo) -> Self {
+            FooVar {
+                foo: MaybeVar::from_value(value.foo.into()),
+                bar: MaybeVar::from_value(value.bar.into()),
+            }
+        }
+    }
+
+    impl From<FooVar> for Foo {
+        fn from(value: FooVar) -> Self {
+            Foo {
+                foo: value.foo.resolved.into(),
+                bar: value.bar.resolved.into(),
+            }
+        }
+    }
+
+    impl RawVariable for Foo {
+        type Variable = FooVar;
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize, Default)]
+    struct Bar {
+        bar_inner: i32,
     }
 
     #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(default)]
     struct BarVar {
-        bar_inner: MaybeVar<i32>,
+        bar_inner: MaybeVar<<i32 as RawVariable>::Variable>,
+    }
+
+    impl Default for BarVar {
+        fn default() -> Self {
+            Bar::default().into()
+        }
+    }
+
+    impl From<Bar> for BarVar {
+        fn from(value: Bar) -> Self {
+            BarVar {
+                bar_inner: MaybeVar::from_value(value.bar_inner.into()),
+            }
+        }
+    }
+
+    impl From<BarVar> for Bar {
+        fn from(value: BarVar) -> Self {
+            Bar {
+                bar_inner: value.bar_inner.resolved.into(),
+            }
+        }
+    }
+
+    impl RawVariable for Bar {
+        type Variable = BarVar;
     }
 
     #[test]
@@ -239,9 +310,9 @@ mod tests {
         let x: MaybeVar<FooVar> = vars.resolve_var(&params)?;
         assert_eq!(1, *x.foo);
         assert_eq!(2, *x.bar.bar_inner);
-        let serialized = vars.unresolve_var(x)?;
+        let serialized = vars.unresolve_var::<Foo>(&x)?;
 
-        assert_eq!(params, serialized);
+        assert_eq!((params, None), serialized);
 
         Ok(())
     }
@@ -259,9 +330,9 @@ mod tests {
 
         let foo: MaybeVar<FooVar> = vars.resolve_var(&params)?;
         assert_eq!(42, *foo.bar.bar_inner);
-        let serialized = vars.unresolve_var(foo)?;
+        let serialized = vars.unresolve_var::<Foo>(&foo)?;
 
-        assert_eq!(params, serialized);
+        assert_eq!((params, None), serialized);
 
         Ok(())
     }
@@ -274,13 +345,12 @@ mod tests {
 
         let mut foo: MaybeVar<FooVar> = vars.resolve_var(&params)?;
         foo.bar.bar_inner.assign_variable("my_var");
-        let (new_serialized, new_variables) = match vars.unresolve_var(foo) {
-            Ok(x) => panic!("Shouldn't be ok: {x:?}"),
-            Err(UnresolveError::RequireVariablePatch(serialized, var_changes)) => {
+        let (new_serialized, new_variables) = match vars.unresolve_var::<Foo>(&foo) {
+            Ok((serialized, Some(var_changes))) => {
                 assert_eq!(1, var_changes.len());
                 (serialized, vars.patch(var_changes))
             }
-            Err(e) => panic!("Other error: {e:?}"),
+            e => panic!("Other error: {e:?}"),
         };
 
         let new_foo: MaybeVar<FooVar> = new_variables.resolve_var(&new_serialized)?;

@@ -1,14 +1,19 @@
-use std::{any::Any, future::Future, io, sync::Arc};
+use std::{any::Any, fmt::Debug, future::Future, sync::Arc};
 
+use async_trait::async_trait;
 use futures::{future::BoxFuture, FutureExt};
 use minfac::{Resolvable, ServiceCollection, WeakServiceProvider};
 use tokio::task::JoinHandle;
+use tracing::error;
 
 use super::{
-    ActorError, ActorErrorUnknownDevice, ActorSystem, DeviceContext, DeviceResult,
+    ActorError, ActorErrorUnknownDevice, ActorSystem, DeviceContext, DeviceId, DeviceResult,
     DeviceValidationContext,
 };
-use crate::{NotAppliedError, UpdateParamsMessageError};
+use crate::{
+    NotAppliedError, ParameterUpdate, RecipeId, RecipeServiceTrait,
+    UntypedDeviceParamsWithVariables, UpdateParamsMessageError,
+};
 
 #[derive(thiserror::Error, Debug)]
 #[error("Error in variable {variable_name}")]
@@ -55,8 +60,11 @@ pub trait DeviceHandler: Send + Sync {
         &self,
         ctx: DeviceContext,
         provider: WeakServiceProvider,
-    ) -> BoxFuture<Result<JoinHandle<DeviceResult>, SpawnError>>;
-    fn validate(&self, ctx: DeviceContext) -> BoxFuture<Result<(), UpdateParamsMessageError>>;
+    ) -> BoxFuture<Result<WithInfallibleParamUpdate<JoinHandle<DeviceResult>>, SpawnError>>;
+    fn validate(
+        &self,
+        ctx: DeviceContext,
+    ) -> BoxFuture<Result<Option<UntypedDeviceParamsWithVariables>, UpdateParamsMessageError>>;
     fn update(
         &self,
         ctx: DeviceContext,
@@ -131,19 +139,113 @@ pub trait ValidatorClosure<'a, TParams> {
     fn call(
         &self,
         state: DeviceValidationContext<'a>,
-    ) -> BoxFuture<'a, Result<TParams, UpdateParamsMessageError>>;
+    ) -> BoxFuture<'a, Result<WithInfallibleParamUpdate<TParams>, UpdateParamsMessageError>>;
 }
 
-impl<'a, TParams, TFut, TFn> ValidatorClosure<'a, TParams> for TFn
+/// To get to the inner data, the change has to be applied with Something that implements InfallibleParamApplier
+pub struct WithInfallibleParamUpdate<T> {
+    pub(crate) data: T,
+    /// Doesn't use `ParameterUpdate` on purpose to ensure conflict-free migration. But this should be allowed in the future (this is why update must stay private)
+    /// Idea: Rename variables with conflicts, so a conflict-free migration is possible
+    /// -> device-restart is not needed, as the configuration would result in same result
+    /// -> Have a wizzard to resolve conflicts (reunite previously linked variables)
+    pub(crate) update: Option<UntypedDeviceParamsWithVariables>,
+}
+
+#[async_trait]
+pub trait InfallibleParamApplier<T: Send> {
+    async fn apply(
+        &mut self,
+        recipe_id: &RecipeId,
+        device_id: DeviceId,
+        x: WithInfallibleParamUpdate<T>,
+    ) -> T;
+}
+
+#[async_trait]
+impl<'a, T: Send + 'a> InfallibleParamApplier<T> for &'a (dyn RecipeServiceTrait + Send + Sync) {
+    async fn apply(
+        &mut self,
+        recipe_id: &RecipeId,
+        device_id: DeviceId,
+        x: WithInfallibleParamUpdate<T>,
+    ) -> T {
+        if let Some(parameters) = x.update {
+            if let Err(e) = self
+                .update_device_params(
+                    recipe_id.clone(),
+                    device_id,
+                    ParameterUpdate {
+                        parameters,
+                        variables: Default::default(),
+                    },
+                    Default::default(),
+                )
+                .await
+            {
+                tracing::error!("Couldn't update device params for {device_id}: {e:?}");
+            }
+        }
+        x.data
+    }
+}
+
+#[cfg(feature = "test")]
+#[async_trait]
+impl<'a, T: Send + 'static> InfallibleParamApplier<T> for &'a mut u32 {
+    async fn apply(
+        &mut self,
+        _recipe_id: &RecipeId,
+        _device_id: DeviceId,
+        x: WithInfallibleParamUpdate<T>,
+    ) -> T {
+        if x.update.is_some() {
+            **self += 1;
+        }
+        x.data
+    }
+}
+
+// Used to have multiple return values from validators
+pub trait IntoParamValidatorOk<T> {
+    fn into_ok(self) -> WithInfallibleParamUpdate<T>;
+}
+
+impl<T> IntoParamValidatorOk<T> for WithInfallibleParamUpdate<T> {
+    fn into_ok(self) -> WithInfallibleParamUpdate<T> {
+        self
+    }
+}
+// Debug limit exists to allow other implementations like (T, Option<ParamUpdate>)
+impl<T: Debug> IntoParamValidatorOk<T> for T {
+    fn into_ok(self) -> WithInfallibleParamUpdate<T> {
+        WithInfallibleParamUpdate {
+            data: self,
+            update: None,
+        }
+    }
+}
+
+impl<T: Debug> IntoParamValidatorOk<T> for (T, Option<UntypedDeviceParamsWithVariables>) {
+    fn into_ok(self) -> WithInfallibleParamUpdate<T> {
+        WithInfallibleParamUpdate {
+            data: self.0,
+            update: self.1,
+        }
+    }
+}
+
+impl<'a, TParams, TFut, TFn, TParamOk> ValidatorClosure<'a, TParams> for TFn
 where
-    TFut: Future<Output = Result<TParams, UpdateParamsMessageError>> + 'a + Send,
+    TFut: Future<Output = Result<TParamOk, UpdateParamsMessageError>> + 'a + Send,
     TFn: Fn(DeviceValidationContext<'a>) -> TFut,
+    TParamOk: IntoParamValidatorOk<TParams>,
 {
     fn call(
         &self,
         ctx: DeviceValidationContext<'a>,
-    ) -> BoxFuture<'a, Result<TParams, UpdateParamsMessageError>> {
-        ((self)(ctx)).boxed()
+    ) -> BoxFuture<'a, Result<WithInfallibleParamUpdate<TParams>, UpdateParamsMessageError>> {
+        ((self)(ctx)).map(|x| x.map(|o| o.into_ok())).boxed()
     }
 }
 
@@ -157,27 +259,29 @@ where
         &self,
         ctx: DeviceContext,
         provider: WeakServiceProvider,
-    ) -> BoxFuture<Result<JoinHandle<DeviceResult>, SpawnError>> {
-        // Todo: IO-Error is not optimal here
+    ) -> BoxFuture<Result<WithInfallibleParamUpdate<JoinHandle<DeviceResult>>, SpawnError>> {
         async move {
-            let param = (self.validator)
+            let validation = (self.validator)
                 .call(DeviceValidationContext {
                     raw: &ctx,
+                    enable_autorepair: true,
                     //_file_service_builder: self.file_service_builder.clone(),
                 })
-                .await
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-            let task = (self.handler)(ctx, param, provider.resolve_unchecked::<TDep>());
+                .await?;
+            let task = (self.handler)(ctx, validation.data, provider.resolve_unchecked::<TDep>());
 
             #[cfg(tokio_unstable)]
-            {
+            let param = {
                 tokio::task::Builder::new()
                     .name(&format!("Device: {}", self.device_type))
                     .spawn(task)
-                    .map_err(Into::into)
-            }
+            }?;
             #[cfg(not(tokio_unstable))]
-            Ok(tokio::task::spawn(task))
+            let param = tokio::task::spawn(task);
+            Ok(WithInfallibleParamUpdate {
+                data: param,
+                update: validation.update,
+            })
         }
         .boxed()
     }
@@ -190,15 +294,20 @@ where
         Box::new(self.clone())
     }
 
-    fn validate(&self, ctx: DeviceContext) -> BoxFuture<Result<(), UpdateParamsMessageError>> {
+    fn validate(
+        &self,
+        ctx: DeviceContext,
+    ) -> BoxFuture<Result<Option<UntypedDeviceParamsWithVariables>, UpdateParamsMessageError>> {
         async move {
-            self.validator
+            let r = self
+                .validator
                 .call(DeviceValidationContext {
                     raw: &ctx,
+                    enable_autorepair: true,
                     // _file_service_builder: self.file_service_builder.clone(),
                 })
                 .await?;
-            Ok(())
+            Ok(r.update)
         }
         .boxed()
     }
@@ -212,12 +321,22 @@ where
             let typed_params = self
                 .validator
                 .call(DeviceValidationContext {
+                    enable_autorepair: false,
                     raw: &ctx,
                     //_file_service_builder: self.file_service_builder.clone(),
                 })
                 .await?;
+
+            if typed_params.update.is_some() {
+                error!("This is a bug: Unexpected ParameterUpdate. This should happen on startup/import, not when updating params on running device");
+                return Err(UpdateDeviceError::Other(anyhow::anyhow!("Unexpected migration")))
+            }
+
             actor_system
-                .ask(ctx.id, crate::UpdateParamsMessage::new(typed_params))
+                .ask(
+                    ctx.id,
+                    crate::UpdateParamsMessage::<TParam>::new(typed_params.data),
+                )
                 .await
                 .map_err(Into::into)
         }

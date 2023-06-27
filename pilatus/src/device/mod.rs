@@ -4,14 +4,16 @@ use anyhow::Result;
 use async_trait::async_trait;
 use futures::{channel::oneshot, future::BoxFuture};
 use minfac::ServiceCollection;
-use sealedstruct::Sealable;
-use serde::de::DeserializeOwned;
+
+use crate::{RecipeId, UntypedDeviceParamsWithVariables, UpdateParamsMessageError, Variables};
 
 #[cfg(feature = "tokio")]
 mod minfac_ext;
 #[cfg(feature = "tokio")]
 mod spawner;
 mod system;
+#[cfg(feature = "tokio")]
+mod validation;
 
 pub type DeviceResult = Result<()>;
 #[cfg(feature = "tokio")]
@@ -19,8 +21,8 @@ pub use minfac_ext::*;
 #[cfg(feature = "tokio")]
 pub use spawner::*;
 pub use system::*;
-
-use crate::{RecipeId, UntypedDeviceParamsWithVariables, UpdateParamsMessageError, Variables};
+#[cfg(feature = "tokio")]
+pub use validation::*;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     system::register_services(c);
@@ -57,32 +59,6 @@ where
 {
     pub fn send(self, m: T) {
         let _ignore_error = self.one_shot.send(m);
-    }
-}
-
-#[non_exhaustive]
-pub struct DeviceValidationContext<'a> {
-    pub(super) raw: &'a DeviceContext,
-}
-
-impl<'a> DeviceValidationContext<'a> {
-    pub fn params_as<T: DeserializeOwned>(&self) -> Result<T, UpdateParamsMessageError> {
-        let resolved = self.raw.variables.resolve(&self.raw.params_with_vars)?;
-        Ok(resolved.params_as::<T>()?)
-    }
-
-    pub fn params_as_sealed<T: DeserializeOwned + Sealable>(
-        &self,
-    ) -> Result<T::Target, UpdateParamsMessageError>
-    where
-        T::Target:,
-    {
-        let resolved = self.raw.variables.resolve(&self.raw.params_with_vars)?;
-
-        resolved
-            .params_as::<T>()
-            .map_err(Into::into)
-            .and_then(|x| x.seal().map_err(Into::into))
     }
 }
 

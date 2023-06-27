@@ -6,8 +6,7 @@ use std::marker::PhantomData;
 use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 
-// Similar to a Btree, but stores itself as an array (JSON doesn't guarantee Object ordering)
-// [['key1', 'value1'], ['key2', 'value2'], ...]
+/// Keeps the order when Serialized/Deserialized
 #[derive(Debug, Clone)]
 pub struct OrdHashMap<K, V>(HashMap<K, (usize, V)>);
 
@@ -30,26 +29,26 @@ impl<K: Eq + Hash, V> OrdHashMap<K, V> {
     pub fn get(&self, key: &K) -> Option<&V> {
         self.0.get(key).map(|(_, v)| v)
     }
-
     pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
         self.0.get_mut(key).map(|(_, v)| v)
     }
+    /// Ordering is not guaranteed
     pub fn iter(&self) -> impl Iterator<Item = (&'_ K, &'_ V)> {
         self.0.iter().map(|(k, (_, v))| (k, v))
     }
-
+    /// Ordering is not guaranteed
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&'_ K, &'_ mut V)> {
+        self.0.iter_mut().map(|(k, (_, v))| (k, v))
+    }
     pub fn keys(&self) -> impl Iterator<Item = &K> {
         self.0.keys()
     }
-
     pub fn len(&self) -> usize {
         self.0.len()
     }
-
     pub fn contains_key(&self, key: &K) -> bool {
         self.0.contains_key(key)
     }
-
     pub fn remove(&mut self, key: &K) -> Option<V> {
         if let Some((rcnt, rval)) = self.0.remove(key) {
             self.0.iter_mut().for_each(|(_, (cnt, _))| {

@@ -187,20 +187,18 @@ impl Variables {
                                     "Objects with __var mustn't contain anything else, got '{k_other}'"
                                 )),
                             ))
-                        } else {
-                            if let Value::String(map_key) = v {
-                                if let Some(new_value) = self.mappings.get(map_key) {
-                                    Ok((generator)(map_key, new_value.0.clone()))
-                                } else {
-                                    Err(UpdateParamsMessageError::VariableError(format!(
-                                        "Unknown Variable: {map_key}"
-                                    )))
-                                }
+                        } else if let Value::String(map_key) = v {
+                            if let Some(new_value) = self.mappings.get(map_key) {
+                                Ok((generator)(map_key, new_value.0.clone()))
                             } else {
-                                Err(UpdateParamsMessageError::VariableError(
-                                    "Key starting with __var has to contain a string".into(),
-                                ))
+                                Err(UpdateParamsMessageError::VariableError(format!(
+                                    "Unknown Variable: {map_key}"
+                                )))
                             }
+                        } else {
+                            Err(UpdateParamsMessageError::VariableError(
+                                "Key starting with __var has to contain a string".into(),
+                            ))
                         }
                     } else {
                         Ok(Value::Object(

@@ -20,7 +20,7 @@ use tokio::{
     fs,
     sync::{broadcast, Mutex},
 };
-use tracing::{debug, trace};
+use tracing::{debug, error, trace};
 use uuid::Uuid;
 
 use self::actions::DeviceActions;
@@ -336,13 +336,21 @@ impl RecipeServiceImpl {
                 continue;
             }
 
-            self.device_actions
+            let changes = self
+                .device_actions
                 .validate(
                     &device_type,
                     DeviceContext::new(device_id, patched_vars.clone(), params.clone()),
                 )
                 .await
                 .map_err(|e| VariableError::from((recipe_id, e)))?;
+
+            if changes.is_some() {
+                error!("Unexpected changes for device after Variable-Update. All devices should be upgraded on startup");
+                return Err(TransactionError::Other(anyhow::anyhow!(
+                    "Unexpected migration"
+                )));
+            }
         }
 
         if has_var_changes_on_active || recipes.has_device_on_active(device_id) {

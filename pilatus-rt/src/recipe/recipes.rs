@@ -11,30 +11,32 @@ use super::actions::DeviceActions;
 pub(super) async fn recipes_try_add_new_with_id(
     recipes: &mut Recipes,
     id: RecipeId,
-    new_recipe: Recipe,
+    mut new_recipe: Recipe,
     device_actions: &dyn DeviceActions,
 ) -> Result<(), Recipe> {
-    let is_err = 'block: {
-        let vars: &Variables = recipes.as_ref();
-        for (&id, device) in new_recipe.devices.iter() {
-            if device_actions
-                .validate(
-                    &device.device_type,
-                    DeviceContext::new(id, vars.clone(), device.params.clone()),
-                )
-                .await
-                .is_err()
-            {
-                break 'block true;
-            };
-        }
-        false
-    };
-    if is_err {
-        return Err(new_recipe);
+    let vars: &Variables = recipes.as_ref();
+    let mut iter = new_recipe.devices.iter_mut();
+    while let Some((&id, device)) = iter.next() {
+        match device_actions
+            .validate(
+                &device.device_type,
+                DeviceContext::new(id, vars.clone(), device.params.clone()),
+            )
+            .await
+        {
+            Ok(Some(new_params)) => {
+                device.params = new_params;
+            }
+            Ok(None) => {}
+            Err(_) => {
+                drop(iter);
+                return Err(new_recipe);
+            }
+        };
     }
-
-    recipes.try_add(id, new_recipe)
+    drop(iter);
+    recipes.try_add(id, new_recipe)?;
+    Ok(())
 }
 const NO_RECIPE_WITH_DEVICE_ID: Cow<str> = Cow::Borrowed("There is not such device in any recipe");
 

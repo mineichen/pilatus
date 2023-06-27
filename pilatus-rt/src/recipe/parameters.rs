@@ -11,6 +11,7 @@ use tokio::task::JoinHandle;
 
 use pilatus::device::{
     ActorSystem, DeviceContext, DeviceHandler, DeviceId, DeviceResult, UpdateDeviceError,
+    WithInfallibleParamUpdate,
 };
 use pilatus::{TransactionError, TransactionOptions, UntypedDeviceParamsWithVariables};
 
@@ -42,13 +43,9 @@ impl DeviceActions for DeviceActionsFassade {
         &self,
         device_type: &str,
         ctx: DeviceContext,
-    ) -> BoxFuture<Result<(), TransactionError>> {
+    ) -> BoxFuture<Result<Option<UntypedDeviceParamsWithVariables>, TransactionError>> {
         let spawner = self.spawner_service.get_spawner(device_type);
-        async move {
-            spawner?.validate(ctx).await?;
-            Ok(())
-        }
-        .boxed()
+        async move { spawner?.validate(ctx).await.map_err(Into::into) }.boxed()
     }
     fn try_apply(
         &self,
@@ -74,7 +71,7 @@ impl DeviceActions for DeviceActionsFassade {
         device_type: &str,
         ctx: DeviceContext,
         provider: WeakServiceProvider,
-    ) -> BoxFuture<Result<JoinHandle<DeviceResult>, StartDeviceError>> {
+    ) -> BoxFuture<Result<DeviceActionSpawnOk, StartDeviceError>> {
         self.spawner_service
             .spawn(device_type, ctx, provider)
             .boxed()
@@ -111,7 +108,8 @@ impl DeviceSpawnerService {
         device_type: &str,
         ctx: DeviceContext,
         provider: WeakServiceProvider,
-    ) -> BoxFuture<Result<JoinHandle<DeviceResult>, StartDeviceError>> {
+    ) -> BoxFuture<Result<WithInfallibleParamUpdate<JoinHandle<DeviceResult>>, StartDeviceError>>
+    {
         let x = self
             .get_spawner(device_type)
             .map_err(|_| StartDeviceError::UnknownDeviceType);
@@ -190,12 +188,9 @@ mod testutil {
 
     use futures::{future::BoxFuture, FutureExt};
 
-    use pilatus::{
-        device::{DeviceContext, DeviceResult},
-        TransactionError,
-    };
+    use pilatus::{device::DeviceContext, TransactionError, UntypedDeviceParamsWithVariables};
 
-    use crate::recipe::actions::StartDeviceError;
+    use crate::recipe::{actions::StartDeviceError, DeviceActionSpawnOk};
 
     pub struct LambdaRecipePermissioner<TValidator> {
         validator: TValidator,
@@ -207,29 +202,39 @@ mod testutil {
         }
     }
 
-    impl LambdaRecipePermissioner<fn() -> Result<(), super::TransactionError>> {
+    impl
+        LambdaRecipePermissioner<
+            fn() -> Result<Option<UntypedDeviceParamsWithVariables>, super::TransactionError>,
+        >
+    {
         pub fn always_ok() -> Self {
             LambdaRecipePermissioner {
-                validator: || Ok(()),
+                validator: || Ok(None),
             }
         }
     }
 
     #[cfg(test)]
-    impl<T: Fn() -> Result<(), super::TransactionError>> LambdaRecipePermissioner<T> {
+    impl<T: Fn() -> Result<Option<UntypedDeviceParamsWithVariables>, super::TransactionError>>
+        LambdaRecipePermissioner<T>
+    {
         pub fn with_validator(validator: T) -> Self {
             Self { validator }
         }
     }
 
-    impl<T: Fn() -> Result<(), super::TransactionError> + Send + Sync> super::DeviceActions
-        for LambdaRecipePermissioner<T>
+    impl<
+            T: Fn() -> Result<Option<UntypedDeviceParamsWithVariables>, super::TransactionError>
+                + Send
+                + Sync,
+        > super::DeviceActions for LambdaRecipePermissioner<T>
     {
         fn validate(
             &self,
             _device_type: &str,
             _ctx: DeviceContext,
-        ) -> BoxFuture<Result<(), super::TransactionError>> {
+        ) -> BoxFuture<Result<Option<UntypedDeviceParamsWithVariables>, super::TransactionError>>
+        {
             async { (self.validator)() }.boxed()
         }
         fn try_apply(
@@ -245,7 +250,7 @@ mod testutil {
             _device_type: &str,
             _ctx: DeviceContext,
             _provider: minfac::WeakServiceProvider,
-        ) -> BoxFuture<Result<tokio::task::JoinHandle<DeviceResult>, StartDeviceError>> {
+        ) -> BoxFuture<Result<DeviceActionSpawnOk, StartDeviceError>> {
             unimplemented!()
         }
     }
@@ -254,6 +259,7 @@ mod testutil {
 pub use testutil::*;
 
 use super::actions::{DeviceActions, StartDeviceError};
+use super::DeviceActionSpawnOk;
 
 #[cfg(test)]
 mod tests {

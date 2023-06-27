@@ -11,6 +11,7 @@ use futures::{
 };
 use minfac::{AllRegistered, Registered, ServiceCollection, WeakServiceProvider};
 use pilatus::device::DeviceContext;
+use pilatus::device::InfallibleParamApplier;
 use pilatus::TransactionOptions;
 use pilatus::Variables;
 use pilatus::{
@@ -18,6 +19,7 @@ use pilatus::{
     prelude::*,
     DeviceConfig, RecipeId, RecipeServiceTrait, SystemShutdown,
 };
+use tokio::task::JoinHandle;
 use tracing::{error, info};
 
 use crate::recipe::StartDeviceError;
@@ -62,7 +64,7 @@ async fn run_devices_from_service(
         SystemShutdown,
     ),
 ) -> Result<(), anyhow::Error> {
-    let (r1, r2) = tokio::join!(runner.run_active_recipe(&recipe_service), async {
+    let (r1, r2) = tokio::join!(runner.run_active_recipe(recipe_service), async {
         shutdown.await;
         runner.set_next(None)?;
         actor_system.forget_senders();
@@ -144,17 +146,19 @@ impl RecipeRunnerImpl {
 
     async fn run_active_recipe(
         &self,
-        recipe_service: &RecipeServiceImpl,
+        recipe_service: Arc<RecipeServiceImpl>,
     ) -> Result<(), anyhow::Error> {
         loop {
-            let (_recipe_id, active_devices, variables) =
+            let (recipe_id, active_devices, variables) =
                 recipe_service.get_owned_devices_from_active().await;
             let (tx, rx) = oneshot::channel();
             // Allow new recipe via self.select_recipe()
             *self.state.next_recipe_id.lock().expect("Not poisoned") = Some(tx);
             self.run_devices(
+                &recipe_id,
                 active_devices,
                 variables,
+                recipe_service.as_ref() as &(dyn RecipeServiceTrait + Send + Sync),
                 |info| info!(info),
                 |error| error!(error),
             )
@@ -179,8 +183,10 @@ impl RecipeRunnerImpl {
     }
     async fn run_devices(
         &self,
+        recipe_id: &RecipeId,
         active_devices: impl IntoIterator<Item = (DeviceId, DeviceConfig)>,
         variables: Variables,
+        mut change_applier: impl InfallibleParamApplier<JoinHandle<Result<(), anyhow::Error>>>,
         mut info_logger: impl FnMut(String),
         mut error_logger: impl FnMut(String),
     ) -> Result<(), anyhow::Error> {
@@ -199,8 +205,9 @@ impl RecipeRunnerImpl {
                 .await
             {
                 Ok(x) => {
+                    let extracted = change_applier.apply(recipe_id, id, x).await;
                     info!("Starting Device '{device_type}' with id '{id}'");
-                    device_futures.push(crate::MetadataFuture::new((id, device_type), x));
+                    device_futures.push(crate::MetadataFuture::new((id, device_type), extracted));
                 }
                 Err(StartDeviceError::UnknownDeviceType) => {
                     error!(device = device.get_device_type(), "Unknown DeviceType");
@@ -248,6 +255,7 @@ struct RecipeRunnerState {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
     use std::time::Duration;
 
     use super::*;
@@ -293,8 +301,10 @@ mod tests {
             DeviceSpawnerService::new(provider.get_all()),
             Vec::new(),
         );
+        let mut number_of_migrations = 0;
         runner
             .run_devices(
+                &"test".parse().unwrap(),
                 [
                     (
                         DeviceId::new_v4(),
@@ -312,12 +322,13 @@ mod tests {
                 .into_iter()
                 .collect::<Vec<_>>(),
                 Variables::default(),
+                &mut number_of_migrations,
                 move |x| messages_ref.push(x),
                 move |x| errors_ref.push(x),
             )
             .await
             .unwrap();
-
+        assert_eq!(0, number_of_migrations);
         let mut messages_iter = messages.into_iter();
         let bar_msg = messages_iter.next().expect("has message for bar");
         assert!(
