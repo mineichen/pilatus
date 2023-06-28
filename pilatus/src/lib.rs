@@ -6,10 +6,10 @@ pub mod device;
 mod file;
 #[cfg(feature = "tokio")]
 mod hosted_service;
+mod logo;
 mod name;
 mod recipe;
 mod relative;
-
 mod settings;
 mod shutdown;
 mod uuid_wrapper;
@@ -21,6 +21,7 @@ pub use blocking::*;
 pub use file::*;
 #[cfg(feature = "tokio")]
 pub use hosted_service::HostedService;
+pub use logo::*;
 pub use name::*;
 pub use recipe::*;
 pub use relative::*;

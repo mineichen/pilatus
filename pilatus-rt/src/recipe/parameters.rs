@@ -15,7 +15,7 @@ use pilatus::device::{
 };
 use pilatus::{TransactionError, TransactionOptions, UntypedDeviceParamsWithVariables};
 
-use crate::recipe::{ChangeDeviceParamsTransactionError, RecipeServiceBuilder, RecipeServiceImpl};
+use super::{ChangeDeviceParamsTransactionError, RecipeServiceBuilder, RecipeServiceImpl};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<AllRegistered<Box<dyn DeviceHandler>>>()
@@ -269,7 +269,7 @@ mod tests {
 
     #[tokio::test]
     async fn change_device_params_on_active_recipe() -> anyhow::Result<()> {
-        let (dir, rsb) = crate::RecipeServiceImpl::create_temp_builder();
+        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb
             .with_change_strategy(ChangeParamsStrategy::new(
                 "testdevice",

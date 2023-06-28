@@ -27,13 +27,22 @@ use crate::{InvertibleTransform, InvertibleTransform3d};
 
 #[cfg(feature = "tokio")]
 mod broadcaster;
+#[cfg(feature = "image-algorithm")]
+mod logo;
 mod message;
 mod stable_hash;
 
 #[cfg(feature = "tokio")]
 pub use broadcaster::*;
+#[cfg(feature = "image-algorithm")]
+pub use logo::*;
 pub use message::*;
 pub use stable_hash::*;
+
+#[cfg(feature = "image-algorithm")]
+pub(super) fn register_services(c: &mut minfac::ServiceCollection) {
+    logo::register_services(c);
+}
 
 pub trait PointProjector {
     fn project_to_world_plane(
@@ -228,11 +237,8 @@ impl<const CHANNELS: usize> Clone for GenericImage<CHANNELS> {
     }
 }
 
-unsafe impl Send for LumaImage {}
-unsafe impl Sync for LumaImage {}
-
-unsafe impl Send for GenericImage<3> {}
-unsafe impl Sync for GenericImage<3> {}
+unsafe impl<const T: usize> Send for GenericImage<T> {}
+unsafe impl<const T: usize> Sync for GenericImage<T> {}
 
 extern "C" fn clear_vec<const CHANNELS: usize>(
     image: &mut GenericImage<CHANNELS>,
@@ -294,7 +300,7 @@ impl<const CHANNELS: usize> GenericImage<CHANNELS> {
         clear_proc: extern "C" fn(&mut Self, usize),
         generic_field: usize,
     ) -> Self {
-        assert!(matches!(CHANNELS, 1 | 3));
+        assert!(matches!(CHANNELS, 1 | 3 | 4));
 
         Self {
             buf,

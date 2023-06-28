@@ -66,7 +66,6 @@ async fn axum_service(
         web_config.socket, web_config.frontend
     );
 
-    println!("PWD {:?}", std::env::current_dir());
     let server = axum::Server::try_bind(&web_config.socket)
         .context("Cannot start webserver. Is pilatus running already?")?
         .serve(
