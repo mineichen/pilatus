@@ -10,7 +10,8 @@ use super::GenericImage;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<Registered<LogoService>>()
-        .register_shared(|s| Arc::new(ImageLogoServiceImpl::new(s)));
+        .register_shared(|s| Arc::new(ImageLogoServiceImpl::new(s)))
+        .alias(|s| ImageLogoService::new(s));
 }
 
 type Age = u64;
@@ -21,6 +22,12 @@ pub trait ImageLogoServiceTrait {
 
 #[derive(Clone)]
 pub struct ImageLogoService(Arc<dyn ImageLogoServiceTrait + Send + Sync>);
+
+impl ImageLogoService {
+    pub fn new(inner: Arc<dyn ImageLogoServiceTrait + Send + Sync>) -> Self {
+        Self(inner)
+    }
+}
 
 impl std::ops::Deref for ImageLogoService {
     type Target = dyn ImageLogoServiceTrait + Send + Sync;

@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use serde::Deserialize;
-use tracing::log::warn;
+use tracing::warn;
 
 use crate::Name;
 
