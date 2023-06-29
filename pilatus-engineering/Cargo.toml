@@ -29,6 +29,5 @@ nalgebra = "0.32"
 serde_json = "1"
 
 [features]
-default = ["image-algorithm"]
 tokio = ["dep:tokio", "tokio-stream"]
 image-algorithm = ["image", "minfac"]

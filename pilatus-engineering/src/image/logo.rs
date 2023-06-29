@@ -19,7 +19,16 @@ pub trait ImageLogoServiceTrait {
     fn get_logo_with_height(&self, query: LogoQuery) -> Arc<GenericImage<4>>;
 }
 
+#[derive(Clone)]
 pub struct ImageLogoService(Arc<dyn ImageLogoServiceTrait + Send + Sync>);
+
+impl std::ops::Deref for ImageLogoService {
+    type Target = dyn ImageLogoServiceTrait + Send + Sync;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
 
 struct ImageLogoServiceImpl {
     cache: RwLock<HashMap<LogoQuery, (Age, Arc<GenericImage<4>>)>>,
