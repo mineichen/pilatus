@@ -91,6 +91,10 @@ impl DeviceContext {
     }
 }
 
+/// Allows intercepting recipe shutdown
+/// When all devices shut down, services like axum have the opportunity to close all Websockets related to a device
+/// before the next recipe is started.
+/// If they didn't the ServiceProvider might get dropped while WeakServiceProvider references exist, resulting in an error.
 pub trait FinalizeRecipeExecution: Send + Sync {
     fn finalize_recipe_execution(&self) -> BoxFuture<'_, ()>;
 }

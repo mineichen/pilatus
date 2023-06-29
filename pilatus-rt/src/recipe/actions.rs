@@ -6,7 +6,7 @@ use tokio::task::JoinHandle;
 
 use pilatus::{
     device::{DeviceContext, DeviceResult, SpawnError, WithInfallibleParamUpdate},
-    TransactionError, UntypedDeviceParamsWithVariables, UpdateParamsMessageError,
+    TransactionError, UpdateParamsMessageError,
 };
 
 pub type DeviceActionSpawnOk = WithInfallibleParamUpdate<JoinHandle<DeviceResult>>;
@@ -22,7 +22,7 @@ pub trait DeviceActions: Debug + Send + Sync {
         &self,
         device_type: &str,
         ctx: DeviceContext,
-    ) -> BoxFuture<Result<Option<UntypedDeviceParamsWithVariables>, TransactionError>>;
+    ) -> BoxFuture<Result<WithInfallibleParamUpdate<()>, TransactionError>>;
     fn try_apply(
         &self,
         device_type: &str,

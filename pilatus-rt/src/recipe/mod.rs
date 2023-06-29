@@ -336,7 +336,7 @@ impl RecipeServiceImpl {
                 continue;
             }
 
-            let changes = self
+            let update = self
                 .device_actions
                 .validate(
                     &device_type,
@@ -345,7 +345,7 @@ impl RecipeServiceImpl {
                 .await
                 .map_err(|e| VariableError::from((recipe_id, e)))?;
 
-            if changes.is_some() {
+            if update.into_data_if_no_changes().is_none() {
                 error!("Unexpected changes for device after Variable-Update. All devices should be upgraded on startup");
                 return Err(TransactionError::Other(anyhow::anyhow!(
                     "Unexpected migration"

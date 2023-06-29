@@ -43,7 +43,7 @@ impl DeviceActions for DeviceActionsFassade {
         &self,
         device_type: &str,
         ctx: DeviceContext,
-    ) -> BoxFuture<Result<Option<UntypedDeviceParamsWithVariables>, TransactionError>> {
+    ) -> BoxFuture<Result<WithInfallibleParamUpdate<()>, TransactionError>> {
         let spawner = self.spawner_service.get_spawner(device_type);
         async move { spawner?.validate(ctx).await.map_err(Into::into) }.boxed()
     }
@@ -188,7 +188,10 @@ mod testutil {
 
     use futures::{future::BoxFuture, FutureExt};
 
-    use pilatus::{device::DeviceContext, TransactionError, UntypedDeviceParamsWithVariables};
+    use pilatus::{
+        device::{DeviceContext, IntoParamValidatorOk, WithInfallibleParamUpdate},
+        TransactionError,
+    };
 
     use crate::recipe::{actions::StartDeviceError, DeviceActionSpawnOk};
 
@@ -204,18 +207,18 @@ mod testutil {
 
     impl
         LambdaRecipePermissioner<
-            fn() -> Result<Option<UntypedDeviceParamsWithVariables>, super::TransactionError>,
+            fn() -> Result<WithInfallibleParamUpdate<()>, super::TransactionError>,
         >
     {
         pub fn always_ok() -> Self {
             LambdaRecipePermissioner {
-                validator: || Ok(None),
+                validator: || Ok(IntoParamValidatorOk::into_ok(())),
             }
         }
     }
 
     #[cfg(test)]
-    impl<T: Fn() -> Result<Option<UntypedDeviceParamsWithVariables>, super::TransactionError>>
+    impl<T: Fn() -> Result<WithInfallibleParamUpdate<()>, super::TransactionError>>
         LambdaRecipePermissioner<T>
     {
         pub fn with_validator(validator: T) -> Self {
@@ -224,17 +227,14 @@ mod testutil {
     }
 
     impl<
-            T: Fn() -> Result<Option<UntypedDeviceParamsWithVariables>, super::TransactionError>
-                + Send
-                + Sync,
+            T: Fn() -> Result<WithInfallibleParamUpdate<()>, super::TransactionError> + Send + Sync,
         > super::DeviceActions for LambdaRecipePermissioner<T>
     {
         fn validate(
             &self,
             _device_type: &str,
             _ctx: DeviceContext,
-        ) -> BoxFuture<Result<Option<UntypedDeviceParamsWithVariables>, super::TransactionError>>
-        {
+        ) -> BoxFuture<Result<WithInfallibleParamUpdate<()>, super::TransactionError>> {
             async { (self.validator)() }.boxed()
         }
         fn try_apply(

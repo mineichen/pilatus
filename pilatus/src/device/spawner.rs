@@ -11,7 +11,7 @@ use super::{
     DeviceValidationContext,
 };
 use crate::{
-    NotAppliedError, ParameterUpdate, RecipeId, RecipeServiceTrait,
+    DeviceConfig, NotAppliedError, ParameterUpdate, RecipeId, RecipeServiceTrait,
     UntypedDeviceParamsWithVariables, UpdateParamsMessageError,
 };
 
@@ -64,7 +64,7 @@ pub trait DeviceHandler: Send + Sync {
     fn validate(
         &self,
         ctx: DeviceContext,
-    ) -> BoxFuture<Result<Option<UntypedDeviceParamsWithVariables>, UpdateParamsMessageError>>;
+    ) -> BoxFuture<Result<WithInfallibleParamUpdate<()>, UpdateParamsMessageError>>;
     fn update(
         &self,
         ctx: DeviceContext,
@@ -142,7 +142,8 @@ pub trait ValidatorClosure<'a, TParams> {
     ) -> BoxFuture<'a, Result<WithInfallibleParamUpdate<TParams>, UpdateParamsMessageError>>;
 }
 
-/// To get to the inner data, the change has to be applied with Something that implements InfallibleParamApplier
+/// To get to the inner data, the change has to be applied with something that implements InfallibleParamApplier
+#[must_use]
 pub struct WithInfallibleParamUpdate<T> {
     pub(crate) data: T,
     /// Doesn't use `ParameterUpdate` on purpose to ensure conflict-free migration. But this should be allowed in the future (this is why update must stay private)
@@ -152,29 +153,45 @@ pub struct WithInfallibleParamUpdate<T> {
     pub(crate) update: Option<UntypedDeviceParamsWithVariables>,
 }
 
-#[async_trait]
-pub trait InfallibleParamApplier<T: Send> {
-    async fn apply(
-        &mut self,
-        recipe_id: &RecipeId,
-        device_id: DeviceId,
-        x: WithInfallibleParamUpdate<T>,
-    ) -> T;
+impl<T> WithInfallibleParamUpdate<T> {
+    pub fn into_data_if_no_changes(self) -> Option<T> {
+        if self.update.is_none() {
+            Some(self.data)
+        } else {
+            None
+        }
+    }
 }
 
 #[async_trait]
-impl<'a, T: Send + 'a> InfallibleParamApplier<T> for &'a (dyn RecipeServiceTrait + Send + Sync) {
-    async fn apply(
-        &mut self,
-        recipe_id: &RecipeId,
-        device_id: DeviceId,
-        x: WithInfallibleParamUpdate<T>,
-    ) -> T {
-        if let Some(parameters) = x.update {
+pub trait InfallibleParamApplier<T: Send> {
+    async fn apply(self, changes: WithInfallibleParamUpdate<T>) -> T;
+}
+
+pub struct RecipeServiceParamApplier<'a> {
+    pub recipe_id: RecipeId,
+    pub device_id: DeviceId,
+    pub service: &'a (dyn RecipeServiceTrait + Send + Sync),
+}
+#[async_trait]
+impl<'a, T: Send + 'a> InfallibleParamApplier<T> for &'a mut DeviceConfig {
+    async fn apply(self, changes: WithInfallibleParamUpdate<T>) -> T {
+        if let Some(parameters) = changes.update {
+            self.params = parameters;
+        }
+        changes.data
+    }
+}
+
+#[async_trait]
+impl<'a, T: Send + 'a> InfallibleParamApplier<T> for RecipeServiceParamApplier<'a> {
+    async fn apply(self, changes: WithInfallibleParamUpdate<T>) -> T {
+        if let Some(parameters) = changes.update {
             if let Err(e) = self
+                .service
                 .update_device_params(
-                    recipe_id.clone(),
-                    device_id,
+                    self.recipe_id,
+                    self.device_id,
                     ParameterUpdate {
                         parameters,
                         variables: Default::default(),
@@ -183,26 +200,13 @@ impl<'a, T: Send + 'a> InfallibleParamApplier<T> for &'a (dyn RecipeServiceTrait
                 )
                 .await
             {
-                tracing::error!("Couldn't update device params for {device_id}: {e:?}");
+                tracing::error!(
+                    "Couldn't update device params for {}: {e:?}",
+                    self.device_id
+                );
             }
         }
-        x.data
-    }
-}
-
-#[cfg(feature = "test")]
-#[async_trait]
-impl<'a, T: Send + 'static> InfallibleParamApplier<T> for &'a mut u32 {
-    async fn apply(
-        &mut self,
-        _recipe_id: &RecipeId,
-        _device_id: DeviceId,
-        x: WithInfallibleParamUpdate<T>,
-    ) -> T {
-        if x.update.is_some() {
-            **self += 1;
-        }
-        x.data
+        changes.data
     }
 }
 
@@ -297,7 +301,7 @@ where
     fn validate(
         &self,
         ctx: DeviceContext,
-    ) -> BoxFuture<Result<Option<UntypedDeviceParamsWithVariables>, UpdateParamsMessageError>> {
+    ) -> BoxFuture<Result<WithInfallibleParamUpdate<()>, UpdateParamsMessageError>> {
         async move {
             let r = self
                 .validator
@@ -307,7 +311,10 @@ where
                     // _file_service_builder: self.file_service_builder.clone(),
                 })
                 .await?;
-            Ok(r.update)
+            Ok(WithInfallibleParamUpdate {
+                data: (),
+                update: r.update,
+            })
         }
         .boxed()
     }
