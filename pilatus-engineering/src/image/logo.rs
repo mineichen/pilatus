@@ -120,12 +120,12 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
             let (pixmap_width, pixmap_height, scale) = if svg_ratio >= query_ratio {
                 (
                     query.width.get() as u32,
-                    (query.width.get() as f32 / svg_ratio).round() as u32,
+                    ((query.width.get() as f32 / svg_ratio).round() as u32).max(1),
                     (query.width.get() as f32 / svg_width),
                 )
             } else {
                 (
-                    (query.height.get() as f32 * svg_ratio).round() as _,
+                    ((query.height.get() as f32 * svg_ratio).round() as u32).max(1),
                     query.height.get() as u32,
                     (query.height.get() as f32 / svg_height),
                 )
@@ -241,6 +241,40 @@ mod tests {
         };
         service.get_logo(query.clone());
         service.get_logo(query)
+    }
+
+    #[test]
+    fn get_1x1_svg_for_too_wide() {
+        let raw_service = Arc::new(StaticLogoService(
+            AtomicU8::new(0),
+            br#"<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg width="100000" height="100" xmlns="http://www.w3.org/2000/svg">
+                <rect width="100000" height="100" style="fill:rgb(0,0,255)" />
+            </svg>"#,
+        ));
+        let service = ImageLogoServiceImpl::new(LogoService::new(raw_service));
+        let query = LogoQuery {
+            width: 1.try_into().unwrap(),
+            height: 1.try_into().unwrap(),
+            ..Default::default()
+        };
+        service.get_logo(query);
+    }
+
+    #[test]
+    fn get_1x1_svg_for_too_high() {
+        let raw_service = Arc::new(StaticLogoService(
+            AtomicU8::new(0),
+            br#"<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg width="1" height="100000" xmlns="http://www.w3.org/2000/svg">
+                <rect width="1" height="100000" style="fill:rgb(0,0,255)" />
+            </svg>"#,
+        ));
+        let service = ImageLogoServiceImpl::new(LogoService::new(raw_service));
+        let query = LogoQuery {
+            width: 1.try_into().unwrap(),
+            height: 1.try_into().unwrap(),
+            ..Default::default()
+        };
+        service.get_logo(query);
     }
 
     const PNG_1X1: &[u8] = &[

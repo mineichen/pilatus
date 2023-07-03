@@ -24,7 +24,7 @@ ENV DOCKER_BUILDKIT 1
 RUN rustup toolchain add nightly -c rustfmt -c clippy -c miri && \
     rustup component add rustfmt && \
     rustup component add clippy && \    
-    apt update && apt install -y vim htop mold && \
+    apt update && apt install -y vim htop mold iputils-ping && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/cargo/bin/tokio-console /usr/local/cargo/bin/tokio-console
