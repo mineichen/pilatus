@@ -18,16 +18,22 @@ serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 tracing = "0.1"
 
+image = { version = "0.24", optional = true }
+minfac = { version = "0.0.1", optional = true }
 nalgebra = { version = "0.32", optional = true }
+pilatus-rt = { path = "../pilatus-rt", optional = true }                       # Must remain an internal dependency
+resvg = { version = "0.35.0", optional = true }
 tokio = { version = "^1.0.0", features = ["sync"], optional = true }
 tokio-stream = { version = "0.1", features = ["fs", "sync"], optional = true }
-image = { version = "0.24", optional = true }
-minfac = { version = "0.0.1", optional = true }                                # Must remain an internal dependency
 
 [dev-dependencies]
 nalgebra = "0.32"
 serde_json = "1"
+pilatus-rt = { path = "../pilatus-rt", features = ["unstable"] }
+
 
 [features]
+default = []
 tokio = ["dep:tokio", "tokio-stream"]
-image-algorithm = ["image", "minfac"]
+image-algorithm = ["image", "minfac", "resvg"]
+unstable = ["pilatus-rt/unstable"]

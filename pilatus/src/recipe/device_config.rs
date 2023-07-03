@@ -82,7 +82,7 @@ impl DeviceConfig {
         &self.device_type
     }
 
-    #[cfg(any(test, feature = "test"))]
+    #[cfg(any(test, feature = "unstable"))]
     pub fn mock(params: impl Serialize) -> Self {
         Self {
             device_type: "testdevice".into(),

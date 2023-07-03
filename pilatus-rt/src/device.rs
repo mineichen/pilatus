@@ -25,6 +25,7 @@ use pilatus::{
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
+use crate::metadata_future::MetadataFuture;
 use crate::recipe::StartDeviceError;
 use crate::recipe::{DeviceSpawnerService, RecipeServiceImpl};
 
@@ -221,7 +222,7 @@ impl RecipeRunnerImpl {
                 Ok(x) => {
                     let extracted = (change_applier)(id, x).await;
                     info!("Starting Device '{device_type}' with id '{id}'");
-                    device_futures.push(crate::MetadataFuture::new((id, device_type), extracted));
+                    device_futures.push(MetadataFuture::new((id, device_type), extracted));
                 }
                 Err(StartDeviceError::UnknownDeviceType) => {
                     error!(device = device.get_device_type(), "Unknown DeviceType");

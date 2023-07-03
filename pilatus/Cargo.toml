@@ -48,4 +48,8 @@ tempfile = { version = "3" }
 
 [features]
 default = []
-test = []
+# Ok to depend during tests, as compile errors immediately show up in that project
+# When project which uses pilatus/unstable itself is referenced, it doesn't break if unstable features change
+# This feature should only be activated in tests and leaf-crates, on which noone depends
+# With these restrictions, we can avoid using a dedicated cfg (like 'tokio_unstable'). For tokio this doesn't work, as e.g. tracing-subscriber relies on unstable features 
+unstable = []

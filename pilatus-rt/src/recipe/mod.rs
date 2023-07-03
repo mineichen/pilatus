@@ -365,7 +365,7 @@ impl RecipeServiceImpl {
         Ok(patched_vars)
     }
 
-    #[cfg(any(test, feature = "test"))]
+    #[cfg(any(test, feature = "unstable"))]
     pub async fn clone_device_config(
         &self,
         _recipe_id: RecipeId,
@@ -396,8 +396,8 @@ impl RecipeServiceImpl {
     }
 }
 
-#[cfg(any(test, feature = "test"))]
-pub(crate) mod testutil {
+#[cfg(any(test, feature = "unstable"))]
+pub(crate) mod unstable {
     use super::{recipes::recipes_try_add_new_with_id, *};
     use pilatus::{device::DeviceId, Recipe, RecipeId, TransactionError, TransactionOptions};
     use std::{path::PathBuf, sync::Arc};
@@ -514,8 +514,8 @@ pub(crate) mod testutil {
         }
     }
 }
-#[cfg(any(test, feature = "test"))]
-pub use testutil::*;
+#[cfg(any(test, feature = "unstable"))]
+pub use unstable::*;
 
 #[cfg(test)]
 mod tests {

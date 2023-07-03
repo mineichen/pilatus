@@ -6,16 +6,7 @@ use pilatus::{
 };
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
-    c.register(|| {
-        const BRIGHT: &[u8] = include_bytes!("./pilatus_bright.svg");
-        FallbackLogo::with_themes(
-            BRIGHT,
-            &[
-                ("dark", include_bytes!("./pilatus_dark.svg")),
-                ("bright", BRIGHT),
-            ],
-        )
-    });
+    c.register(create_fallback_logo);
     c.with::<(Registered<FallbackLogo>, Registered<GenericConfig>)>()
         .register_shared(|(fallback, generic)| {
             let (main, themes) =
@@ -53,6 +44,23 @@ impl LogoServiceImpl {
             themes,
         }
     }
+}
+
+fn create_fallback_logo() -> FallbackLogo {
+    const BRIGHT: &[u8] = include_bytes!("./pilatus_bright.svg");
+    FallbackLogo::with_themes(
+        BRIGHT,
+        &[
+            ("dark", include_bytes!("./pilatus_dark.svg")),
+            ("bright", BRIGHT),
+        ],
+    )
+}
+
+#[cfg(feature = "unstable")]
+pub fn create_default_logo_service() -> LogoService {
+    let (main, themes) = create_fallback_logo().into();
+    LogoService::new(Arc::new(LogoServiceImpl { themes, main }))
 }
 
 impl LogoServiceTrait for LogoServiceImpl {

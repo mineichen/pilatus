@@ -81,7 +81,7 @@ impl DeviceContext {
             params_with_vars,
         }
     }
-    #[cfg(feature = "test")]
+    #[cfg(feature = "unstable")]
     pub fn with_random_id(device: impl serde::Serialize) -> Self {
         Self::new(
             DeviceId::new_v4(),

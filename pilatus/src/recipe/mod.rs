@@ -67,11 +67,11 @@ impl std::ops::DerefMut for UntypedDeviceParamsWithVariables {
 }
 
 impl UntypedDeviceParamsWithVariables {
-    #[cfg(any(test, feature = "test"))]
+    #[cfg(any(test, feature = "unstable"))]
     pub fn new(inner: serde_json::Value) -> Self {
         Self(inner)
     }
-    #[cfg(not(any(test, feature = "test")))]
+    #[cfg(not(any(test, feature = "unstable")))]
     fn new(value: serde_json::Value) -> Self {
         Self(value)
     }

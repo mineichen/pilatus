@@ -182,7 +182,7 @@ impl RecipeServiceBuilder {
     }
 }
 
-#[cfg(any(test, feature = "test"))]
+#[cfg(any(test, feature = "unstable"))]
 mod testutil {
     use std::fmt::Debug;
 
@@ -255,7 +255,7 @@ mod testutil {
         }
     }
 }
-#[cfg(any(test, feature = "test"))]
+#[cfg(any(test, feature = "unstable"))]
 pub use testutil::*;
 
 use super::actions::{DeviceActions, StartDeviceError};

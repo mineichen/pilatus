@@ -5,6 +5,8 @@ use std::{
 
 use minfac::{Registered, ServiceCollection};
 use pilatus::{LogoQuery, LogoService};
+use resvg::usvg::TreeParsing;
+use tracing::warn;
 
 use super::GenericImage;
 
@@ -17,7 +19,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 type Age = u64;
 
 pub trait ImageLogoServiceTrait {
-    fn get_logo_with_height(&self, query: LogoQuery) -> Arc<GenericImage<4>>;
+    fn get_logo(&self, query: LogoQuery) -> Arc<GenericImage<4>>;
 }
 
 #[derive(Clone)]
@@ -39,14 +41,14 @@ impl std::ops::Deref for ImageLogoService {
 
 struct ImageLogoServiceImpl {
     cache: RwLock<HashMap<LogoQuery, (Age, Arc<GenericImage<4>>)>>,
-    raw: LogoService,
+    logo_service: LogoService,
 }
 
 impl ImageLogoServiceImpl {
-    fn new(fallback: LogoService) -> Self {
+    fn new(logo_service: LogoService) -> Self {
         Self {
             cache: Default::default(),
-            raw: fallback,
+            logo_service,
         }
     }
 }
@@ -55,7 +57,7 @@ const CACHE_CAPACITY: usize = 10;
 
 impl ImageLogoServiceTrait for ImageLogoServiceImpl {
     /// Panics: GenericImage<4> with packed pixels (rgbargbargbargba, not rrrrggggbbbbaaaa)
-    fn get_logo_with_height(&self, query: LogoQuery) -> Arc<GenericImage<4>> {
+    fn get_logo(&self, query: LogoQuery) -> Arc<GenericImage<4>> {
         let lock = self.cache.read().unwrap();
         if let Some((_, cached)) = lock.get(&query) {
             return cached.clone();
@@ -99,22 +101,72 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
             lock.remove(&clone).expect("Must exist");
         }
 
-        let logo = self.raw.get(&query);
-        let img = image::load_from_memory(&logo.0[..])
-            .expect("Fallback logo must be loadable (svg are not yet supported)");
-        let resized = img.resize(
-            query.width.get() as _,
-            query.height.get() as _,
-            image::imageops::FilterType::Lanczos3,
-        );
+        let logo = self.logo_service.get(&query);
+        let img = if let Ok(img) = image::load_from_memory(&logo.0[..]) {
+            let resized = img.resize(
+                query.width.get() as _,
+                query.height.get() as _,
+                image::imageops::FilterType::Lanczos3,
+            );
 
-        let rgba = resized.to_rgba8();
+            let rgba = resized.to_rgba8();
+            let (iwidth, iheight) = rgba.dimensions();
+            GenericImage::<4>::new(rgba.into_vec(), iwidth, iheight)
+        } else if let Ok(svg) = resvg::usvg::Tree::from_data(&logo.0, &Default::default()) {
+            let x = resvg::Tree::from_usvg(&svg);
+            let (svg_width, svg_height) = (x.size.width(), x.size.height());
+            let query_ratio = query.width.get() as f32 / query.height.get() as f32;
+            let svg_ratio = svg_width / svg_height;
+            let (pixmap_width, pixmap_height, scale) = if svg_ratio >= query_ratio {
+                (
+                    query.width.get() as u32,
+                    (query.width.get() as f32 / svg_ratio).round() as u32,
+                    (query.width.get() as f32 / svg_width),
+                )
+            } else {
+                (
+                    (query.height.get() as f32 * svg_ratio).round() as _,
+                    query.height.get() as u32,
+                    (query.height.get() as f32 / svg_height),
+                )
+            };
 
-        let (iwidth, iheight) = rgba.dimensions();
-        let image = Arc::new(GenericImage::<4>::new(rgba.into_vec(), iwidth, iheight));
+            let mut pixmap = resvg::tiny_skia::Pixmap::new(pixmap_width, pixmap_height)
+                .expect("Query width/height are bellow the limit i32/4");
+
+            x.render(
+                resvg::tiny_skia::Transform::from_scale(scale, scale),
+                &mut pixmap.as_mut(),
+            );
+            let out_width = pixmap.width();
+            let out_height = pixmap.height();
+
+            GenericImage::<4>::new(pixmap.take(), out_width, out_height)
+        } else {
+            let width = query.width.get();
+            let height = query.height.get();
+
+            warn!("The logo is not loadable. Therefore a red surface of the size {width}x{height} was returned");
+            GenericImage::new(
+                (0..(width * height))
+                    .flat_map(|_| [255, 0, 0, 255])
+                    .collect(),
+                width as _,
+                height as _,
+            )
+        };
+
+        let image = Arc::new(img);
         lock.insert(query, (next_age, image.clone()));
         image
     }
+}
+
+#[cfg(feature = "unstable")]
+pub fn create_default_image_logo_service() -> ImageLogoService {
+    ImageLogoService::new(Arc::new(ImageLogoServiceImpl::new(
+        pilatus_rt::create_default_logo_service(),
+    )))
 }
 
 #[cfg(test)]
@@ -129,18 +181,66 @@ mod tests {
     use super::*;
 
     #[test]
-    fn get_default_logo() {
-        let raw_service = Arc::new(StaticLogoService(AtomicU8::new(0)));
-        let service = ImageLogoServiceImpl::new(LogoService::new(raw_service.clone()));
+    fn get_pixel_logo() {
+        let raw_service = Arc::new(StaticLogoService(AtomicU8::new(0), PNG_1X1));
+        let image = get_logo(LogoService::new(raw_service.clone()));
+        assert_eq!(raw_service.0.load(SeqCst), 1);
+        assert_eq!((100, 100), (image.width, image.height));
+    }
+
+    #[test]
+    fn get_default_vector_logo() {
+        let image = get_logo(pilatus_rt::create_default_logo_service());
+        assert_eq!(200, image.width);
+    }
+    #[test]
+    fn get_too_wide_vector_logo() {
+        let raw_service = Arc::new(StaticLogoService(
+            AtomicU8::new(0),
+            br#"<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg width="400" height="100" xmlns="http://www.w3.org/2000/svg">
+                <rect width="400" height="100" style="fill:rgb(0,0,255)" />
+            </svg>"#,
+        ));
+        let logo = get_logo(LogoService::new(raw_service));
+        assert_eq!((logo.width, logo.height), (200, 50));
+    }
+
+    #[test]
+    fn get_too_heigh_vector_logo() {
+        let raw_service = Arc::new(StaticLogoService(
+            AtomicU8::new(0),
+            br#"<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+                <rect width="196" height="196" x="2" y="2" style="fill:rgb(255,0,0)" />
+            </svg>"#,
+        ));
+        let logo = get_logo(LogoService::new(raw_service));
+        assert_eq!((logo.width, logo.height), (100, 100));
+        let last_row_col = 4 * (100 * 100 - 1);
+
+        assert_eq!(
+            &logo.buffer()[last_row_col..(last_row_col + 4)],
+            &[0, 0, 0, 0]
+        );
+        let diag_left = last_row_col - 4 * 101;
+        assert_eq!(
+            &logo.buffer()[diag_left..(diag_left + 4)],
+            &[255, 0, 0, 255]
+        );
+        assert_eq!(
+            &logo.buffer()[(diag_left + 4)..(diag_left + 8)],
+            &[0, 0, 0, 0]
+        );
+    }
+
+    fn get_logo(s: LogoService) -> Arc<GenericImage<4>> {
+        let service = ImageLogoServiceImpl::new(s);
         let query = LogoQuery {
-            height: 10.try_into().unwrap(),
-            width: 1000.try_into().unwrap(),
+            width: 200.try_into().unwrap(),
+            height: 100.try_into().unwrap(),
             ..Default::default()
         };
-        service.get_logo_with_height(query.clone());
-        let image = service.get_logo_with_height(query);
-        assert_eq!(10, image.width);
-        assert_eq!(raw_service.0.load(SeqCst), 1);
+        service.get_logo(query.clone());
+        service.get_logo(query)
     }
 
     const PNG_1X1: &[u8] = &[
@@ -151,13 +251,13 @@ mod tests {
         0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
     ];
 
-    struct StaticLogoService(AtomicU8);
+    struct StaticLogoService(AtomicU8, &'static [u8]);
 
     impl LogoServiceTrait for StaticLogoService {
         fn get(&self, _query: &LogoQuery) -> pilatus::EncodedImage {
             let before = self.0.load(SeqCst);
             self.0.store(before + 1, SeqCst);
-            EncodedImage(Arc::from(PNG_1X1))
+            EncodedImage(Arc::from(self.1))
         }
     }
 }

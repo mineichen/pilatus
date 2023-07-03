@@ -84,15 +84,15 @@ pub struct FileService<T = ()> {
 }
 
 impl<T> Deref for FileService<T> {
-    type Target = Box<dyn FileServiceTrait + Send + Sync>;
+    type Target = dyn FileServiceTrait + Send + Sync;
 
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        self.inner.as_ref()
     }
 }
 impl<T> DerefMut for FileService<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+        self.inner.as_mut()
     }
 }
 

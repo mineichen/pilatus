@@ -6,6 +6,8 @@ use tracing::{error, info};
 
 use pilatus::{GenericConfig, HostedService};
 
+use crate::metadata_future::MetadataFuture;
+
 use super::occurance_counter::OccuranceCounter;
 
 pub struct Runtime {
@@ -106,7 +108,7 @@ impl ConfiguredRuntime {
                 .filter_map(|i| match i.call((&self.provider).into()) {
                     Ok(x) => {
                         let name = i.get_name().to_string();
-                        Some((name.clone(), crate::MetadataFuture::new(name, x)))
+                        Some((name.clone(), MetadataFuture::new(name, x)))
                     }
                     Err(e) => {
                         error!("Failed to call HostedService: {}", e);

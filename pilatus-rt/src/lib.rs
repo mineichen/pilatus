@@ -8,10 +8,11 @@ mod shutdown;
 mod tracing;
 
 pub use device::*;
-pub(crate) use metadata_future::MetadataFuture;
+#[cfg(feature = "unstable")]
+pub use logo::create_default_logo_service;
 pub use recipe::TokioFileService;
-#[cfg(feature = "test")]
-pub use recipe::{testutil::*, RecipeServiceImpl};
+#[cfg(feature = "unstable")]
+pub use recipe::{unstable::*, RecipeServiceImpl};
 pub use runtime::Runtime;
 
 pub extern "C" fn register(collection: &mut minfac::ServiceCollection) {

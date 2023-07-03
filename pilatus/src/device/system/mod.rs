@@ -65,7 +65,7 @@ impl ActorSystem {
             .clear();
     }
 
-    #[cfg(all(feature = "test", feature = "tokio"))]
+    #[cfg(all(feature = "unstable", feature = "tokio"))]
     pub async fn run_and_shutdown<F: std::future::Future<Output = ()> + 'static>(
         &self,
         x: impl (FnOnce(Self) -> F) + Send + Sync + 'static,

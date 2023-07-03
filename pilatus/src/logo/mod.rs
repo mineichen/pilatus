@@ -8,7 +8,6 @@ use crate::Name;
 mod dimension;
 pub use dimension::*;
 
-#[non_exhaustive]
 pub struct FallbackLogo {
     pub main: &'static [u8],
     pub themes: &'static [(&'static str, &'static [u8])],
@@ -66,10 +65,10 @@ impl LogoService {
 }
 
 impl std::ops::Deref for LogoService {
-    type Target = Arc<dyn LogoServiceTrait + Send + Sync>;
+    type Target = dyn LogoServiceTrait + Send + Sync;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        self.0.as_ref()
     }
 }
 
