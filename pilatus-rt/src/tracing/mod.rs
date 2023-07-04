@@ -30,7 +30,7 @@ pub(super) fn init(config: &GenericConfig) -> Result<WorkerGuard, TryInitError> 
 
     let num_files = config.get("log_files_number").unwrap_or(10);
     let (non_blocking, guard) = tracing_appender::non_blocking(LogFileWriter::new(
-        tracing_appender::rolling::minutely(&directory, "pilatus-logs"),
+        tracing_appender::rolling::hourly(&directory, "pilatus-logs"),
         &directory,
         num_files,
     ));
