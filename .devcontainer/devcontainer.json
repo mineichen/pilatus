@@ -7,7 +7,7 @@
         "--cap-add=SYS_PTRACE",
         "--security-opt",
         "seccomp=unconfined",
-        "-p=80:80"
+        "--network=host"
     ],
     "mounts": [
         "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
