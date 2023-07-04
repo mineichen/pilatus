@@ -7,7 +7,7 @@ pub(super) struct LogFileWriter<T> {
     inner: T,
     directory: PathBuf,
     files_to_keep: usize,
-    cnt: usize,
+    cnt: u8,
 }
 impl<T> LogFileWriter<T> {
     pub(super) fn new(inner: T, d: impl Into<PathBuf>, files_to_keep: usize) -> Self {
@@ -25,9 +25,8 @@ impl io::Write for LogFileWriter<RollingFileAppender> {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.cnt += 1;
-        if self.cnt > 1000 {
-            self.cnt = 0;
+        self.cnt = self.cnt.overflowing_add(1).0;
+        if self.cnt == 1 {
             let files = itertools::process_results(
                 fs::read_dir(&self.directory)?.map(|f| {
                     let f = f?;
@@ -35,7 +34,7 @@ impl io::Write for LogFileWriter<RollingFileAppender> {
                     let n = f.path();
                     io::Result::Ok((t, n))
                 }),
-                |i| i.sorted_by(|a, b| b.0.cmp(&a.0)).skip(self.files_to_keep),
+                |i| i.sorted_by_key(|x| x.0).skip(self.files_to_keep),
             )?;
 
             for (_, p) in files {
