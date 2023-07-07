@@ -1,5 +1,6 @@
 mod abort;
 mod device;
+mod frontend_config;
 mod hosted_service;
 #[cfg(feature = "engineering")]
 mod image;
@@ -19,4 +20,5 @@ pub extern "C" fn register(collection: &mut minfac::ServiceCollection) {
     time::register_services(collection);
     ws::register_services(collection);
     logo::register_services(collection);
+    frontend_config::register_services(collection);
 }

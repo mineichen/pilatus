@@ -31,6 +31,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 struct WebConfig {
     socket: SocketAddr,
     frontend: PathBuf,
+    body_limit: usize,
 }
 
 struct PrivateState(
@@ -43,6 +44,7 @@ impl Default for WebConfig {
         Self {
             socket: SocketAddr::from(([0, 0, 0, 0], 80)),
             frontend: "dist".into(),
+            body_limit: 8 * 1024 * 1024,
         }
     }
 }
@@ -70,7 +72,6 @@ async fn axum_service(
         .context("Cannot start webserver. Is pilatus running already?")?
         .serve(
             axum::Router::new()
-                .nest_service("/webcomponent", ServeDir::new("webcomponent"))
                 .nest(
                     "/api",
                     provider
@@ -87,7 +88,7 @@ async fn axum_service(
                         .allow_methods(tower_http::cors::Any)
                         .allow_headers(tower_http::cors::Any),
                 )
-                .layer(axum::extract::DefaultBodyLimit::max(8 * 1024 * 1024))
+                .layer(axum::extract::DefaultBodyLimit::max(web_config.body_limit))
                 .layer(tower_http::trace::TraceLayer::new_for_http())
                 .into_make_service(),
         );

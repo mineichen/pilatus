@@ -6,15 +6,11 @@ use pilatus_axum::{
     ServiceCollectionExtensions,
 };
 
-mod topic_discovery;
-
 pub(super) fn register_services(c: &mut ServiceCollection) {
     #[rustfmt::skip]
     c.register_web("recipe", |r| r
         .http("/start/:id", |m| m.get(set_active))
     );
-
-    topic_discovery::register_services(c);
 }
 
 async fn set_active(

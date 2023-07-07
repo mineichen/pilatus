@@ -6,10 +6,12 @@ pub mod image;
 mod inject;
 mod minfac_extensions;
 mod routing;
+mod web_component;
 mod ws;
 
-use futures::{channel::oneshot, future::Shared};
 use std::net::SocketAddr;
+
+use futures::{channel::oneshot, future::Shared};
 
 pub use abort::AbortServiceInterface;
 pub use axum::{
@@ -21,6 +23,7 @@ pub use dependency_provider::DependencyProvider;
 pub use device_response::{DeviceJsonResponse, DeviceMessageJsonResponse, DeviceResponse};
 pub use minfac_extensions::ServiceCollectionExtensions;
 pub use routing::{MethodRouter, Router};
+pub use web_component::*;
 
 pub mod extract {
     pub struct Inject<T: minfac::Resolvable>(pub T::ItemPreChecked);
@@ -50,22 +53,6 @@ impl Stats {
             .clone()
             .await
             .expect("always resolved when server started")
-    }
-}
-
-pub struct DeviceTopicDiscovery {
-    pub device_type: &'static str,
-    pub topic: &'static str,
-    pub path: &'static str,
-}
-
-impl DeviceTopicDiscovery {
-    pub fn new(device_type: &'static str, topic: &'static str, path: &'static str) -> Self {
-        Self {
-            device_type,
-            topic,
-            path,
-        }
     }
 }
 
