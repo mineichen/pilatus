@@ -3,7 +3,9 @@ use std::sync::Arc;
 pub use crate::image::{LumaImage, StableHash};
 use pilatus::device::ActorMessage;
 
-pub struct GetImageMessage;
+#[derive(Default)]
+#[non_exhaustive]
+pub struct GetImageMessage {}
 
 pub struct GetImageMessageOutput {
     pub image: LumaImage,

@@ -54,7 +54,7 @@ async fn single_image_handler(
 ) -> Result<impl IntoResponse, StatusCode> {
     let img = LumaImage::from(
         actor_system
-            .ask(device_id, GetImageMessage)
+            .ask(device_id, GetImageMessage::default())
             .await
             .map_err(|_| StatusCode::BAD_REQUEST)?,
     );
