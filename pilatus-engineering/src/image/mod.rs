@@ -48,8 +48,6 @@ pub trait PointProjector {
     fn project_to_world_plane(
         &self,
         transform: &InvertibleTransform,
-        plane_offset: f64,
-        gripping_height: f64,
     ) -> Result<InvertibleTransform3d, anyhow::Error>;
 }
 
