@@ -53,7 +53,7 @@ pub trait PointProjector {
     ) -> Result<InvertibleTransform3d, anyhow::Error>;
 }
 
-pub type DynamicPointProjector = Box<dyn PointProjector + 'static + Send + Sync>;
+pub type DynamicPointProjector = Arc<dyn PointProjector + 'static + Send + Sync>;
 
 pub type LumaImage = GenericImage<1>;
 

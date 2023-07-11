@@ -45,3 +45,7 @@ impl From<GetImageMessageOutput> for BroadcastImage {
         }
     }
 }
+
+#[derive(Default)]
+#[non_exhaustive]
+pub struct GetLocalizableImageMessage {}
