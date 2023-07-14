@@ -9,7 +9,7 @@ pub enum UpdateParamsMessageError {
     InvalidField { path: &'static str, message: String },
     #[error("unable to parse json to struct: {0}")]
     InvalidFormat(#[from] serde_json::Error),
-    #[error("unable to validate data")]
+    #[error("unable to validate data {0:?}")]
     ValidationError(#[from] sealedstruct::ValidationErrors),
     #[error("Failed to apply the changes! Reason: {0}")]
     NotApplied(anyhow::Error),
