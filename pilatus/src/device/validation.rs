@@ -5,7 +5,7 @@ use tracing::warn;
 
 use crate::{MaybeVar, RawVariable, UntypedDeviceParamsWithVariables, Variables};
 
-use super::{DeviceContext, UpdateParamsMessageError, WithInfallibleParamUpdate};
+use super::{DeviceContext, DeviceId, UpdateParamsMessageError, WithInfallibleParamUpdate};
 
 #[non_exhaustive]
 pub struct DeviceValidationContext<'a> {
@@ -17,6 +17,10 @@ impl<'a> DeviceValidationContext<'a> {
     pub fn params_as<T: DeserializeOwned>(&self) -> Result<T, UpdateParamsMessageError> {
         let resolved = self.raw.variables.resolve(&self.raw.params_with_vars)?;
         Ok(resolved.params_as::<T>()?)
+    }
+
+    pub fn device_id(&self) -> DeviceId {
+        self.raw.id
     }
 
     pub fn params_as_sealed<T: DeserializeOwned + Sealable>(

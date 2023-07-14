@@ -65,6 +65,7 @@ where
 #[non_exhaustive]
 pub struct DeviceContext {
     pub id: DeviceId,
+    // Must stay private to forbid access to variables in device
     variables: Variables,
     params_with_vars: UntypedDeviceParamsWithVariables,
 }
