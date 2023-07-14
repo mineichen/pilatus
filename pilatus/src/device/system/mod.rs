@@ -162,6 +162,14 @@ impl ActorSystem {
             .map(ActorMessageSender::new)
     }
 
+    pub fn get_senders<TMsg: ActorMessage>(
+        &self,
+    ) -> impl Iterator<Item = (DeviceId, ActorMessageSender<TMsg>)> + '_ {
+        self.list_devices_for_message_type::<TMsg>()
+            .into_iter()
+            .filter_map(|id| self.get_sender(id).ok().map(|x| (id, x)))
+    }
+
     pub fn get_sender_or_single_handler<TMsg: ActorMessage>(
         &self,
         id: Option<DeviceId>,
@@ -170,16 +178,19 @@ impl ActorSystem {
             Some(id) => self.get_sender(id),
             None => {
                 let ids = self.list_devices_for_message_type::<TMsg>();
-                if ids.len() == 1 {
-                    self.get_sender(ids.into_iter().next().expect("has len 1"))
-                } else if ids.is_empty() {
-                    Err(ActorErrorUnknownDevice {
+                let mut ids_iter = ids.iter();
+                let Some(id) = ids_iter.next() else {
+                    return Err(ActorErrorUnknownDevice {
                         device_id: DeviceId::nil(),
                         detail: Cow::Owned(format!(
-                            "No device can handle '{:?}' messages : '{ids:?}'",
+                            "No device can handle '{:?}'",
                             std::any::type_name::<TMsg>()
                         )),
-                    })
+                    });
+                };
+
+                if ids_iter.next().is_none() {
+                    self.get_sender(*id)
                 } else {
                     Err(ActorErrorUnknownDevice {
                         device_id: DeviceId::nil(),
