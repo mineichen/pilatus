@@ -9,7 +9,7 @@ use pilatus::device::{
 use tokio::sync::broadcast;
 use tracing::{debug, trace, warn};
 
-use crate::image::{BroadcastImage, GetImageMessageOutput, SubscribeImageMessage};
+use crate::image::{BroadcastImage, GetImageOk, SubscribeImageMessage};
 
 pub struct BroadcastState<TError: Debug, TState> {
     // Option is used instead of receiver_count(). The later could have lead to concurrency issues
@@ -51,7 +51,7 @@ impl<
                         if broadcaster
                             .send(BroadcastImage {
                                 image: Arc::new(output.image),
-                                quality_hash: output.quality_hash,
+                                hash: output.hash,
                             })
                             .is_ok()
                         {
@@ -91,7 +91,7 @@ impl<
 }
 
 type BroadcastProducer<TState, TError> =
-    for<'a> fn(&'a mut TState) -> BoxFuture<'a, Result<GetImageMessageOutput, ActorError<TError>>>;
+    for<'a> fn(&'a mut TState) -> BoxFuture<'a, Result<GetImageOk, ActorError<TError>>>;
 
 impl<
         TError: Debug + Send + Sync + 'static,

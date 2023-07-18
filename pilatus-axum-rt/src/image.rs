@@ -1,6 +1,6 @@
-use std::{sync::Arc, time::SystemTime};
+use std::time::SystemTime;
 
-use axum::response::sse::Event;
+use axum::{extract::Query, response::sse::Event};
 use futures::{Stream, StreamExt};
 use image::{ImageEncoder, ImageResult};
 use minfac::ServiceCollection;
@@ -8,17 +8,22 @@ use pilatus::device::{ActorSystem, DeviceId};
 use pilatus_axum::{
     extract::{ws::WebSocketUpgrade, InjectRegistered, Json, Path},
     http::StatusCode,
-    image::stream_image,
+    image::{DefaultImageStreamer, LocalizableImageStreamer},
     sse::Sse,
     AppendHeaders, IntoResponse, ServiceCollectionExtensions,
 };
-use pilatus_engineering::image::{GetImageMessage, LumaImage, SubscribeImageMessage};
+use pilatus_engineering::image::{
+    GetImageMessage, LumaImage, SubscribeImageMessage, SubscribeLocalizableImageMessage,
+};
+use tracing::{debug, warn};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     #[rustfmt::skip]
     c.register_web("image", |x| x
-        .http("/stream", |m| m.get(list_stream_devices))
-        .http("/:device_id/stream", |m| m.get(stream_image_handler))
+        .http("/list/stream", |m| m.get(list_stream_devices))
+        .http("/list/stream/localizable", |m| m.get(list_localizable_stream_devices))
+        .http("/stream", |m| m.get(stream_image_handler))
+        .http("/stream/localizable", |m| m.get(stream_localizable_image_handler))
         .http("/:device_id/single", |m| m.get(single_image_handler))
         .http("/:device_id/frame_intervals", |m| m.get(stream_frame_interval))
     );
@@ -29,7 +34,7 @@ async fn stream_frame_interval(
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, anyhow::Error>>>, StatusCode> {
     let sender = actor_system
-        .ask(device_id, SubscribeImageMessage {})
+        .ask(device_id, SubscribeImageMessage::default())
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
@@ -82,13 +87,43 @@ async fn list_stream_devices(
     Json(actor_system.list_devices_for_message_type::<SubscribeImageMessage>())
 }
 
+async fn list_localizable_stream_devices(
+    InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
+) -> impl IntoResponse {
+    Json(actor_system.list_devices_for_message_type::<SubscribeLocalizableImageMessage>())
+}
+
 async fn stream_image_handler(
     upgrade: WebSocketUpgrade,
-    Path(device_id): Path<DeviceId>,
+    Query(StreamQuery { device_id }): Query<StreamQuery>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-    stream_image::<Arc<LumaImage>, _, _>(upgrade, Some(device_id), actor_system, |x| async {
+    debug!("Start streaming images");
+    DefaultImageStreamer::stream_image(upgrade, device_id, actor_system, |x| async { Ok(x.image) })
+        .await
+        .map_err(|e| {
+            warn!("Couldn't establish connection: {e:?}");
+            e
+        })
+}
+
+async fn stream_localizable_image_handler(
+    upgrade: WebSocketUpgrade,
+    Query(StreamQuery { device_id }): Query<StreamQuery>,
+    InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+    debug!("Start streaming images");
+    LocalizableImageStreamer::stream_image(upgrade, device_id, actor_system, |x| async {
         Ok(x.image)
     })
     .await
+    .map_err(|e| {
+        warn!("Couldn't establish connection: {e:?}");
+        e
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct StreamQuery {
+    device_id: Option<DeviceId>,
 }
