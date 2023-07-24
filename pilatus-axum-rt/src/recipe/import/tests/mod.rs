@@ -5,7 +5,7 @@ use pilatus::{device::DeviceId, DeviceConfig, RecipeExporterTrait, RecipeId, Rec
 use tokio::io::DuplexStream;
 use tokio_util::compat::Compat;
 
-use crate::recipe::export::ZipWriterWrapper;
+use crate::zip_writer_wrapper::ZipWriterWrapper;
 
 mod conflicting_device_after_import;
 mod duplicate_self_allowed;

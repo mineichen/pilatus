@@ -5,3 +5,4 @@
 Cargo.lock
 /examples/stream/data/
 !examples/stream/data/config.json
+.vscode

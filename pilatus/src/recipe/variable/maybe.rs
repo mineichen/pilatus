@@ -228,7 +228,7 @@ mod tests {
     impl From<Foo> for FooVar {
         fn from(value: Foo) -> Self {
             FooVar {
-                foo: MaybeVar::from_value(value.foo.into()),
+                foo: MaybeVar::from_value(value.foo),
                 bar: MaybeVar::from_value(value.bar.into()),
             }
         }
@@ -237,7 +237,7 @@ mod tests {
     impl From<FooVar> for Foo {
         fn from(value: FooVar) -> Self {
             Foo {
-                foo: value.foo.resolved.into(),
+                foo: value.foo.resolved,
                 bar: value.bar.resolved.into(),
             }
         }
@@ -267,7 +267,7 @@ mod tests {
     impl From<Bar> for BarVar {
         fn from(value: Bar) -> Self {
             BarVar {
-                bar_inner: MaybeVar::from_value(value.bar_inner.into()),
+                bar_inner: MaybeVar::from_value(value.bar_inner),
             }
         }
     }
@@ -275,7 +275,7 @@ mod tests {
     impl From<BarVar> for Bar {
         fn from(value: BarVar) -> Self {
             Bar {
-                bar_inner: value.bar_inner.resolved.into(),
+                bar_inner: value.bar_inner.resolved,
             }
         }
     }

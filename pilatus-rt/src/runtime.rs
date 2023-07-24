@@ -4,7 +4,7 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::runtime::Builder;
 use tracing::{error, info};
 
-use pilatus::{GenericConfig, HostedService};
+use pilatus::{GenericConfig, HostedService, TracingConfig};
 
 use crate::metadata_future::MetadataFuture;
 
@@ -30,10 +30,13 @@ impl Runtime {
         let mut services = ServiceCollection::new();
         let settings = root.join("settings.json");
         let config = GenericConfig::new(root).expect("Invalid config");
+        let tracing_config = TracingConfig::from(&config);
+
         #[cfg(feature = "tracing")]
-        let trace_guard = crate::tracing::init(&config);
+        let trace_guard = crate::tracing::init(&tracing_config);
 
         info!("Start pilatus within root '{:?}'", config.root);
+        services.register_instance(tracing_config);
         services.register_instance(config);
         services.register_instance(pilatus::Settings::new(settings).expect("Settings not found"));
         pilatus::register(&mut services);

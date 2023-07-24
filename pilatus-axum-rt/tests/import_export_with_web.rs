@@ -23,7 +23,18 @@ fn upload_zip() -> anyhow::Result<()> {
             "web": {
                 "socket": "0.0.0.0:0"
             },
-            "tracing": "debug,tokio=info,mio_serial=info,mio::poll=debug,runtime::resource=debug,pilatus_anyfeeder=error,pilatus::image=debug,tower_http=trace"
+            "tracing": {
+                "default_level": "debug",
+                "filters": {
+                  "tokio": "info",
+                  "mio_serial": "info",
+                  "mio::poll": "debug",
+                  "runtime::resource": "debug",
+                  "pilatus_anyfeeder": "error",
+                  "pilatus::image": "debug",
+                  "tower_http": "trace"
+                }
+            }
         }"#,
     )?;
     file.flush().unwrap();

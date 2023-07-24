@@ -1,6 +1,4 @@
-use std::{net::SocketAddr, path::PathBuf};
-
-use pilatus::GenericConfig;
+use pilatus::TracingConfig;
 use tracing::info;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{prelude::*, util::TryInitError};
@@ -9,41 +7,25 @@ use self::logfile_writer::LogFileWriter;
 
 mod logfile_writer;
 
-pub(super) fn init(config: &GenericConfig) -> Result<WorkerGuard, TryInitError> {
-    let default_filter_config = [
-        "debug", //'fallback' level, if none of the following targets apply
-        "hyper=info",
-        "request=info",
-        "async_zip=info",
-        "tower_http=info",
-        "mio_serial=info",
-        "pilatus::image=info",
-        "tungstenite::protocol=info",
-    ]
-    .join(",");
+pub(super) fn init(config: &TracingConfig) -> Result<WorkerGuard, TryInitError> {
+    let filter_config = config.log_string();
 
-    let directory = config.instrument_relative(
-        config
-            .get("logdir")
-            .unwrap_or_else(|_| PathBuf::from("logs")),
-    );
+    let file = config.file().expect("Only works with file_logging enabled");
 
-    let num_files = config.get("log_files_number").unwrap_or(10);
+    let num_files = file.number_of_files;
     let (non_blocking, guard) = tracing_appender::non_blocking(LogFileWriter::new(
-        tracing_appender::rolling::hourly(&directory, "pilatus-logs"),
-        &directory,
+        tracing_appender::rolling::hourly(&file.path, "pilatus-logs"),
+        &file.path,
         num_files,
     ));
 
-    let def_clone = default_filter_config.clone();
+    let def_clone = filter_config.clone();
     let registry = tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
                 .with_line_number(true)
                 .compact()
-                .with_filter(tracing_subscriber::EnvFilter::new(
-                    config.get("tracing").unwrap_or(default_filter_config),
-                )),
+                .with_filter(tracing_subscriber::EnvFilter::new(filter_config)),
         )
         .with(
             tracing_subscriber::fmt::layer()
@@ -51,17 +33,15 @@ pub(super) fn init(config: &GenericConfig) -> Result<WorkerGuard, TryInitError> 
                 .compact()
                 .with_ansi(false)
                 .with_line_number(true)
-                .with_filter(tracing_subscriber::EnvFilter::new(
-                    config.get("tracing").unwrap_or(def_clone),
-                )),
+                .with_filter(tracing_subscriber::EnvFilter::new(def_clone)),
         );
 
-    let result = if let Ok(socket) = config.get::<SocketAddr>("console-logger") {
+    let result = if let Some(socket) = config.console().map(|x| &x.address) {
         registry
             .with(
                 console_subscriber::ConsoleLayer::builder()
                     .with_default_env()
-                    .server_addr(socket)
+                    .server_addr(*socket)
                     .spawn(),
             )
             .try_init()
@@ -71,7 +51,7 @@ pub(super) fn init(config: &GenericConfig) -> Result<WorkerGuard, TryInitError> 
     };
     info!(
         "Recording logs into: {:?}, keeping {num_files} files",
-        directory.canonicalize()
+        file.path.canonicalize()
     );
 
     result
