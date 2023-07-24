@@ -1,4 +1,8 @@
-use std::{ffi::OsStr, io, path::PathBuf};
+use std::{
+    ffi::OsStr,
+    io,
+    path::{Path, PathBuf},
+};
 
 use config::{builder::DefaultState, ConfigBuilder};
 use glob::glob;
@@ -15,6 +19,16 @@ pub struct GenericConfig {
 }
 
 impl GenericConfig {
+    #[cfg(any(test, feature = "unstable"))]
+    pub fn mock(config: serde_json::Value) -> Self {
+        Self {
+            root: "./test_data".into(),
+            config: config::Config::builder()
+                .add_source(config::Config::try_from(&config).unwrap())
+                .build()
+                .unwrap(),
+        }
+    }
     pub fn new(path: impl Into<PathBuf>) -> io::Result<Self> {
         let root = path.into();
         let json_path = root.join("*.json");
@@ -50,11 +64,11 @@ impl GenericConfig {
         Ok(Self { config, root })
     }
 
-    pub fn instrument_relative(&self, path: PathBuf) -> PathBuf {
-        if path.is_relative() {
+    pub fn instrument_relative(&self, path: impl Into<PathBuf> + AsRef<Path>) -> PathBuf {
+        if path.as_ref().is_relative() {
             self.root.join(path)
         } else {
-            path
+            path.into()
         }
     }
 
