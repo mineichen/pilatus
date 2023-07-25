@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-pub use crate::image::{LumaImage, StableHash};
+use futures::stream::Stream;
 use pilatus::device::{ActorMessage, DeviceId};
 
-use super::DynamicPointProjector;
+use super::{DynamicPointProjector, LumaImage, StableHash};
 
 #[derive(Default)]
 #[non_exhaustive]
@@ -32,7 +32,7 @@ impl ActorMessage for GetImageMessage {
     type Error = anyhow::Error;
 }
 
-pub type SubscribeImageOk = Box<dyn futures::stream::Stream<Item = BroadcastImage> + Send + Sync>;
+pub type SubscribeImageOk = Box<dyn Stream<Item = BroadcastImage> + Send + Sync>;
 
 #[derive(Default)]
 #[non_exhaustive]

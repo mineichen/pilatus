@@ -90,6 +90,8 @@ impl Clone for Box<dyn DeviceHandler> {
 
 pub(crate) struct DepDeviceHandler<TDep: Resolvable, TFut, TParam> {
     pub device_type: &'static str,
+    // Doesn't work with fn like handler, because ValidationContext has a lifetime and GAT's can't be used as trait-objects (25.07.2023)
+    // Maybe it could be done using HRTB's.
     validator: Arc<dyn for<'a> ValidatorClosure<'a, TParam> + Send + Sync>,
     handler: fn(DeviceContext, TParam, TDep::ItemPreChecked) -> TFut,
 }

@@ -132,7 +132,6 @@ impl Default for TracingFileConfig {
 
 #[cfg(test)]
 mod tests {
-    use serde::Deserialize;
     use serde_json::json;
 
     use super::*;

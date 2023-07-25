@@ -3,7 +3,8 @@ use std::{any::TypeId, borrow::Cow, fmt::Debug, marker::PhantomData, sync::Weak}
 use futures::channel::oneshot;
 
 use super::{
-    ActorError, ActorErrorBusy, ActorMessage, ActorResult, InternalSender, MessageWithResponse,
+    ActorError, ActorErrorBusy, ActorMessage, ActorResult, BoxMessage, InternalSender,
+    MessageWithResponse,
 };
 use crate::{device::ActorErrorUnknownDevice, device::DeviceId};
 
@@ -65,7 +66,7 @@ impl UntypedActorMessageSender {
             .mpsc_sender
             .try_send((
                 TypeId::of::<TMsg>(),
-                Box::new(MessageWithResponse::new(msg, tx)),
+                BoxMessage(Box::new(MessageWithResponse::new(msg, tx))),
             ))
             .is_err()
         {

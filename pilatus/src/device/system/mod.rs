@@ -5,7 +5,7 @@ use std::{
     fmt::Debug,
     future::poll_fn,
     marker::PhantomData,
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex, RwLock},
     task::Poll,
 };
 
@@ -37,10 +37,12 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
         .register(|state| ActorSystem { state });
 }
 
-pub trait ActorMessage: Any + Send + Sync {
-    type Output: 'static + Send + Sync;
-    type Error: Debug + 'static + Send + Sync;
+pub trait ActorMessage: Any + Send {
+    type Output: 'static + Send;
+    type Error: Debug + 'static + Send;
 }
+
+pub struct BoxMessage(Box<dyn Any + Send>);
 
 #[derive(Debug, Clone)]
 pub struct ActorSystem {
@@ -220,7 +222,7 @@ impl Default for ActorSystem {
 }
 
 type SharedActorSystemState = Arc<RwLock<ActorSystemState>>;
-type InternalSender = mpsc::Sender<(TypeId, Box<dyn Any + Send + Sync>)>;
+type InternalSender = mpsc::Sender<(TypeId, BoxMessage)>;
 
 #[derive(Debug, Default)]
 #[allow(clippy::type_complexity)]
@@ -245,37 +247,31 @@ impl<TMsg: ActorMessage> MessageWithResponse<TMsg> {
 }
 
 pub trait MessageHandler<TState>: Send + Sync {
-    fn handle<'a>(
-        &self,
-        state: &'a mut TState,
-        boxed_msg: Box<dyn Any + Send + Sync>,
-    ) -> BoxFuture<'a, MaybeTask>;
+    fn handle<'a>(&self, state: &'a mut TState, boxed_msg: BoxMessage) -> BoxFuture<'a, MaybeTask>;
     fn respond_with_unknown_device(
         &self,
         state: &mut TState,
-        boxed_msg: Box<dyn Any + Send + Sync>,
+        boxed_msg: BoxMessage,
         detail: Cow<'static, str>,
     );
 }
 
-struct TypedMessageHandler<TFn: Sync, TState, TMsg>(TFn, PhantomData<(TState, TMsg)>);
+struct TypedMessageHandler<TFn: Send + Sync, TState, TMsg>(TFn, PhantomData<(TState, Mutex<TMsg>)>);
 
-impl<TFn, TState: Send + Sync, TMsg: ActorMessage> MessageHandler<TState>
-    for TypedMessageHandler<TFn, TState, TMsg>
+impl<TFn, TState, TMsg> MessageHandler<TState> for TypedMessageHandler<TFn, TState, TMsg>
 where
     TFn: for<'a> HandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
+    TState: Send + Sync,
+    TMsg: ActorMessage,
 {
-    fn handle<'a>(
-        &self,
-        state: &'a mut TState,
-        boxed_msg: Box<dyn Any + Send + Sync>,
-    ) -> BoxFuture<'a, MaybeTask> {
+    fn handle<'a>(&self, state: &'a mut TState, boxed_msg: BoxMessage) -> BoxFuture<'a, MaybeTask> {
         let h_cloned = self.0.clone();
         let h_cloned: TFn = h_cloned;
         let MessageWithResponse {
             msg,
             response_channel,
         } = *boxed_msg
+            .0
             .downcast::<MessageWithResponse<TMsg>>()
             .expect("Must be castable. This is most likely an internal bug of the ActorSystem");
 
@@ -289,12 +285,13 @@ where
     fn respond_with_unknown_device(
         &self,
         _state: &mut TState,
-        boxed_msg: Box<dyn Any + Send + Sync>,
+        boxed_msg: BoxMessage,
         detail: Cow<'static, str>,
     ) {
         let MessageWithResponse {
             response_channel, ..
         } = *boxed_msg
+            .0
             .downcast::<MessageWithResponse<TMsg>>()
             .expect("Must be castable. This is most likely an internal bug of the ActorSystem");
         let _ignore_not_consumed = response_channel.send(Err(ActorErrorUnknownDevice {
@@ -356,7 +353,7 @@ pub trait ActorExecutionStrategy<TState> {
         &'a self,
         handler: &'a dyn MessageHandler<TState>,
         state: &'a mut TState,
-        untyped_message: Box<dyn Any + Send + Sync>,
+        untyped_message: BoxMessage,
     ) -> BoxFuture<'a, MaybeTask>;
 }
 
@@ -366,7 +363,7 @@ impl<TState> ActorExecutionStrategy<TState> for AlwaysHandleStrategy {
         &'a self,
         handler: &'a dyn MessageHandler<TState>,
         state: &'a mut TState,
-        untyped_message: Box<dyn Any + Send + Sync>,
+        untyped_message: BoxMessage,
     ) -> BoxFuture<'a, MaybeTask> {
         handler.handle(state, untyped_message)
     }
@@ -374,7 +371,7 @@ impl<TState> ActorExecutionStrategy<TState> for AlwaysHandleStrategy {
 
 #[allow(clippy::type_complexity)]
 pub struct ActorDevice<TState> {
-    receiver: mpsc::Receiver<(TypeId, Box<dyn Any + Send + Sync>)>, // Contains MessageWithResponse<TMsg>
+    receiver: mpsc::Receiver<(TypeId, BoxMessage)>, // Contains MessageWithResponse<TMsg>
     post: ActorDevicePostExecute<TState>,
     pending_tasks: FuturesUnordered<Task>,
 }
@@ -386,7 +383,7 @@ pub struct ActorDevicePostExecute<TState> {
 
 impl<TState> ActorDevice<TState> {
     fn new(
-        receiver: mpsc::Receiver<(TypeId, Box<dyn Any + Send + Sync>)>,
+        receiver: mpsc::Receiver<(TypeId, BoxMessage)>,
         manager: releaser::DeviceReleaser,
     ) -> Self {
         ActorDevice {
