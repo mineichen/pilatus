@@ -7,14 +7,14 @@ use std::{
 use futures::{
     channel::{mpsc, oneshot},
     future::Either,
-    stream::Stream,
+    stream::BoxStream,
     Future, SinkExt, StreamExt,
 };
 use jpeg_encoder::{ColorType, Encoder};
 use pilatus::device::{ActorError, ActorMessage, ActorSystem, DeviceId};
 use pilatus_engineering::image::{
-    BroadcastImage, LumaImage, RgbImage, SubscribeImageMessage, SubscribeImageOk,
-    SubscribeLocalizableImageMessage, SubscribeLocalizableImageOk,
+    BroadcastImage, LocalizableBroadcastImage, LumaImage, RgbImage, SubscribeImageMessage,
+    SubscribeImageOk, SubscribeLocalizableImageMessage, SubscribeLocalizableImageOk,
 };
 use serde::Serialize;
 use tracing::{debug, trace};
@@ -95,8 +95,11 @@ fn encode(
 pub type DefaultImageStreamer =
     ImageStreamer<SubscribeImageMessage, SubscribeImageOk, BroadcastImage>;
 
-pub type LocalizableImageStreamer =
-    ImageStreamer<SubscribeLocalizableImageMessage, SubscribeLocalizableImageOk, BroadcastImage>;
+pub type LocalizableImageStreamer = ImageStreamer<
+    SubscribeLocalizableImageMessage,
+    SubscribeLocalizableImageOk,
+    LocalizableBroadcastImage,
+>;
 
 pub struct ImageStreamer<TMsg, TInputStream, TInputImage>(
     PhantomData<(TMsg, TInputStream, TInputImage)>,
@@ -107,7 +110,7 @@ impl<TMsg, TInputStream, TInputImage> ImageStreamer<TMsg, TInputStream, TInputIm
 where
     TMsg: Default + ActorMessage<Output = TInputStream>,
     TInputImage: Clone + Send + Sync + 'static,
-    TInputStream: Into<Box<dyn Stream<Item = TInputImage> + Send + Sync>>,
+    TInputStream: Into<BoxStream<'static, TInputImage>>,
 {
     pub async fn stream_image<
         TImg: StreamableImage + Send + Sync + 'static,
@@ -185,7 +188,7 @@ where
         TMessageHandlerFuture: Future<Output = Result<(), anyhow::Error>> + 'static + Send,
     >(
         socket: WebSocket,
-        broadcast: Box<dyn Stream<Item = TInputImage> + Send + Sync>,
+        mut broadcast: BoxStream<'static, TInputImage>,
         transformer: TFn,
         message_handler: TMessageHandler,
     ) {
@@ -193,8 +196,6 @@ where
         let (signal_broadcast_end, mut receive_broadcast_end) = oneshot::channel();
         let (mut tx, rx) = mpsc::channel(10);
         let encode_task = async move {
-            let mut broadcast = Box::into_pin(broadcast);
-
             while let Some(image) = broadcast.next().await {
                 let image = (transformer)(image).await?;
                 let encoded_image = pilatus::execute_blocking(move || image.encode()).await?;

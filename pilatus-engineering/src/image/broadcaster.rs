@@ -2,7 +2,7 @@
 
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
-use futures::{future::BoxFuture, Stream, StreamExt};
+use futures::{future::BoxFuture, stream::BoxStream, StreamExt};
 use pilatus::device::{
     ActorDevice, ActorError, ActorMessage, ActorResult, WeakUntypedActorMessageSender,
 };
@@ -114,23 +114,22 @@ impl<
             stop_broadcast_callback,
         }
     }
-    fn subscribe(&mut self) -> Box<dyn Stream<Item = BroadcastImage> + Send + Sync> {
-        Box::new(
-            tokio_stream::wrappers::BroadcastStream::new(match &mut self.transmitter {
-                Some(x) => x.subscribe(),
-                None => {
-                    let (tx, rx) = broadcast::channel(1);
-                    self.transmitter = Some(tx);
-                    self.event_publisher
-                        .tell(BroadcastImageMessage::<TError>(PhantomData));
-                    rx
-                }
-            })
-            .filter_map(|x| async {
-                trace!("Lost image");
-                x.ok()
-            }),
-        )
+    fn subscribe(&mut self) -> BoxStream<'static, BroadcastImage> {
+        tokio_stream::wrappers::BroadcastStream::new(match &mut self.transmitter {
+            Some(x) => x.subscribe(),
+            None => {
+                let (tx, rx) = broadcast::channel(1);
+                self.transmitter = Some(tx);
+                self.event_publisher
+                    .tell(BroadcastImageMessage::<TError>(PhantomData));
+                rx
+            }
+        })
+        .filter_map(|x| async {
+            trace!("Lost image");
+            x.ok()
+        })
+        .boxed()
     }
 }
 
