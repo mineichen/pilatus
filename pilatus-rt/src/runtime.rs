@@ -59,9 +59,6 @@ impl Runtime {
 
     /// As long as there is no Dynamic Plugin System, this method is allowed to panic, as it's the outermost layer
     pub fn configure(mut self) -> ConfiguredRuntime {
-        #[cfg(feature = "leak-detect-allocator")]
-        tracer::LEAK_TRACER.init();
-
         // Should help to detect blocking threads/deadlocks
         #[cfg(debug_assertions)]
         let mut tokio_builder = Builder::new_current_thread();
@@ -102,9 +99,6 @@ impl ConfiguredRuntime {
     pub fn run(self, other: impl futures::Future<Output = ()>) {
         info!("Tokio runtime has started.");
         self.tokio.block_on(futures::future::join(other, async {
-            #[cfg(feature = "leak-detect-allocator")]
-            tracer::spawn_leak_collector();
-
             let (mut names, mut tasks): (OccuranceCounter<String>, FuturesUnordered<_>) = self
                 .provider
                 .get_all::<HostedService>()
@@ -140,43 +134,5 @@ impl ConfiguredRuntime {
         }));
 
         info!("Tokio runtime has ended.");
-    }
-}
-
-#[cfg(feature = "leak-detect-allocator")]
-
-mod tracer {
-    use tracing::warn;
-
-    #[global_allocator]
-    static LEAK_TRACER: leak_detect_allocator::LeakTracerDefault =
-        leak_detect_allocator::LeakTracerDefault::new();
-
-    pub fn spawn_leak_collector() {
-        tokio::spawn(async move {
-            loop {
-                let mut out = String::new();
-                let mut count = 0;
-                let mut count_size = 0;
-                LEAK_TRACER.now_leaks(|address: usize, size: usize, stack: &[usize]| {
-                    count += 1;
-                    count_size += size;
-                    out += &format!("leak memory address: {:#x}, size: {}\r\n", address, size);
-
-                    for f in stack {
-                        // Resolve this instruction pointer to a symbol name
-                        out += &format!(
-                            "\t{:#x}, {}\r\n",
-                            *f,
-                            LEAK_TRACER.get_symbol_name(*f).unwrap_or("".to_owned())
-                        );
-                    }
-                    true // continue until end
-                });
-                warn!("After now leaks");
-                out += &format!("\r\ntotal address:{}, bytes:{}\r\n", count, count_size);
-                std::fs::write("leaks_log.txt", out.as_str().as_bytes()).ok();
-            }
-        });
     }
 }
