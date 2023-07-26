@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use futures::stream::Stream;
+use futures::stream::BoxStream;
 use pilatus::device::{ActorMessage, DeviceId};
 
 use super::{DynamicPointProjector, LumaImage, StableHash};
@@ -32,7 +32,7 @@ impl ActorMessage for GetImageMessage {
     type Error = anyhow::Error;
 }
 
-pub type SubscribeImageOk = Box<dyn Stream<Item = BroadcastImage> + Send + Sync>;
+pub type SubscribeImageOk = BoxStream<'static, BroadcastImage>;
 
 #[derive(Default)]
 #[non_exhaustive]
@@ -67,6 +67,48 @@ impl From<GetImageOk> for BroadcastImage {
             image: Arc::new(o.image),
             hash: o.hash,
         }
+    }
+}
+
+impl From<LocalizableBroadcastImage> for BroadcastImage {
+    fn from(value: LocalizableBroadcastImage) -> Self {
+        Self {
+            image: value.image,
+            hash: value.hash,
+        }
+    }
+}
+
+/// Contains hash to be able to immediately detect changes in the producer chain
+/// The consumer is free to continue the stream or reconnect
+#[non_exhaustive]
+#[derive(Clone)]
+pub struct LocalizableBroadcastImage {
+    pub image: Arc<LumaImage>,
+    pub hash: Option<StableHash>,
+    pub projector: Option<DynamicPointProjector>,
+}
+
+impl LocalizableBroadcastImage {
+    pub fn with_hash_and_projector(
+        image: impl Into<Arc<LumaImage>>,
+        hash: Option<StableHash>,
+        projector: Option<DynamicPointProjector>,
+    ) -> Self {
+        Self {
+            image: image.into(),
+            hash,
+            projector,
+        }
+    }
+}
+
+impl std::fmt::Debug for LocalizableBroadcastImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalizableBroadcastImage")
+            .field("image", &self.image)
+            .field("hash", &self.hash)
+            .finish()
     }
 }
 
@@ -122,31 +164,23 @@ impl ActorMessage for SubscribeLocalizableImageMessage {
 
 #[non_exhaustive]
 pub struct SubscribeLocalizableImageOk {
-    pub images: SubscribeImageOk,
-    pub projector: Option<DynamicPointProjector>,
+    pub images: BoxStream<'static, LocalizableBroadcastImage>,
     pub image_device_id: DeviceId,
 }
 
-pub struct Device {}
-
-impl From<SubscribeLocalizableImageOk> for SubscribeImageOk {
+impl From<SubscribeLocalizableImageOk> for BoxStream<'static, LocalizableBroadcastImage> {
     fn from(value: SubscribeLocalizableImageOk) -> Self {
         value.images
     }
 }
 
-impl From<(Option<DynamicPointProjector>, SubscribeImageOk, DeviceId)>
+impl From<(BoxStream<'static, LocalizableBroadcastImage>, DeviceId)>
     for SubscribeLocalizableImageOk
 {
     fn from(
-        (projector, images, image_device_id): (
-            Option<DynamicPointProjector>,
-            SubscribeImageOk,
-            DeviceId,
-        ),
+        (images, image_device_id): (BoxStream<'static, LocalizableBroadcastImage>, DeviceId),
     ) -> Self {
         Self {
-            projector,
             images,
             image_device_id,
         }

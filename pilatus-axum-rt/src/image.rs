@@ -40,7 +40,6 @@ async fn stream_frame_interval(
 
     let mut last_timestamp: Option<SystemTime> = None;
 
-    let sender = Box::into_pin(sender);
     Ok(Sse::new(sender.filter_map(move |_| {
         let time = std::time::SystemTime::now();
         let data = last_timestamp

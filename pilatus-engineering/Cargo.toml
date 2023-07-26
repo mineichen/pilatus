@@ -33,7 +33,6 @@ pilatus-rt = { path = "../pilatus-rt", features = ["unstable"] }
 
 
 [features]
-default = []
 tokio = ["dep:tokio", "tokio-stream"]
 image-algorithm = ["image", "minfac", "resvg"]
 unstable = ["pilatus-rt/unstable"]
