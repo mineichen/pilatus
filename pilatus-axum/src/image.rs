@@ -1,6 +1,7 @@
 use std::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
+    num::NonZeroU32,
     sync::Arc,
 };
 
@@ -76,10 +77,10 @@ impl<T: Serialize> StreamableImage for RgbImageWithMetadata<T> {
 fn encode(
     image: &[u8],
     color: ColorType,
-    (width, height): (u32, u32),
+    (width, height): (NonZeroU32, NonZeroU32),
     meta: impl FnOnce(&mut Vec<u8>) -> anyhow::Result<()>,
 ) -> anyhow::Result<Vec<u8>> {
-    let mut buf = Vec::with_capacity((width * height) as usize);
+    let mut buf = Vec::with_capacity(width.get() as usize * height.get() as usize);
     buf.extend_from_slice(&[0, 0, 0, 0]);
     (meta)(&mut buf)?;
     let meta_length = (buf.len() as u32 - 4).to_le_bytes();
@@ -87,7 +88,7 @@ fn encode(
 
     let encoder = Encoder::new(&mut buf, 80);
     let t = std::time::Instant::now();
-    encoder.encode(image, width as u16, height as u16, color)?;
+    encoder.encode(image, width.get() as u16, height.get() as u16, color)?;
     trace!("encoding time: {}ms", t.elapsed().as_millis());
     Ok(buf)
 }

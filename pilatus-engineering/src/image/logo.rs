@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    num::NonZeroU32,
     sync::{Arc, RwLock},
 };
 
@@ -110,36 +111,53 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
             );
 
             let rgba = resized.to_rgba8();
-            let (iwidth, iheight) = rgba.dimensions();
+            let isize = rgba.dimensions();
+            let (iwidth, iheight) = (
+                isize.0.try_into().expect("Input image has width=0"),
+                isize.1.try_into().expect("Input image has height=0"),
+            );
+
             GenericImage::<4>::new(rgba.into_vec(), iwidth, iheight)
         } else if let Ok(svg) = resvg::usvg::Tree::from_data(&logo.0, &Default::default()) {
             let x = resvg::Tree::from_usvg(&svg);
             let (svg_width, svg_height) = (x.size.width(), x.size.height());
             let query_ratio = query.width.get() as f32 / query.height.get() as f32;
             let svg_ratio = svg_width / svg_height;
-            let (pixmap_width, pixmap_height, scale) = if svg_ratio >= query_ratio {
-                (
-                    query.width.get() as u32,
-                    ((query.width.get() as f32 / svg_ratio).round() as u32).max(1),
-                    (query.width.get() as f32 / svg_width),
-                )
-            } else {
-                (
-                    ((query.height.get() as f32 * svg_ratio).round() as u32).max(1),
-                    query.height.get() as u32,
-                    (query.height.get() as f32 / svg_height),
-                )
-            };
+            let (pixmap_width, pixmap_height, scale): (NonZeroU32, NonZeroU32, f32) =
+                if svg_ratio >= query_ratio {
+                    (
+                        NonZeroU32::from(*query.width),
+                        ((query.width.get() as f32 / svg_ratio).round() as u32)
+                            .try_into()
+                            .unwrap_or(NonZeroU32::MIN),
+                        (query.width.get() as f32 / svg_width),
+                    )
+                } else {
+                    (
+                        ((query.height.get() as f32 * svg_ratio).round() as u32)
+                            .try_into()
+                            .unwrap_or(NonZeroU32::MIN),
+                        NonZeroU32::from(*query.height),
+                        (query.height.get() as f32 / svg_height),
+                    )
+                };
 
-            let mut pixmap = resvg::tiny_skia::Pixmap::new(pixmap_width, pixmap_height)
+            let mut pixmap = resvg::tiny_skia::Pixmap::new(pixmap_width.get(), pixmap_height.get())
                 .expect("Query width/height are bellow the limit i32/4");
 
             x.render(
                 resvg::tiny_skia::Transform::from_scale(scale, scale),
                 &mut pixmap.as_mut(),
             );
-            let out_width = pixmap.width();
-            let out_height = pixmap.height();
+
+            let out_width = pixmap
+                .width()
+                .try_into()
+                .expect("Generated Image has width=0");
+            let out_height = pixmap
+                .height()
+                .try_into()
+                .expect("Generated Image has height=0");
 
             GenericImage::<4>::new(pixmap.take(), out_width, out_height)
         } else {
@@ -151,8 +169,8 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 (0..(width * height))
                     .flat_map(|_| [255, 0, 0, 255])
                     .collect(),
-                width as _,
-                height as _,
+                NonZeroU32::from(*query.width),
+                NonZeroU32::from(*query.height),
             )
         };
 
@@ -185,13 +203,14 @@ mod tests {
         let raw_service = Arc::new(StaticLogoService(AtomicU8::new(0), PNG_1X1));
         let image = get_logo(LogoService::new(raw_service.clone()));
         assert_eq!(raw_service.0.load(SeqCst), 1);
-        assert_eq!((100, 100), (image.width, image.height));
+        let expect_size = 100.try_into().unwrap();
+        assert_eq!((expect_size, expect_size), (image.width, image.height));
     }
 
     #[test]
     fn get_default_vector_logo() {
         let image = get_logo(pilatus_rt::create_default_logo_service());
-        assert_eq!(200, image.width);
+        assert_eq!(200, image.width.get());
     }
     #[test]
     fn get_too_wide_vector_logo() {
@@ -202,7 +221,7 @@ mod tests {
             </svg>"#,
         ));
         let logo = get_logo(LogoService::new(raw_service));
-        assert_eq!((logo.width, logo.height), (200, 50));
+        assert_eq!((logo.width.get(), logo.height.get()), (200, 50));
     }
 
     #[test]
@@ -214,7 +233,7 @@ mod tests {
             </svg>"#,
         ));
         let logo = get_logo(LogoService::new(raw_service));
-        assert_eq!((logo.width, logo.height), (100, 100));
+        assert_eq!((logo.width.get(), logo.height.get()), (100, 100));
         let last_row_col = 4 * (100 * 100 - 1);
 
         assert_eq!(
