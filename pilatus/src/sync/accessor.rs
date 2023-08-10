@@ -1,54 +1,10 @@
 use std::{
-    fmt::Debug,
     ops::{Deref, DerefMut},
     sync::Arc,
 };
 
-use futures::{future::BoxFuture, Future, FutureExt, TryFutureExt};
+use futures::{future::BoxFuture, FutureExt};
 use tokio::sync::{Mutex, MutexGuard};
-
-use crate::device::ActorError;
-
-#[cfg(feature = "rayon")]
-pub fn execute_blocking<TOk: Send + 'static, TErr: Send + 'static + Debug>(
-    f: impl FnOnce() -> Result<TOk, TErr> + Send + 'static,
-) -> impl Future<Output = Result<TOk, ActorError<TErr>>> {
-    use futures::channel::oneshot;
-
-    let (tx, rx) = oneshot::channel();
-    rayon::spawn(move || {
-        let result = (f)();
-        //trace!("Calculated result");
-        let _ignore_abortion = tx.send(result);
-    });
-    rx.unwrap_or_else(|_| panic!("Sender is never dropped"))
-        .map_err(ActorError::custom)
-}
-#[cfg(not(feature = "rayon"))]
-pub fn execute_blocking<TOk: Send + 'static, TErr: Send + 'static + Debug>(
-    f: impl FnOnce() -> Result<TOk, TErr> + Send + 'static,
-) -> impl Future<Output = Result<TOk, ActorError<TErr>>> {
-    tokio::task::spawn_blocking(f)
-        .map_err(Into::into)
-        .and_then(|x| async { x.map_err(ActorError::custom) })
-}
-
-pub struct OnceExtractor<T>(std::sync::Mutex<Option<T>>);
-
-impl<T> From<T> for OnceExtractor<T> {
-    fn from(value: T) -> Self {
-        Self(std::sync::Mutex::new(Some(value)))
-    }
-}
-
-impl<T> OnceExtractor<T> {
-    pub fn extract(&self) -> Option<T> {
-        self.0.lock().unwrap().take()
-    }
-    pub fn extract_unchecked(&self) -> T {
-        self.extract().expect("Value was extracted already")
-    }
-}
 
 /// Used to extract a Variable which contains a subset of data
 /// ```
@@ -72,10 +28,10 @@ impl<T> OnceExtractor<T> {
 ///
 /// async fn test(x: impl Accessor<i32>) {
 ///     let mut lock = x.lock().await;
-///     let _inner = lock.as_ref();
-///     let _inner_mut = lock.as_mut();
+///     assert_eq!(&42, lock.as_ref());
+///     assert_eq!(&mut 42, lock.as_mut());
 /// }
-/// let _unused = test(Arc::new(Mutex::new(Outer { inner: 42 })));
+/// test(Arc::new(Mutex::new(Outer { inner: 42 })));
 ///
 /// ```
 pub trait Accessor<T> {

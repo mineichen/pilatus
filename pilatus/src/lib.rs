@@ -1,5 +1,3 @@
-#[cfg(feature = "tokio")]
-mod blocking;
 mod config;
 pub mod device;
 mod entry_io;
@@ -13,13 +11,13 @@ mod recipe;
 mod relative;
 mod settings;
 mod shutdown;
+#[cfg(feature = "tokio")]
+mod sync;
 mod tracing;
 mod uuid_wrapper;
 
 pub use crate::config::GenericConfig;
 pub use crate::tracing::*;
-#[cfg(feature = "tokio")]
-pub use blocking::*;
 pub use entry_io::*;
 #[cfg(feature = "tokio")]
 pub use file::*;
@@ -31,6 +29,8 @@ pub use recipe::*;
 pub use relative::*;
 pub use settings::Settings;
 pub use shutdown::*;
+#[cfg(feature = "tokio")]
+pub use sync::*;
 
 #[cfg(feature = "tokio")]
 pub mod prelude {
