@@ -7,7 +7,7 @@ pub trait ServiceCollectionExtensions {
 impl ServiceCollectionExtensions for minfac::ServiceCollection {
     fn register_web(&mut self, prefix: &'static str, creator: fn(crate::Router) -> crate::Router) {
         let route = creator(crate::Router::new(prefix));
-        self.register_instance(MinfacRouter::new(route.axum_router));
+        self.register_instance(MinfacRouter::from(route.axum_router));
         for checker in route.dependencies {
             (checker)(self);
         }
@@ -59,7 +59,7 @@ mod tests {
         let provider = collection.build().unwrap();
         let all = provider
             .get_all::<super::MinfacRouter>()
-            .map(|x| x.unchecked_extract());
+            .map(|x| x.extract_unchecked());
         assert_eq!(3, all.count());
     }
 }

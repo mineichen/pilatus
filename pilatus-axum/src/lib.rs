@@ -41,7 +41,7 @@ pub mod extract {
     }
 }
 
-pub type MinfacRouter = private::MoveOutOnClone<axum::Router>;
+pub type MinfacRouter = pilatus::OnceExtractor<axum::Router>;
 
 pub struct Stats {
     socket: Shared<oneshot::Receiver<SocketAddr>>,
@@ -55,27 +55,5 @@ impl Stats {
             .clone()
             .await
             .expect("always resolved when server started")
-    }
-}
-
-mod private {
-    use std::sync::Mutex;
-
-    // Todo: Unify with OnceExtractor
-    pub struct MoveOutOnClone<T>(Mutex<Option<T>>);
-    impl<T> MoveOutOnClone<T> {
-        pub(super) fn new(inner: T) -> Self {
-            Self(Mutex::new(Some(inner)))
-        }
-        pub fn unchecked_extract(&self) -> T {
-            let value = { self.0.lock().expect("Lock is never poisoned").take() };
-            value.expect("Value was extracted multiple times")
-        }
-    }
-    impl<T> Clone for MoveOutOnClone<T> {
-        fn clone(&self) -> Self {
-            let mut lock = self.0.lock().expect("Lock is never poisoned");
-            Self(Mutex::new(lock.take()))
-        }
     }
 }
