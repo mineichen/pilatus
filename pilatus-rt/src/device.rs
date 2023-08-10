@@ -273,7 +273,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use pilatus::{device::DeviceValidationContext, Name, UpdateParamsMessageError};
+    use pilatus::{device::DeviceValidationContext, UpdateParamsMessageError};
 
     async fn validate_ok(
         _ctx: DeviceValidationContext<'_>,
@@ -320,15 +320,15 @@ mod tests {
                 [
                     (
                         DeviceId::new_v4(),
-                        DeviceConfig::new("foo", Name::new("MyFoo").unwrap(), "{}"),
+                        DeviceConfig::new_unchecked("foo", "MyFoo", "{}"),
                     ),
                     (
                         DeviceId::new_v4(),
-                        DeviceConfig::new("bar", Name::new("MyBar").unwrap(), "{}"),
+                        DeviceConfig::new_unchecked("bar", "MyBar", "{}"),
                     ),
                     (
                         DeviceId::new_v4(),
-                        DeviceConfig::new("baz", Name::new("MyBaz").unwrap(), "{}"),
+                        DeviceConfig::new_unchecked("baz", "MyBaz", "{}"),
                     ),
                 ]
                 .into_iter()

@@ -95,8 +95,11 @@ impl UntypedDeviceParamsWithVariables {
         }
     }
 
-    pub fn from_serializable(x: impl Serialize) -> serde_json::Result<Self> {
-        let inner = serde_json::to_value(x)?;
+    pub fn from_serializable(serializable: impl Serialize) -> serde_json::Result<Self> {
+        let inner = serde_json::to_value(serializable)?;
+
+        // Makes sure that `serializable` doen't contain a field named `JSON_VAR_KEYWORD`
+        // This is just checked during development, as this would be a developer-mistake
         debug_assert_eq!(Ok(()), check_recursive(&inner));
         Ok(Self(inner))
     }

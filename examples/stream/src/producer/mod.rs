@@ -129,7 +129,7 @@ pub struct ParamsRaw {
 }
 
 pub fn create_default_device_config() -> pilatus::DeviceConfig {
-    pilatus::DeviceConfig::new_with_unchecked_name(DEVICE_TYPE, DEVICE_TYPE, ParamsRaw::default())
+    pilatus::DeviceConfig::new_unchecked(DEVICE_TYPE, DEVICE_TYPE, ParamsRaw::default())
 }
 
 async fn stream_binance_data(mut recv_subscription: Receiver<Registrar>) {
