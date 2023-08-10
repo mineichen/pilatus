@@ -181,7 +181,6 @@ impl Variables {
     }
 }
 
-// Todo: Add more types (move into submodule)
 pub trait RawVariable: Sized {
     type Variable: Into<Self>;
 }

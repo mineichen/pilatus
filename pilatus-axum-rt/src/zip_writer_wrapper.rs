@@ -32,7 +32,7 @@ impl<W: AsyncWrite + Unpin + Send + 'static> EntryWriter for ZipWriterWrapper<W>
 
             // end BadCode
             /*
-            // TODO: This code would be better, but async_zip removed support in the 0.0.15 version. The following Error was raised
+            // This code would be better, but async_zip removed support in the 0.0.15 version. The following Error was raised
             // ZipError::FeatureNotSupported("stream reading entries with data descriptors (planned to be reintroduced)")
             // So this should be supported again soon
 
