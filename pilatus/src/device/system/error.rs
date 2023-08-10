@@ -27,15 +27,6 @@ pub enum ActorError<TCustom: Debug> {
     #[error("Running into timeout when handling request")]
     Timeout,
 }
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum ActorWeakTellError {
-    #[error("{0}")]
-    UnknownDevice(#[from] ActorErrorUnknownDevice),
-
-    #[error("Too much load on the system: {0}")]
-    Busy(#[from] ActorErrorBusy),
-}
 
 impl<T: Debug> From<Aborted> for ActorError<T> {
     fn from(_: Aborted) -> Self {
@@ -95,6 +86,25 @@ impl<TCustom: Debug> ActorError<TCustom> {
     pub fn custom(custom: impl Into<TCustom>) -> Self {
         Self::Custom(custom.into())
     }
+}
+
+impl<T: Debug> From<ActorWeakTellError> for ActorError<T> {
+    fn from(value: ActorWeakTellError) -> Self {
+        match value {
+            ActorWeakTellError::UnknownDevice(x) => x.into(),
+            ActorWeakTellError::Busy(x) => x.into(),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ActorWeakTellError {
+    #[error("{0}")]
+    UnknownDevice(#[from] ActorErrorUnknownDevice),
+
+    #[error("Too much load on the system: {0}")]
+    Busy(#[from] ActorErrorBusy),
 }
 
 pub trait ActorErrorResultExtensions<T, TErr: Debug> {
