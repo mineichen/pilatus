@@ -27,6 +27,15 @@ pub enum ActorError<TCustom: Debug> {
     #[error("Running into timeout when handling request")]
     Timeout,
 }
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ActorWeakTellError {
+    #[error("{0}")]
+    UnknownDevice(#[from] ActorErrorUnknownDevice),
+
+    #[error("Too much load on the system: {0}")]
+    Busy(#[from] ActorErrorBusy),
+}
 
 impl<T: Debug> From<Aborted> for ActorError<T> {
     fn from(_: Aborted) -> Self {

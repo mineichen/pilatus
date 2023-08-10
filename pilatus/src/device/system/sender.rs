@@ -3,8 +3,8 @@ use std::{any::TypeId, borrow::Cow, fmt::Debug, marker::PhantomData, sync::Weak}
 use futures::channel::oneshot;
 
 use super::{
-    ActorError, ActorErrorBusy, ActorMessage, ActorResult, BoxMessage, InternalSender,
-    MessageWithResponse,
+    ActorError, ActorErrorBusy, ActorMessage, ActorResult, ActorWeakTellError, BoxMessage,
+    InternalSender, MessageWithResponse,
 };
 use crate::{device::ActorErrorUnknownDevice, device::DeviceId};
 
@@ -26,7 +26,7 @@ impl<TMsg: ActorMessage> ActorMessageSender<TMsg> {
             phantom: PhantomData,
         }
     }
-    pub fn tell(&mut self, msg: TMsg) {
+    pub fn tell(&mut self, msg: TMsg) -> Result<(), ActorErrorBusy> {
         self.actor_message_sender.tell(msg)
     }
     pub async fn ask(&mut self, msg: TMsg) -> ActorResult<TMsg> {
@@ -43,9 +43,9 @@ impl UntypedActorMessageSender {
     }
 
     /// Sends a message without awaiting a response. It's error-handling is therefore limited to see whether the Target-Actor accepts the message in it's queue
-    // Todo: Should return Result in case MPSC is not available
-    pub fn tell<TMsg: ActorMessage>(&mut self, msg: TMsg) {
-        let _ignore = self.get_channel(msg);
+    pub fn tell<TMsg: ActorMessage>(&mut self, msg: TMsg) -> Result<(), ActorErrorBusy> {
+        let _ignore = self.get_channel(msg)?;
+        Ok(())
     }
 
     pub async fn ask<TMsg: ActorMessage>(&mut self, msg: TMsg) -> ActorResult<TMsg> {
@@ -59,7 +59,7 @@ impl UntypedActorMessageSender {
     fn get_channel<TMsg: ActorMessage>(
         &mut self,
         msg: TMsg,
-    ) -> Result<oneshot::Receiver<ActorResult<TMsg>>, ActorError<TMsg::Error>> {
+    ) -> Result<oneshot::Receiver<ActorResult<TMsg>>, ActorErrorBusy> {
         let (tx, rx) = oneshot::channel();
 
         if self
@@ -70,9 +70,7 @@ impl UntypedActorMessageSender {
             ))
             .is_err()
         {
-            return Err(ActorError::Busy(ActorErrorBusy::ExceededQueueCapacity(
-                self.device_id,
-            )));
+            return Err(ActorErrorBusy::ExceededQueueCapacity(self.device_id));
         }
         Ok(rx)
     }
@@ -90,9 +88,15 @@ impl WeakUntypedActorMessageSender {
             mpsc_sender,
         }
     }
-    pub fn tell<TMsg: ActorMessage>(&mut self, msg: TMsg) {
+
+    pub fn tell<TMsg: ActorMessage>(&mut self, msg: TMsg) -> Result<(), ActorWeakTellError> {
         if let Ok(mut x) = self.build_strong::<TMsg>() {
-            x.tell(msg);
+            x.tell(msg).map_err(Into::into)
+        } else {
+            Err(ActorWeakTellError::UnknownDevice(ActorErrorUnknownDevice {
+                device_id: self.device_id,
+                detail: "Device existed but is no longer available".into(),
+            }))
         }
     }
 
