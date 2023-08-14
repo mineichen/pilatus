@@ -1,6 +1,12 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
-use futures::{StreamExt, TryStreamExt};
+use futures::{
+    stream::{self, BoxStream},
+    Stream, StreamExt, TryStreamExt,
+};
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
     FileServiceBuilder, FileServiceTrait, RelativeDirPath, RelativeFilePath, TransactionError,
@@ -74,42 +80,18 @@ impl FileServiceTrait for TokioFileService {
         }
     }
 
+    fn stream_files(
+        &self,
+        path: &RelativeDirPath,
+    ) -> BoxStream<'static, Result<RelativeFilePath, TransactionError>> {
+        self.stream_files_internal(path).boxed()
+    }
+
     async fn list_files(
         &self,
         path: &RelativeDirPath,
     ) -> Result<Vec<RelativeFilePath>, TransactionError> {
-        let device_dir = self.get_device_dir();
-        let dir_path = device_dir.join(path.as_path());
-        if !dir_path.exists() {
-            return Ok(Vec::new());
-        }
-
-        let dir = fs::read_dir(&dir_path)
-            .await
-            .map_err(TransactionError::from_io_producer(&dir_path))?;
-
-        tokio_stream::wrappers::ReadDirStream::new(dir)
-            .filter_map(|entry| async {
-                let io_err_converter = TransactionError::from_io_producer(&dir_path);
-                let entry = match entry {
-                    Ok(x) => x,
-                    Err(e) => return Some(Err((io_err_converter)(e))),
-                };
-                let file_type = match entry.file_type().await {
-                    Ok(x) => x,
-                    Err(e) => return Some(Err((io_err_converter)(e))),
-                };
-                if !file_type.is_file() {
-                    return None;
-                }
-
-                let p = entry.path();
-                let p = p
-                    .strip_prefix(device_dir)
-                    .expect("ReadDirStream returns relative entries");
-
-                Some(RelativeFilePath::new(p).map_err(|e| anyhow::Error::from(e).into()))
-            })
+        self.stream_files_internal(path)
             .try_collect::<Vec<RelativeFilePath>>()
             .await
     }
@@ -134,6 +116,58 @@ impl TokioFileService {
                 })
             }),
         }
+    }
+
+    fn stream_files_internal(
+        &self,
+        path: &RelativeDirPath,
+    ) -> impl Stream<Item = Result<RelativeFilePath, TransactionError>> + 'static {
+        let device_dir: Arc<Path> = self.get_device_dir().to_owned().into();
+        let dir_path: Arc<Path> = device_dir.join(path.as_path()).into();
+
+        stream::once(fs::read_dir(dir_path.clone())).flat_map(move |x| {
+            let dir = match x {
+                Ok(x) => x,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    return stream::empty().boxed()
+                }
+                Err(e) => {
+                    return stream::iter([Err(TransactionError::from_io_producer(&dir_path)(e))])
+                        .boxed()
+                }
+            };
+            let dir_path = dir_path.clone();
+            let device_dir = device_dir.clone();
+
+            tokio_stream::wrappers::ReadDirStream::new(dir)
+                .filter_map(move |entry| {
+                    let dir_path = dir_path.clone();
+                    let device_dir = device_dir.clone();
+                    async move {
+                        let io_err_converter = TransactionError::from_io_producer(&dir_path);
+                        let entry = match entry {
+                            Ok(x) => x,
+                            Err(e) => return Some(Err((io_err_converter)(e))),
+                        };
+                        let file_type = match entry.file_type().await {
+                            Ok(x) => x,
+                            Err(e) => return Some(Err((io_err_converter)(e))),
+                        };
+                        if !file_type.is_file() {
+                            return None;
+                        }
+
+                        let p = entry.path();
+                        let p = p
+                            .strip_prefix(device_dir)
+                            .expect("ReadDirStream returns relative entries");
+
+                        Some(RelativeFilePath::new(p).map_err(|e| anyhow::Error::from(e).into()))
+                    }
+                })
+                .boxed()
+        })
+        //            .map_err(TransactionError::from_io_producer(&dir_path))?;
     }
 
     fn get_device_dir(&self) -> &PathBuf {
