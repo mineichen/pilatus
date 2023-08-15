@@ -1,6 +1,6 @@
 use serde::{Deserialize, Deserializer};
 use std::{
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     net::SocketAddr,
     ops::Deref,
     path::{Path, PathBuf},
@@ -18,14 +18,44 @@ pub struct TracingConfig {
     console: Option<TracingConsoleConfig>,
 }
 
-impl<'a> From<&'a GenericConfig> for TracingConfig {
-    fn from(value: &'a GenericConfig) -> Self {
+pub struct TracingTopic {
+    topic: String,
+    level: Level,
+}
+
+impl TracingTopic {
+    pub fn new(topic: impl Into<String>, level: Level) -> Self {
+        Self {
+            topic: topic.into(),
+            level,
+        }
+    }
+}
+
+impl<'a, T: IntoIterator<Item = TracingTopic>> From<(&'a GenericConfig, T)> for TracingConfig {
+    fn from((value, levels): (&'a GenericConfig, T)) -> Self {
+        let iter = levels.into_iter();
+        let mut filters = HashMap::with_capacity(iter.size_hint().0);
+        for l in iter {
+            match filters.entry(l.topic) {
+                Entry::Occupied(mut e) => {
+                    if e.get() < &l.level {
+                        e.insert(l.level);
+                    }
+                }
+                Entry::Vacant(v) => {
+                    v.insert(l.level);
+                }
+            }
+        }
+
         let p = value
             .get::<TracingConfigPrivate>("tracing")
             .unwrap_or_default();
+        filters.extend(p.filters.into_iter().map(|(k, v)| (k, v.0)));
         Self {
             default_level: p.default_level.0,
-            filters: p.filters.into_iter().map(|(k, v)| (k, v.0)).collect(),
+            filters,
             file: p.file,
             console: p.console,
         }
@@ -137,6 +167,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn config_has_precedence_over_suggestion() {
+        let generic = GenericConfig::mock(json!({
+            "tracing": {
+                "filters":{
+                    "tokio":"debug"
+                },
+            }
+        }));
+
+        let config = TracingConfig::from((
+            &generic,
+            [TracingTopic {
+                level: Level::TRACE,
+                topic: "tokio".into(),
+            }],
+        ));
+        assert_eq!(config.filters.get("tokio"), Some(&Level::DEBUG));
+    }
+
+    #[test]
+    fn config_takes_most_significant_suggestion() {
+        let generic = GenericConfig::mock(json!({}));
+
+        let config = TracingConfig::from((
+            &generic,
+            [
+                TracingTopic {
+                    level: Level::DEBUG,
+                    topic: "other".into(),
+                },
+                TracingTopic {
+                    level: Level::TRACE,
+                    topic: "other".into(),
+                },
+                TracingTopic {
+                    level: Level::DEBUG,
+                    topic: "other".into(),
+                },
+            ],
+        ));
+        assert_eq!(config.filters.get("other"), Some(&Level::TRACE));
+    }
+
+    #[test]
     fn deserialize_tracing() {
         let generic = GenericConfig::mock(json!({
             "tracing": {
@@ -159,7 +233,7 @@ mod tests {
                 console: None,
             }
             .instrument_path(&generic),
-            TracingConfig::from(&generic)
+            TracingConfig::from((&generic, []))
         );
     }
     #[test]
@@ -190,7 +264,7 @@ mod tests {
                 }),
                 console: None,
             },
-            TracingConfig::from(&generic)
+            TracingConfig::from((&generic, []))
         );
     }
 }

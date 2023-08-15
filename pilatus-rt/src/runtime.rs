@@ -4,16 +4,13 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::runtime::Builder;
 use tracing::{error, info};
 
-use pilatus::{GenericConfig, HostedService, TracingConfig};
+use pilatus::{GenericConfig, HostedService};
 
 use crate::metadata_future::MetadataFuture;
 
 use super::occurance_counter::OccuranceCounter;
 
 pub struct Runtime {
-    #[cfg(feature = "tracing")]
-    _trace_guard:
-        Result<tracing_appender::non_blocking::WorkerGuard, tracing_subscriber::util::TryInitError>,
     services: ServiceCollection,
 }
 
@@ -30,26 +27,17 @@ impl Runtime {
         let mut services = ServiceCollection::new();
         let settings = root.join("settings.json");
         let config = GenericConfig::new(root).expect("Invalid config");
-        let tracing_config = TracingConfig::from(&config);
 
         #[cfg(feature = "tracing")]
-        let trace_guard = crate::tracing::init(&tracing_config);
-
+        crate::tracing::pre_init(&config, &mut services).expect("Should be able to setup logging");
         info!("Start pilatus within root '{:?}'", config.root);
-        services.register_instance(tracing_config);
+
         services.register_instance(config);
         services.register_instance(pilatus::Settings::new(settings).expect("Settings not found"));
         pilatus::register(&mut services);
         crate::register(&mut services);
 
-        Self {
-            services,
-            #[cfg(feature = "tracing")]
-            _trace_guard: trace_guard.map_err(|e| {
-                eprintln!("Couldn't start tracing {e}");
-                e
-            }),
-        }
+        Self { services }
     }
 
     pub fn register(mut self, registrar: extern "C" fn(&mut ServiceCollection)) -> Self {
@@ -75,12 +63,10 @@ impl Runtime {
         );
         self.services.register_instance(tokio.clone());
         let provider = self.services.build().expect("has all dependencies");
-        ConfiguredRuntime {
-            #[cfg(feature = "tracing")]
-            _trace_guard: self._trace_guard,
-            tokio,
-            provider,
-        }
+        #[cfg(feature = "tracing")]
+        crate::tracing::init(&provider).expect("Error during tracing setup");
+
+        ConfiguredRuntime { tokio, provider }
     }
     pub fn run(self) {
         self.configure().run(async {})
@@ -90,9 +76,6 @@ impl Runtime {
 pub struct ConfiguredRuntime {
     tokio: Arc<tokio::runtime::Runtime>,
     pub provider: ServiceProvider,
-    #[cfg(feature = "tracing")]
-    _trace_guard:
-        Result<tracing_appender::non_blocking::WorkerGuard, tracing_subscriber::util::TryInitError>,
 }
 
 impl ConfiguredRuntime {
