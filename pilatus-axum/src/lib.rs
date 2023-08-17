@@ -17,7 +17,7 @@ pub use abort::AbortServiceInterface;
 pub use axum::{
     body::{Bytes, StreamBody},
     http,
-    response::{sse, AppendHeaders, Html, IntoResponse},
+    response::{sse, AppendHeaders, Html, IntoResponse, Response},
 };
 pub use dependency_provider::DependencyProvider;
 pub use into_response::*;
