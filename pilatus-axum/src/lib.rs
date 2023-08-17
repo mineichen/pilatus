@@ -4,7 +4,7 @@ mod device_response;
 #[cfg(feature = "engineering")]
 pub mod image;
 mod inject;
-mod io_stream_body;
+mod into_response;
 mod minfac_extensions;
 mod routing;
 mod web_component;
@@ -22,7 +22,7 @@ pub use axum::{
 };
 pub use dependency_provider::DependencyProvider;
 pub use device_response::{DeviceJsonResponse, DeviceMessageJsonResponse, DeviceResponse};
-pub use io_stream_body::IoStreamBody;
+pub use into_response::IoStreamBody;
 pub use minfac_extensions::ServiceCollectionExtensions;
 pub use routing::{MethodRouter, Router};
 pub use web_component::*;
