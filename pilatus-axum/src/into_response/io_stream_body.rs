@@ -1,3 +1,6 @@
+//!
+//! Streams everything the closure(writer) writes to the http-body
+
 use std::pin::Pin;
 
 use anyhow::Error;
@@ -51,7 +54,6 @@ impl IoStreamBody {
 
                             }
                             Err(e) => {
-                                tracing::error!("Error streaming logs-zip: {e}");
                                 yield Err(anyhow::Error::from(e));
                                 break;
                             }

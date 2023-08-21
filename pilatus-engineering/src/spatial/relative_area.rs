@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use serde::{Deserialize, Serialize};
 
 use pilatus::RelativeRange;
@@ -13,21 +15,17 @@ pub struct RelativeArea {
 }
 
 impl RelativeArea {
-    // [col1, row1, col2, row2]
-    // Todo: This calculation seems to be wrong.
-    //   Mapping should be linear with rounding
-    pub fn absolute(&self, dimensions: (u32, u32)) -> [u32; 4] {
-        let (full_width, full_height) = (dimensions.0 as f64, dimensions.1 as f64);
-        let col1 = **self.column.from * full_width;
-        let row1 = **self.row.from * full_height;
-        let col2 = **self.column.to * full_width;
-        let row2 = **self.row.to * full_height;
-        [
-            col1 as u32,
-            row1 as u32,
-            (col2).min(full_width - 1.) as u32,
-            (row2).min(full_height - 1.) as u32,
-        ]
+    /// [col1, row1, col2, row2]
+    pub fn absolute(&self, dimensions: (NonZeroU32, NonZeroU32)) -> [u32; 4] {
+        let x_dist = (dimensions.0.get() - 1) as f64;
+        let y_dist = (dimensions.1.get() - 1) as f64;
+
+        let col1 = **self.column.from * x_dist + 0.5;
+        let row1 = **self.row.from * y_dist + 0.5;
+        let col2 = **self.column.to * x_dist + 0.5;
+        let row2 = **self.row.to * y_dist + 0.5;
+
+        [col1 as u32, row1 as u32, col2 as u32, row2 as u32]
     }
     pub fn slice_horizontal(&self, at: &RelativeRange) -> RelativeAreaSliceHorizontal {
         let (left, center, right) = self.column.window_raw(at);
@@ -69,18 +67,61 @@ pub struct RelativeAreaSliceHorizontal {
 #[cfg(test)]
 mod tests {
     use approx::assert_abs_diff_eq;
+    use pilatus::Percentage;
 
     use super::*;
 
     #[test]
     fn absolute_region_max_returns_inbound_row_and_col() {
-        let absolute = RelativeArea::default();
-        let [col1, row1, col2, row2] = absolute.absolute((100, 100));
-        assert_eq!(0, col1);
-        assert_eq!(0, row1);
-        assert_eq!(99, col2);
-        assert_eq!(99, row2);
+        let area = RelativeArea::default();
+        let size = 100.try_into().unwrap();
+        assert_eq!([0, 0, 99, 99], area.absolute((size, size)));
     }
+    ///   0       0.625   1
+    ///  _|_________|_____|_
+    /// |___|___|___|___|___|
+    /// |___|___|___|___|___|
+    /// |___|___|2,2|___|___|
+    /// |___|___|___|3,3|___|
+    /// |___|___|___|___|___|
+    #[test]
+    fn absolute_around_tippingpoint() {
+        let area = RelativeArea {
+            column: RelativeRange::new(
+                Percentage::new(0.124999).unwrap(),
+                Percentage::new(0.624999).unwrap(),
+            )
+            .unwrap(),
+            row: RelativeRange::new(
+                Percentage::new(0.125001).unwrap(),
+                Percentage::new(0.625001).unwrap(),
+            )
+            .unwrap(),
+        };
+        assert_eq!(
+            [0, 1, 2, 3],
+            area.absolute((5.try_into().unwrap(), 5.try_into().unwrap()))
+        )
+    }
+    #[test]
+    fn absolute_with_asymetric_dimensions() {
+        let area = RelativeArea {
+            column: RelativeRange::new(Percentage::fifty(), Percentage::max()).unwrap(),
+            row: RelativeRange::new(Percentage::min(), Percentage::fifty()).unwrap(),
+        };
+        assert_eq!(
+            [50, 0, 100, 100],
+            area.absolute((101.try_into().unwrap(), 201.try_into().unwrap()))
+        )
+    }
+
+    #[test]
+    fn absolute_for_1x1() {
+        let area = RelativeArea::default();
+        let size = 1.try_into().unwrap();
+        assert_eq!([0, 0, 0, 0], area.absolute((size, size)))
+    }
+
     #[test]
     fn split_at_zero() {
         let raw = RelativeArea::default();

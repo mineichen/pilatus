@@ -37,7 +37,6 @@ bytes = "1"
 console-subscriber = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 tracing-appender = { version = "0.2", optional = true }
-leak-detect-allocator = { git = "https://github.com/lynnux/leak-detect-allocator.git", optional = true }
 
 [dev-dependencies]
 hyper = { version = "0.14.23", features = ["client"] }

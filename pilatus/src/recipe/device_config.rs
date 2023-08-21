@@ -25,14 +25,17 @@ impl From<NoCommittedConfigurationFound> for TransactionError {
 }
 
 impl DeviceConfig {
-    // Todo: Remove unwrap
-    pub fn new<S: Serialize>(device_type: impl Into<String>, device_name: Name, params: S) -> Self {
-        Self {
+    pub fn new<S: Serialize>(
+        device_type: impl Into<String>,
+        device_name: Name,
+        params: S,
+    ) -> Result<Self, serde_json::Error> {
+        Ok(Self {
             device_type: device_type.into(),
             device_name,
             params: UntypedDeviceParamsWithVariables::from_serializable(&params).unwrap(),
             committed_params: None,
-        }
+        })
     }
 
     pub fn with_name(self, name: Name) -> Self {
@@ -42,7 +45,7 @@ impl DeviceConfig {
         }
     }
 
-    pub fn new_with_unchecked_name(
+    pub fn new_unchecked(
         device_type: impl Into<String>,
         device_name: impl Into<String>,
         params: impl Serialize,
@@ -52,6 +55,7 @@ impl DeviceConfig {
             Name::new(device_name).expect("DeviceType is valid name"),
             params,
         )
+        .expect("DeviceParams can be serialized")
     }
 
     pub fn update_params_committed(&mut self, params: UntypedDeviceParamsWithVariables) {
@@ -121,7 +125,7 @@ mod tests {
             bar: u8,
         }
 
-        let device = DeviceConfig::new_with_unchecked_name(
+        let device = DeviceConfig::new_unchecked(
             "myDeviceType",
             "myDeviceName",
             MyParams {

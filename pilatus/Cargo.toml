@@ -6,21 +6,12 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-trait = "0.1"
-rayon = { version = "1", optional = true }
-anyhow = "1.0"
-approx = "0.5"
+# Stable
+anyhow = "1"
 bytes = "1"
-chrono = { version = "0.4", features = ["serde"] }
-config = "0.13"
-futures = "0.3"
-glob = "0.3"
-minfac = "0.0.1"
-sealedstruct = { git = "https://github.com/mineichen/sealedstruct.git", branch = "main", features = [
-  "serde",
-] }
+rayon = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1.0"
+serde_json = "1"
 thiserror = "1"
 tokio = { version = "1", features = [
   "fs",
@@ -30,9 +21,20 @@ tokio = { version = "1", features = [
   "tracing",
 ], optional = true }
 uuid = { version = "1", features = ["serde", "v4"] }
-tracing = "0.1"
 smallvec = "1"
 
+# Unstable
+approx = "0.5"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+config = "0.13"
+futures = "0.3"
+glob = "0.3"
+minfac = "0.0.1"
+sealedstruct = { git = "https://github.com/mineichen/sealedstruct.git", branch = "main", features = [
+  "serde",
+] }
+tracing = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = [

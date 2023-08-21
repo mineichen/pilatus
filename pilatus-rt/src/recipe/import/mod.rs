@@ -182,7 +182,6 @@ impl RecipeServiceImpl {
         trace!("Import into path {root:?}");
         debug_assert!(root.exists(), "Expected {root:?} to exist");
 
-        // Todo: Error should be returned and not ignored!!
         while let Some(entry) = r.next().await {
             let mut entry = entry.map_err(|e| ImportRecipeError::InvalidFormat(e.into()))?;
             if entry.filename == "variables.json" {

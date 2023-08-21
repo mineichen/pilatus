@@ -64,9 +64,14 @@ async fn single_image_handler(
     );
     pilatus::execute_blocking(move || {
         let dims = img.dimensions();
-        let mut buf = Vec::with_capacity((dims.0 * dims.1 / 4) as usize);
+        let mut buf = Vec::with_capacity(dims.0.get() as usize * dims.1.get() as usize / 4);
         let codec = image::codecs::png::PngEncoder::new(&mut buf);
-        codec.write_image(img.buffer(), dims.0, dims.1, image::ColorType::L8)?;
+        codec.write_image(
+            img.buffer(),
+            dims.0.get(),
+            dims.1.get(),
+            image::ColorType::L8,
+        )?;
         let name = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S");
         ImageResult::Ok((
             AppendHeaders([(

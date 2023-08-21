@@ -9,7 +9,7 @@ use std::{
 };
 
 pub use device::*;
-use futures::{future::BoxFuture, FutureExt};
+use futures::{future::BoxFuture, stream::BoxStream, FutureExt};
 use tracing::trace;
 
 use crate::{device::DeviceId, RelativeDirPath, RelativeFilePath, TransactionError};
@@ -110,6 +110,10 @@ pub trait FileServiceTrait {
         &self,
         path: &RelativeDirPath,
     ) -> Result<Vec<RelativeFilePath>, TransactionError>;
+    fn stream_files(
+        &self,
+        path: &RelativeDirPath,
+    ) -> BoxStream<'static, Result<RelativeFilePath, TransactionError>>;
     fn get_filepath(&self, file_path: &RelativeFilePath) -> PathBuf;
 }
 

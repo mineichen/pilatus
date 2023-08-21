@@ -135,7 +135,7 @@ async fn generate_zip(
             .clone(),
     )?;
 
-    // Todo: Execute with http when available (not yet implemented)
+    // Execute with http is not yet implemented
     s.add_device_to_recipe(clone_id.clone(), DeviceConfig::mock(42), Default::default())
         .await?;
 

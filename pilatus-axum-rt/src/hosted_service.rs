@@ -77,7 +77,7 @@ async fn axum_service(
                     provider
                         .get_all::<MinfacRouter>()
                         .fold(axum::Router::new(), |acc, n| {
-                            acc.merge(n.unchecked_extract())
+                            acc.merge(n.extract_unchecked())
                         }),
                 )
                 .fallback_service(get_service(ServeDir::new(web_config.frontend)))

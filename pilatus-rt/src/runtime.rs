@@ -4,16 +4,13 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::runtime::Builder;
 use tracing::{error, info};
 
-use pilatus::{GenericConfig, HostedService, TracingConfig};
+use pilatus::{GenericConfig, HostedService};
 
 use crate::metadata_future::MetadataFuture;
 
 use super::occurance_counter::OccuranceCounter;
 
 pub struct Runtime {
-    #[cfg(feature = "tracing")]
-    _trace_guard:
-        Result<tracing_appender::non_blocking::WorkerGuard, tracing_subscriber::util::TryInitError>,
     services: ServiceCollection,
 }
 
@@ -30,26 +27,17 @@ impl Runtime {
         let mut services = ServiceCollection::new();
         let settings = root.join("settings.json");
         let config = GenericConfig::new(root).expect("Invalid config");
-        let tracing_config = TracingConfig::from(&config);
 
         #[cfg(feature = "tracing")]
-        let trace_guard = crate::tracing::init(&tracing_config);
-
+        crate::tracing::pre_init(&config, &mut services).expect("Should be able to setup logging");
         info!("Start pilatus within root '{:?}'", config.root);
-        services.register_instance(tracing_config);
+
         services.register_instance(config);
         services.register_instance(pilatus::Settings::new(settings).expect("Settings not found"));
         pilatus::register(&mut services);
         crate::register(&mut services);
 
-        Self {
-            services,
-            #[cfg(feature = "tracing")]
-            _trace_guard: trace_guard.map_err(|e| {
-                eprintln!("Couldn't start tracing {e}");
-                e
-            }),
-        }
+        Self { services }
     }
 
     pub fn register(mut self, registrar: extern "C" fn(&mut ServiceCollection)) -> Self {
@@ -59,9 +47,6 @@ impl Runtime {
 
     /// As long as there is no Dynamic Plugin System, this method is allowed to panic, as it's the outermost layer
     pub fn configure(mut self) -> ConfiguredRuntime {
-        #[cfg(feature = "leak-detect-allocator")]
-        tracer::LEAK_TRACER.init();
-
         // Should help to detect blocking threads/deadlocks
         #[cfg(debug_assertions)]
         let mut tokio_builder = Builder::new_current_thread();
@@ -78,12 +63,10 @@ impl Runtime {
         );
         self.services.register_instance(tokio.clone());
         let provider = self.services.build().expect("has all dependencies");
-        ConfiguredRuntime {
-            #[cfg(feature = "tracing")]
-            _trace_guard: self._trace_guard,
-            tokio,
-            provider,
-        }
+        #[cfg(feature = "tracing")]
+        crate::tracing::init(&provider).expect("Error during tracing setup");
+
+        ConfiguredRuntime { tokio, provider }
     }
     pub fn run(self) {
         self.configure().run(async {})
@@ -93,18 +76,12 @@ impl Runtime {
 pub struct ConfiguredRuntime {
     tokio: Arc<tokio::runtime::Runtime>,
     pub provider: ServiceProvider,
-    #[cfg(feature = "tracing")]
-    _trace_guard:
-        Result<tracing_appender::non_blocking::WorkerGuard, tracing_subscriber::util::TryInitError>,
 }
 
 impl ConfiguredRuntime {
     pub fn run(self, other: impl futures::Future<Output = ()>) {
         info!("Tokio runtime has started.");
         self.tokio.block_on(futures::future::join(other, async {
-            #[cfg(feature = "leak-detect-allocator")]
-            tracer::spawn_leak_collector();
-
             let (mut names, mut tasks): (OccuranceCounter<String>, FuturesUnordered<_>) = self
                 .provider
                 .get_all::<HostedService>()
@@ -140,43 +117,5 @@ impl ConfiguredRuntime {
         }));
 
         info!("Tokio runtime has ended.");
-    }
-}
-
-#[cfg(feature = "leak-detect-allocator")]
-
-mod tracer {
-    use tracing::warn;
-
-    #[global_allocator]
-    static LEAK_TRACER: leak_detect_allocator::LeakTracerDefault =
-        leak_detect_allocator::LeakTracerDefault::new();
-
-    pub fn spawn_leak_collector() {
-        tokio::spawn(async move {
-            loop {
-                let mut out = String::new();
-                let mut count = 0;
-                let mut count_size = 0;
-                LEAK_TRACER.now_leaks(|address: usize, size: usize, stack: &[usize]| {
-                    count += 1;
-                    count_size += size;
-                    out += &format!("leak memory address: {:#x}, size: {}\r\n", address, size);
-
-                    for f in stack {
-                        // Resolve this instruction pointer to a symbol name
-                        out += &format!(
-                            "\t{:#x}, {}\r\n",
-                            *f,
-                            LEAK_TRACER.get_symbol_name(*f).unwrap_or("".to_owned())
-                        );
-                    }
-                    true // continue until end
-                });
-                warn!("After now leaks");
-                out += &format!("\r\ntotal address:{}, bytes:{}\r\n", count, count_size);
-                std::fs::write("leaks_log.txt", out.as_str().as_bytes()).ok();
-            }
-        });
     }
 }

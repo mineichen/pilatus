@@ -19,6 +19,7 @@
 //! Color images are shared via Arc<dyn RgbImage>,
 use std::{
     fmt::{self, Debug, Formatter},
+    num::NonZeroU32,
     ops::Deref,
     sync::Arc,
 };
@@ -57,7 +58,7 @@ pub type LumaImage = GenericImage<1>;
 
 pub trait RgbImage: Debug {
     fn is_packed(&self) -> bool;
-    fn size(&self) -> (u32, u32);
+    fn size(&self) -> (NonZeroU32, NonZeroU32);
     /// Returns a buffer with layout RGBRGBRGBRGB
     fn into_packed(self: Arc<Self>) -> Arc<dyn PackedRgbImage>;
     /// Returns a buffer with layout RRRRGGGGBBBB
@@ -90,8 +91,8 @@ impl PackedGenericImage {
     pub fn new(i: GenericImage<3>) -> Self {
         Self(i)
     }
-    pub fn from_unpacked([r, g, b]: [&[u8]; 3], (width, height): (u32, u32)) -> Self {
-        let len = width as usize * height as usize;
+    pub fn from_unpacked([r, g, b]: [&[u8]; 3], (width, height): (NonZeroU32, NonZeroU32)) -> Self {
+        let len = width.get() as usize * height.get() as usize;
         assert_eq!(len, r.len());
         assert_eq!(len, g.len());
         assert_eq!(len, b.len());
@@ -124,7 +125,7 @@ impl RgbImage for PackedGenericImage {
         unimplemented!()
     }
 
-    fn size(&self) -> (u32, u32) {
+    fn size(&self) -> (NonZeroU32, NonZeroU32) {
         self.dimensions()
     }
 }
@@ -166,7 +167,7 @@ impl RgbImage for UnpackedGenericImage {
 
     fn into_packed(self: Arc<Self>) -> Arc<dyn PackedRgbImage> {
         let (width, height) = self.dimensions();
-        let area = (width * height) as usize;
+        let area = (width.get() * height.get()) as usize;
         let (r, rest) = self.buffer().split_at(area);
         let (g, b) = rest.split_at(area);
         Arc::new(PackedGenericImage::from_unpacked(
@@ -179,14 +180,14 @@ impl RgbImage for UnpackedGenericImage {
         self
     }
 
-    fn size(&self) -> (u32, u32) {
+    fn size(&self) -> (NonZeroU32, NonZeroU32) {
         self.dimensions()
     }
 }
 
 impl UnpackedRgbImage for UnpackedGenericImage {
     fn get_channels(&self) -> [&[u8]; 3] {
-        let offset = (self.width * self.height) as isize;
+        let offset = (self.width.get() * self.height.get()) as isize;
 
         unsafe {
             [
@@ -209,8 +210,8 @@ impl<'a> From<&'a GenericImage<1>> for PackedGenericImage {
 #[repr(C)]
 pub struct GenericImage<const CHANNELS: usize> {
     buf: *mut u8,
-    width: u32,
-    height: u32,
+    width: NonZeroU32,
+    height: NonZeroU32,
 
     clear_proc: extern "C" fn(&mut GenericImage<CHANNELS>, usize),
     // Has to be cleaned up by clear proc too
@@ -245,13 +246,13 @@ extern "C" fn clear_vec<const CHANNELS: usize>(
     unsafe {
         Vec::from_raw_parts(
             image.buf,
-            (image.width * image.height) as usize,
+            (image.width.get() * image.height.get()) as usize,
             generic_field,
         )
     };
 }
 
-impl<'a> From<&'a LumaImage> for (&'a [u8], u32, u32) {
+impl<'a> From<&'a LumaImage> for (&'a [u8], NonZeroU32, NonZeroU32) {
     fn from(that: &'a LumaImage) -> Self {
         let (width, height) = that.dimensions();
         let buf = that.buffer();
@@ -260,12 +261,12 @@ impl<'a> From<&'a LumaImage> for (&'a [u8], u32, u32) {
 }
 
 impl<const CHANNELS: usize> GenericImage<CHANNELS> {
-    pub fn new(mut input: Vec<u8>, width: u32, height: u32) -> Self {
+    pub fn new(mut input: Vec<u8>, width: NonZeroU32, height: NonZeroU32) -> Self {
         let cap = input.capacity();
         let buf = input.as_mut_ptr();
         assert_eq!(
             input.len() as u32,
-            width * height * CHANNELS as u32,
+            width.get() * height.get() * CHANNELS as u32,
             "Incompatible Buffer-Size"
         );
 
@@ -274,7 +275,7 @@ impl<const CHANNELS: usize> GenericImage<CHANNELS> {
     }
 
     fn buffer_size(&self) -> usize {
-        (self.width * self.height) as usize * CHANNELS
+        self.width.get() as usize * self.height.get() as usize * CHANNELS
     }
 
     pub fn buffer(&self) -> &[u8] {
@@ -293,8 +294,8 @@ impl<const CHANNELS: usize> GenericImage<CHANNELS> {
     /// should be freed in the clear_proc
     pub unsafe fn new_with_cleanup(
         buf: *mut u8,
-        width: u32,
-        height: u32,
+        width: NonZeroU32,
+        height: NonZeroU32,
         clear_proc: extern "C" fn(&mut Self, usize),
         generic_field: usize,
     ) -> Self {
@@ -319,7 +320,7 @@ impl<const CHANNELS: usize> GenericImage<CHANNELS> {
             self.buffer().to_vec()
         }
     }
-    pub fn dimensions(&self) -> (u32, u32) {
+    pub fn dimensions(&self) -> (NonZeroU32, NonZeroU32) {
         (self.width, self.height)
     }
 }
@@ -339,14 +340,16 @@ mod tests {
 
     #[test]
     fn miri_create_and_clear_vec_image() {
-        let image = LumaImage::new(vec![0u8, 64u8, 128u8, 192u8], 2, 2);
+        let size = 2.try_into().unwrap();
+        let image = LumaImage::new(vec![0u8, 64u8, 128u8, 192u8], size, size);
         assert_eq!(image.buffer(), &[0u8, 64u8, 128u8, 192u8]);
     }
     #[test]
     fn miri_to_vec_reuses_pointer() {
         let raw = vec![0u8, 64u8, 128u8, 192u8];
         let pointer = raw[..].as_ptr();
-        let image = LumaImage::new(raw, 2, 2);
+        let size = 2.try_into().unwrap();
+        let image = LumaImage::new(raw, size, size);
         let to_vec = image.to_vec();
 
         // Miri seems to generate clear_vec::<const u8> for each call
@@ -368,8 +371,9 @@ mod tests {
         let cap = input.capacity();
         let pointer = input[..].as_mut_ptr();
         std::mem::forget(input);
+        let size = 2.try_into().unwrap();
         let image = Arc::new(UnpackedGenericImage(unsafe {
-            GenericImage::<3>::new_with_cleanup(pointer, 2, 2, clear_vec::<3>, cap)
+            GenericImage::<3>::new_with_cleanup(pointer, size, size, clear_vec::<3>, cap)
         }));
         let packed = image.into_packed().into_vec();
         assert_eq!(packed.to_vec(), vec!(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3));

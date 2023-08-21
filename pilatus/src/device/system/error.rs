@@ -88,6 +88,25 @@ impl<TCustom: Debug> ActorError<TCustom> {
     }
 }
 
+impl<T: Debug> From<ActorWeakTellError> for ActorError<T> {
+    fn from(value: ActorWeakTellError) -> Self {
+        match value {
+            ActorWeakTellError::UnknownDevice(x) => x.into(),
+            ActorWeakTellError::Busy(x) => x.into(),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ActorWeakTellError {
+    #[error("{0}")]
+    UnknownDevice(#[from] ActorErrorUnknownDevice),
+
+    #[error("Too much load on the system: {0}")]
+    Busy(#[from] ActorErrorBusy),
+}
+
 pub trait ActorErrorResultExtensions<T, TErr: Debug> {
     fn map_actor_error<TErrNew: Debug>(
         self,

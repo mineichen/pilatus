@@ -522,7 +522,7 @@ mod tests {
     use serde::Deserialize;
     use serde_json::json;
 
-    use pilatus::{NameRaw, UpdateParamsMessageError};
+    use pilatus::UpdateParamsMessageError;
 
     use super::*;
 
@@ -539,11 +539,7 @@ mod tests {
 
         let device_id = rs
             .add_device_to_active_recipe(
-                DeviceConfig::new(
-                    "my_type",
-                    NameRaw::new("MyDevice").seal()?,
-                    json!({ "test": 1}),
-                ),
+                DeviceConfig::new_unchecked("my_type", "MyDevice", json!({ "test": 1})),
                 Default::default(),
             )
             .await?;
@@ -634,8 +630,8 @@ mod tests {
         let options = TransactionOptions::default();
         
         let device = DeviceConfig::mock(SampleParams {foo: 12, bar: "Hallo".to_string()});
-        let device2 = DeviceConfig::new(
-            "testdevice2",Name::new("testdevice2name").unwrap(),SampleParams {foo: 14, bar: "Hi".to_string()});
+        let device2 = DeviceConfig::new_unchecked(
+            "testdevice2","testdevice2name",SampleParams {foo: 14, bar: "Hi".to_string()});
         let recipe = Recipe::default();
         let recipe_id = rs.add_recipe(recipe, options.clone()).await.unwrap();
         let device_in_active_recipe_id = rs.add_device_to_active_recipe(device,options.clone()).await.unwrap();
@@ -675,8 +671,8 @@ mod tests {
         let device = DeviceConfig::mock(SampleParams {foo: 12, reference: DeviceId::new_v4()});
         let device_in_active_recipe_id = rs.add_device_to_active_recipe(device, options.clone()).await.unwrap();
 
-        let device2 = DeviceConfig::new(
-            "testdevice2", Name::new("testdevice2name").unwrap(),SampleParams {foo: 14, reference: device_in_active_recipe_id});
+        let device2 = DeviceConfig::new_unchecked(
+            "testdevice2", "testdevice2name", SampleParams {foo: 14, reference: device_in_active_recipe_id});
         let device_in_other_recipe_id = rs.add_device_to_active_recipe(device2, options.clone()).await.unwrap();
         
         rs.create_device_file(device_in_active_recipe_id, "my_file.txt", b"test").await;

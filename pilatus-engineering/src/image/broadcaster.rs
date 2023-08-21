@@ -4,7 +4,8 @@ use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 use futures::{future::BoxFuture, stream::BoxStream, StreamExt};
 use pilatus::device::{
-    ActorDevice, ActorError, ActorMessage, ActorResult, WeakUntypedActorMessageSender,
+    ActorDevice, ActorError, ActorMessage, ActorResult, ActorWeakTellError,
+    WeakUntypedActorMessageSender,
 };
 use tokio::sync::broadcast;
 use tracing::{debug, trace, warn};
@@ -56,7 +57,7 @@ impl<
                             .is_ok()
                         {
                             this.event_publisher
-                                .tell(BroadcastImageMessage::<TError>(PhantomData));
+                                .tell(BroadcastImageMessage::<TError>(PhantomData))?;
                             return Ok(());
                         }
                     }
@@ -82,7 +83,7 @@ impl<
             _: SubscribeImageMessage,
         ) -> ActorResult<SubscribeImageMessage> {
             debug!("Subscribe broadcast");
-            Ok(state.as_mut().subscribe())
+            Ok(state.as_mut().subscribe()?)
         }
 
         self.add_handler(broadcast_image::<TError, TState>)
@@ -114,22 +115,24 @@ impl<
             stop_broadcast_callback,
         }
     }
-    fn subscribe(&mut self) -> BoxStream<'static, BroadcastImage> {
-        tokio_stream::wrappers::BroadcastStream::new(match &mut self.transmitter {
-            Some(x) => x.subscribe(),
-            None => {
-                let (tx, rx) = broadcast::channel(1);
-                self.transmitter = Some(tx);
-                self.event_publisher
-                    .tell(BroadcastImageMessage::<TError>(PhantomData));
-                rx
-            }
-        })
-        .filter_map(|x| async {
-            trace!("Lost image");
-            x.ok()
-        })
-        .boxed()
+    fn subscribe(&mut self) -> Result<BoxStream<'static, BroadcastImage>, ActorWeakTellError> {
+        Ok(
+            tokio_stream::wrappers::BroadcastStream::new(match &mut self.transmitter {
+                Some(x) => x.subscribe(),
+                None => {
+                    let (tx, rx) = broadcast::channel(1);
+                    self.transmitter = Some(tx);
+                    self.event_publisher
+                        .tell(BroadcastImageMessage::<TError>(PhantomData))?;
+                    rx
+                }
+            })
+            .filter_map(|x| async {
+                trace!("Lost image");
+                x.ok()
+            })
+            .boxed(),
+        )
     }
 }
 
