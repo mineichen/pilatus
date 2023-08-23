@@ -9,12 +9,12 @@ use pilatus::RelativeRange;
 // - Can be validated independently of image-size
 #[derive(Debug, PartialEq, Clone, Default, Serialize, Deserialize, sealedstruct::IntoSealed)]
 #[serde(deny_unknown_fields)]
-pub struct RelativeArea {
+pub struct RelativeRectangle {
     pub column: RelativeRange,
     pub row: RelativeRange,
 }
 
-impl RelativeArea {
+impl RelativeRectangle {
     /// [col1, row1, col2, row2]
     pub fn absolute(&self, dimensions: (NonZeroU32, NonZeroU32)) -> [u32; 4] {
         let x_dist = (dimensions.0.get() - 1) as f64;
@@ -29,7 +29,7 @@ impl RelativeArea {
     }
     pub fn slice_horizontal(&self, at: &RelativeRange) -> RelativeAreaSliceHorizontal {
         let (left, center, right) = self.column.window_raw(at);
-        let map = |column: RelativeRange| RelativeArea {
+        let map = |column: RelativeRange| RelativeRectangle {
             column,
             row: self.row.clone(),
         };
@@ -46,7 +46,7 @@ impl RelativeArea {
     }
 }
 
-impl approx::AbsDiffEq for RelativeArea {
+impl approx::AbsDiffEq for RelativeRectangle {
     type Epsilon = f64;
 
     fn default_epsilon() -> Self::Epsilon {
@@ -59,9 +59,9 @@ impl approx::AbsDiffEq for RelativeArea {
 }
 
 pub struct RelativeAreaSliceHorizontal {
-    pub left: Option<RelativeArea>,
-    pub center: RelativeArea,
-    pub right: Option<RelativeArea>,
+    pub left: Option<RelativeRectangle>,
+    pub center: RelativeRectangle,
+    pub right: Option<RelativeRectangle>,
 }
 
 #[cfg(test)]
@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn absolute_region_max_returns_inbound_row_and_col() {
-        let area = RelativeArea::default();
+        let area = RelativeRectangle::default();
         let size = 100.try_into().unwrap();
         assert_eq!([0, 0, 99, 99], area.absolute((size, size)));
     }
@@ -86,7 +86,7 @@ mod tests {
     /// |___|___|___|___|___|
     #[test]
     fn absolute_around_tippingpoint() {
-        let area = RelativeArea {
+        let area = RelativeRectangle {
             column: RelativeRange::new(
                 Percentage::new(0.124999).unwrap(),
                 Percentage::new(0.624999).unwrap(),
@@ -105,7 +105,7 @@ mod tests {
     }
     #[test]
     fn absolute_with_asymetric_dimensions() {
-        let area = RelativeArea {
+        let area = RelativeRectangle {
             column: RelativeRange::new(Percentage::fifty(), Percentage::max()).unwrap(),
             row: RelativeRange::new(Percentage::min(), Percentage::fifty()).unwrap(),
         };
@@ -117,21 +117,21 @@ mod tests {
 
     #[test]
     fn absolute_for_1x1() {
-        let area = RelativeArea::default();
+        let area = RelativeRectangle::default();
         let size = 1.try_into().unwrap();
         assert_eq!([0, 0, 0, 0], area.absolute((size, size)))
     }
 
     #[test]
     fn split_at_zero() {
-        let raw = RelativeArea::default();
+        let raw = RelativeRectangle::default();
         let from_zero_range = RelativeRange::new(0., 0.5).unwrap();
         let left = raw.slice_horizontal(&from_zero_range).left;
         assert_eq!(None, left);
     }
     #[test]
     fn split_at_max() {
-        let raw = RelativeArea::default();
+        let raw = RelativeRectangle::default();
         let to_max_range = RelativeRange::new(0.5, 1.).unwrap();
         let right = raw.slice_horizontal(&to_max_range).right;
         assert_eq!(None, right);
@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn horizontal_window() {
-        let raw = RelativeArea {
+        let raw = RelativeRectangle {
             column: RelativeRange::new(0.2, 1.0).unwrap(),
             row: RelativeRange::new(0.1, 0.9).unwrap(),
         };
@@ -155,14 +155,14 @@ mod tests {
 
         assert_abs_diff_eq!(
             left,
-            RelativeArea {
+            RelativeRectangle {
                 column: RelativeRange::new(0.2, 0.6).unwrap(),
                 ..raw.clone()
             }
         );
         assert_abs_diff_eq!(
             center,
-            RelativeArea {
+            RelativeRectangle {
                 column: RelativeRange::new(0.6, 0.8).unwrap(),
                 ..raw.clone()
             }
@@ -170,7 +170,7 @@ mod tests {
 
         assert_abs_diff_eq!(
             right,
-            RelativeArea {
+            RelativeRectangle {
                 column: RelativeRange::new(0.8, 1.0).unwrap(),
                 ..raw
             },
