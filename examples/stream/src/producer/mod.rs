@@ -40,7 +40,7 @@ struct DeviceState {
 }
 
 async fn validator(ctx: DeviceValidationContext<'_>) -> Result<Params, UpdateParamsMessageError> {
-    ctx.params_as_sealed::<ParamsRaw>()
+    ctx.params_as::<Params>()
 }
 
 enum NewTopicRegistrationState {
@@ -120,16 +120,14 @@ impl DeviceState {
     }
 }
 
-#[derive(
-    Debug, Default, Deserialize, Serialize, sealedstruct::Seal, sealedstruct::TryIntoSealed,
-)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ParamsRaw {
+pub struct Params {
     initial_count: u32,
 }
 
 pub fn create_default_device_config() -> pilatus::DeviceConfig {
-    pilatus::DeviceConfig::new_unchecked(DEVICE_TYPE, DEVICE_TYPE, ParamsRaw::default())
+    pilatus::DeviceConfig::new_unchecked(DEVICE_TYPE, DEVICE_TYPE, Params::default())
 }
 
 async fn stream_binance_data(mut recv_subscription: Receiver<Registrar>) {
