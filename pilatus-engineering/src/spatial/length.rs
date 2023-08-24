@@ -2,7 +2,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Copy, Default, PartialEq, Eq, sealedstruct::IntoSealed)]
+#[derive(Serialize, Deserialize, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(transparent)]
 #[serde(deny_unknown_fields)]
 pub struct Length(i64); //stored in micro meters

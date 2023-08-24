@@ -7,7 +7,7 @@ use pilatus::RelativeRange;
 // Benefits in contrast to pixel-Bounds:
 // - Can define meaningful default (0-1)
 // - Can be validated independently of image-size
-#[derive(Debug, PartialEq, Clone, Default, Serialize, Deserialize, sealedstruct::IntoSealed)]
+#[derive(Debug, PartialEq, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RelativeRectangle {
     pub column: RelativeRange,

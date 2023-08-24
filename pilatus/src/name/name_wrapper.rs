@@ -1,6 +1,6 @@
 macro_rules! wrapped_name {
     ($name:ident) => {
-        #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, sealedstruct::IntoSealed)]
+        #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
         pub struct $name(std::sync::Arc<crate::Name>);
 
         impl $name {

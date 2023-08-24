@@ -14,7 +14,7 @@ pub enum AngleError {
 }
 
 /// Holds angle in rad with range: 0..2PI
-#[derive(Clone, Copy, Default, PartialEq, sealedstruct::IntoSealed)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub struct Angle(f64);
 
 impl Serialize for Angle {

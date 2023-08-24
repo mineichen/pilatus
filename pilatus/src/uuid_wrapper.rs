@@ -1,8 +1,6 @@
 macro_rules! wrapped_uuid {
     ($name:ident) => {
-        #[derive(
-            Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, sealedstruct::IntoSealed,
-        )]
+        #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
         pub struct $name(uuid::Uuid);
 
         impl $name {

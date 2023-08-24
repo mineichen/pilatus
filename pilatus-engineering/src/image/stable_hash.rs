@@ -7,7 +7,7 @@ use std::{
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy, sealedstruct::IntoSealed)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
 #[repr(transparent)]
 pub struct StableHash(NonZeroU64);
 

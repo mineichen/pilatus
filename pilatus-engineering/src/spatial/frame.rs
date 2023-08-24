@@ -7,9 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Angle, Length, XYZ};
 
-#[derive(
-    Serialize, Deserialize, PartialEq, Debug, Clone, Copy, Default, sealedstruct::IntoSealed,
-)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Frame<T = XYZ> {
     pub x: Length,

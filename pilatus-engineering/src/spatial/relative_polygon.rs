@@ -4,7 +4,7 @@ use pilatus::Percentage;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, PartialEq, sealedstruct::IntoSealed, Deserialize, Serialize, Clone)]
+#[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
 pub struct RelativePolygon(pub Vec<(Percentage, Percentage)>);
 
 impl RelativePolygon {
