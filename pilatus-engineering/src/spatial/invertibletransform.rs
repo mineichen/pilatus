@@ -1,7 +1,7 @@
 use sealedstruct::ValidationError;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, sealedstruct::SealSimple)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, sealedstruct::Seal)]
 #[serde(deny_unknown_fields)]
 pub struct InvertibleTransformRaw {
     pub m11: f64,

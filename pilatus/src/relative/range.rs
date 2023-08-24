@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::Percentage;
 
 /// Non-Empty Range
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, sealedstruct::SealSimple)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, sealedstruct::Seal)]
 #[serde(deny_unknown_fields)]
 pub struct RelativeRangeRaw {
     pub from: Percentage,

@@ -4,7 +4,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use sealedstruct::{SealSimple, ValidationResultExtensions, Validator};
+use sealedstruct::{Seal, ValidationResultExtensions, Validator};
 use serde::{Deserialize, Serialize};
 
 use super::{device_config::DeviceConfig, ord_hash_map::OrdHashMap};
@@ -13,7 +13,7 @@ use crate::{
     Name, RecipeId, UntypedDeviceParamsWithVariables,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize, SealSimple)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Seal)]
 #[serde(deny_unknown_fields)]
 pub struct RecipeMetadataRaw {
     pub new_id: RecipeId,

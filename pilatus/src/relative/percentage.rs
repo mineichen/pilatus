@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, PartialOrd, Clone, Copy, Serialize, Deserialize, sealedstruct::SealSimple)]
+#[derive(PartialEq, PartialOrd, Clone, Copy, Serialize, Deserialize, sealedstruct::Seal)]
 pub struct PercentageRaw(f64);
 
 impl sealedstruct::Validator for PercentageRaw {

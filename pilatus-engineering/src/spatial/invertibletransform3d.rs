@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::Frame;
 use crate::{Angle, Length, XYZ, ZYX};
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, sealedstruct::SealSimple)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, sealedstruct::Seal)]
 #[serde(deny_unknown_fields)]
 pub struct InvertibleTransform3dRaw {
     pub m11: f64,

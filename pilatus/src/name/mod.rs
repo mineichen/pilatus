@@ -6,16 +6,7 @@ use serde::{Deserialize, Serialize};
 pub(crate) mod name_wrapper;
 
 #[derive(
-    PartialEq,
-    Eq,
-    Debug,
-    PartialOrd,
-    Ord,
-    Clone,
-    Hash,
-    sealedstruct::SealSimple,
-    Serialize,
-    Deserialize,
+    PartialEq, Eq, Debug, PartialOrd, Ord, Clone, Hash, sealedstruct::Seal, Serialize, Deserialize,
 )]
 pub struct NameRaw(String);
 
