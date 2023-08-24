@@ -102,7 +102,7 @@ async fn stream_image_handler(
     Query(StreamQuery { device_id }): Query<StreamQuery>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-    debug!("Start streaming images");
+    debug!("Start streaming images: {device_id:?}");
     DefaultImageStreamer::stream_image(upgrade, device_id, actor_system, |x| async { Ok(x.image) })
         .await
         .map_err(|e| {
@@ -116,7 +116,7 @@ async fn stream_localizable_image_handler(
     Query(StreamQuery { device_id }): Query<StreamQuery>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-    debug!("Start streaming images");
+    debug!("Start streaming images: {device_id:?}");
     LocalizableImageStreamer::stream_image(upgrade, device_id, actor_system, |x| async {
         Ok(x.image)
     })
