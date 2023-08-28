@@ -90,7 +90,6 @@ impl<X: Into<TransactionError>> From<X> for ChangeDeviceParamsTransactionError {
 
 const RECIPES_FILE_NAME: &str = "recipes.json";
 
-// Todo: Move into "service"-folder with service_builder as submodule
 pub struct RecipeServiceImpl {
     path: PathBuf,
     recipes: Arc<Mutex<Recipes>>,
