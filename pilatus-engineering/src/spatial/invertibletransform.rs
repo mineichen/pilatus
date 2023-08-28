@@ -14,9 +14,7 @@ pub struct InvertibleTransformRaw {
 
 impl sealedstruct::Validator for InvertibleTransformRaw {
     fn check(&self) -> sealedstruct::Result<()> {
-        let inner = InvertibleTransform::new_unchecked(self.clone());
-
-        (inner.determinant() != 0.)
+        (self.determinant() != 0.)
             .then_some(())
             .ok_or_else(|| ValidationError::new("Matrix is not invertible").into())
     }
@@ -43,7 +41,9 @@ impl InvertibleTransform {
             m32: 0.,
         })
     }
+}
 
+impl InvertibleTransformRaw {
     // Other parts cancel out with the last row being (0,0,1)
     fn determinant(&self) -> f64 {
         self.m11 * self.m22 - self.m21 * self.m12

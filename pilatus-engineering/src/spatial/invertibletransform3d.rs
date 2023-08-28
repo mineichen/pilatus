@@ -23,7 +23,7 @@ pub struct InvertibleTransform3dRaw {
 
 impl sealedstruct::Validator for InvertibleTransform3dRaw {
     fn check(&self) -> sealedstruct::Result<()> {
-        let det = InvertibleTransform3d::new_unchecked(self.clone()).determinant();
+        let det = self.determinant();
         (det != 0.)
             .then_some(())
             .ok_or_else(|| ValidationError::new("Matrix is not invertible").into())
@@ -42,6 +42,9 @@ impl InvertibleTransform3d {
             Angle::try_from_rad_wrap(cr).expect("calculated angles are valid"),
         )
     }
+}
+
+impl InvertibleTransform3dRaw {
     fn determinant(&self) -> f64 {
         self.m11 * self.m22 * self.m33
             - self.m11 * self.m32 * self.m23
