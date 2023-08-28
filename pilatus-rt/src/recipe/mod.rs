@@ -18,9 +18,10 @@ use pilatus::{
     RecipeMetadata, RecipeService, RecipeServiceTrait, Recipes, TransactionError,
     TransactionOptions, UntypedDeviceParamsWithVariables, VariableError, Variables, VariablesPatch,
 };
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::{
     fs,
+    io::AsyncRead,
     sync::{broadcast, Mutex},
 };
 use tracing::{debug, error, trace};
@@ -344,10 +345,9 @@ impl RecipeServiceImpl {
             b_sorted.sort();
             r_sorted.sort();
             for (a, b) in b_sorted.into_iter().zip(r_sorted) {
-                // todo: Don't read entire file into Memory
-                let a = tokio::fs::read(a).await?;
-                let b = tokio::fs::read(b).await?;
-                if a != b {
+                let mut a = tokio::fs::File::open(a).await?;
+                let mut b = tokio::fs::File::open(b).await?;
+                if !is_content_equal(a, b).await? {
                     Err(UncommittedChangesError)?;
                 }
             }
@@ -606,14 +606,76 @@ pub(crate) mod unstable {
 #[cfg(any(test, feature = "unstable"))]
 pub use unstable::*;
 
+async fn is_content_equal(a: impl AsyncRead, b: impl AsyncRead) -> std::io::Result<bool> {
+    let mut a = std::pin::pin!(a);
+    let mut b = std::pin::pin!(b);
+    let mut remaining_a = 0;
+    let mut remaining_b = 0;
+    let mut buf_a = [0; 4096];
+    let mut buf_b = [0; 4096];
+
+    loop {
+        let (a_bytes, b_bytes) = futures::future::join(
+            a.read(&mut buf_a[remaining_a..]),
+            b.read(&mut buf_b[remaining_b..]),
+        )
+        .await;
+        let a_bytes = a_bytes? + remaining_a;
+        let b_bytes = b_bytes? + remaining_b;
+        let min = a_bytes.min(b_bytes);
+        if min == 0 {
+            return Ok(a_bytes == b_bytes);
+        } else if buf_a[..min] != buf_b[..min] {
+            return Ok(false);
+        } else {
+            remaining_a = a_bytes - min;
+            remaining_b = b_bytes - min;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
     use serde::Deserialize;
     use serde_json::json;
 
     use pilatus::{RelativeFilePath, UpdateParamsMessageError};
 
     use super::*;
+
+    #[tokio::test]
+    async fn with_multiple_lengths() {
+        let a = [0; 4098];
+        let b = [0; 4097];
+        assert!(
+            !is_content_equal(std::io::Cursor::new(a), std::io::Cursor::new(b))
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn with_multiple_pages() {
+        let a = [0; 4098];
+        let mut b = [0; 4098];
+        *b.last_mut().unwrap() = 1;
+        assert!(
+            !is_content_equal(std::io::Cursor::new(a), std::io::Cursor::new(b))
+                .await
+                .unwrap()
+        );
+    }
+    #[tokio::test]
+    async fn with_multiple_same_pages() {
+        let a = [0; 4098];
+        let b = [0; 4098];
+        assert!(
+            is_content_equal(std::io::Cursor::new(a), std::io::Cursor::new(b))
+                .await
+                .unwrap()
+        );
+    }
 
     #[tokio::test]
     async fn change_to_new_variable() -> anyhow::Result<()> {
