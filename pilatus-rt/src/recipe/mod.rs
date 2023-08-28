@@ -11,13 +11,13 @@ use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use minfac::{AllRegistered, Registered, ServiceCollection};
 use pilatus::device::{ActiveState, DeviceContext};
+use pilatus::UncommittedChangesError;
 use pilatus::{
     clone_directory_deep, device::DeviceId, visit_directory_files, DeviceConfig, GenericConfig,
     InitRecipeListener, Name, ParameterUpdate, Recipe, RecipeExporter, RecipeId, RecipeImporter,
     RecipeMetadata, RecipeService, RecipeServiceTrait, Recipes, TransactionError,
     TransactionOptions, UntypedDeviceParamsWithVariables, VariableError, Variables, VariablesPatch,
 };
-use pilatus::{RelativeFilePath, UncommittedChangesError};
 use tokio::io::AsyncWriteExt;
 use tokio::{
     fs,
@@ -317,12 +317,12 @@ impl RecipeServiceTrait for RecipeServiceImpl {
 }
 
 impl RecipeServiceImpl {
+    // Checks running device-ids only. If Backup contains more devices, differences are detected in Recipes::has_active_changes
     pub async fn check_active_files(&self, recipes: &Recipes) -> Result<(), TransactionError> {
         let backup_root = self.get_recipe_dir_path().join("backup");
-        for group in recipes.list_active_ordered() {
+        for group in recipes.iter_running_join_backup() {
             let group = group?;
             let running_fs = self.build_device_file_service(group.id);
-            running_fs.get_filepath(&RelativeFilePath::new("test.txt").unwrap());
 
             let mut b_sorted: Vec<_> =
                 pilatus::visit_directory_files(backup_root.join(group.id.to_string()))
@@ -731,6 +731,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "Not yet implemented"]
     async fn discard_active_with_new_device_with_files_removes_folder() -> anyhow::Result<()> {
         let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();

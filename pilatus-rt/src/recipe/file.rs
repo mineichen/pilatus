@@ -12,10 +12,7 @@ use pilatus::{
     device::DeviceId, FileService, FileServiceBuilder, FileServiceTrait, RelativeDirPath,
     RelativeFilePath, TransactionError,
 };
-use tokio::{
-    fs::{self, File},
-    io::{AsyncReadExt, AsyncWriteExt},
-};
+use tokio::{fs, io::AsyncReadExt};
 use tracing::trace;
 
 use super::RecipeServiceImpl;

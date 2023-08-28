@@ -102,25 +102,22 @@ impl Recipes {
         self.active_backup = self.active().1.clone();
     }
 
-    pub fn list_active_ordered(
+    pub fn iter_running_join_backup(
         &self,
     ) -> impl Iterator<Item = Result<ListActiveRecipesItem<'_>, UncommittedChangesError>> {
         self.active_without_id()
             .devices
-            // Todo: Ignore ordering (this is done in recipe::has_active_changes)
-            .iter_ordered()
-            .zip(self.active_backup.devices.iter_ordered())
-            .map(|x| {
-                let ((running_id, running), (backup_id, backup)) = x;
-                if running_id == backup_id {
-                    Ok(ListActiveRecipesItem {
-                        id: *running_id,
-                        running,
-                        backup,
-                    })
-                } else {
-                    Err(UncommittedChangesError)
-                }
+            .iter_unordered()
+            .map(|(running_id, running)| {
+                let backup = self
+                    .active_backup
+                    .device_by_id(*running_id)
+                    .map_err(|_| UncommittedChangesError)?;
+                Ok(ListActiveRecipesItem {
+                    id: *running_id,
+                    running,
+                    backup,
+                })
             })
     }
 
