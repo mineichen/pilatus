@@ -20,6 +20,24 @@ pub struct InvertibleTransform3dRaw {
     pub m42: f64,
     pub m43: f64,
 }
+impl Default for InvertibleTransform3d {
+    fn default() -> Self {
+        Self(InvertibleTransform3dRaw {
+            m11: 1.0,
+            m12: 0.0,
+            m13: 0.0,
+            m21: 0.0,
+            m22: 1.0,
+            m23: 0.0,
+            m31: 0.0,
+            m32: 0.0,
+            m33: 1.0,
+            m41: 0.0,
+            m42: 0.0,
+            m43: 0.0,
+        })
+    }
+}
 
 impl sealedstruct::Validator for InvertibleTransform3dRaw {
     fn check(&self) -> sealedstruct::Result<()> {
@@ -100,6 +118,20 @@ impl private::AngleExtractor for ZYX {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_does_nothing() {
+        let calculated_frame = InvertibleTransform3d::default().to_frame::<XYZ>();
+        let expected_frame = Frame::<XYZ>::new(
+            Length::from_mm(0.),
+            Length::from_mm(0.),
+            Length::from_mm(0.),
+            Angle::try_from_deg(0.).unwrap(),
+            Angle::try_from_deg(0.).unwrap(),
+            Angle::try_from_deg(0.).unwrap(),
+        );
+        assert_eq!(calculated_frame, expected_frame);
+    }
 
     #[test]
     #[rustfmt::skip]
