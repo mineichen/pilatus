@@ -115,6 +115,6 @@ async fn with_variables() {
         panic!("Expected ConflictingRecipes-error, got {r:?}");
     };
 
-    assert_eq!(1, rs.get_all().await.iter().count());
+    assert_eq!(1, rs.state().await.recipes().iter_without_backup().count());
     //importer.apply(&rs, IntoMergeStrategy::Replace)
 }

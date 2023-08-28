@@ -27,10 +27,11 @@ impl super::MergeStrategy for Duplicate {
     ) -> BoxFuture<'a, Result<(), AlreadyExistsError>> {
         async move {
             let (insert_id, to_insert) = if ctx.recipes_copy.has_recipe(&recipe_id) {
-                let (new_id, r, did_map) = ctx.recipes_copy.build_duplicate(recipe_id, &recipe);
-                self.device_id_map.extend(did_map);
+                let (new_id, duplicate) = ctx.recipes_copy.build_duplicate(recipe_id, &recipe);
+                let duplicate = duplicate.into_inner();
+                self.device_id_map.extend(duplicate.mappings);
 
-                (new_id, r)
+                (new_id, duplicate.recipe)
             } else {
                 (recipe_id, recipe)
             };

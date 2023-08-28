@@ -61,12 +61,11 @@ impl Settings {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
 
     #[tokio::test]
     #[cfg(feature = "tokio")]
     async fn read_write_settings() -> anyhow::Result<()> {
-        let tmp = tempdir()?;
+        let tmp = tempfile::tempdir()?;
         let filepath = tmp.path().join("settings.json");
         let settings = crate::Settings::new(&filepath)?;
         let Err(_) = settings.get::<i32>("foo") else {

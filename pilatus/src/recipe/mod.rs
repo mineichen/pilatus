@@ -1,5 +1,6 @@
 mod device;
 mod device_config;
+mod duplicate_recipe;
 mod error;
 mod file;
 mod ord_hash_map;
@@ -11,7 +12,7 @@ mod variable;
 
 pub use device::*;
 pub use device_config::DeviceConfig;
-
+pub use duplicate_recipe::*;
 pub use error::*;
 pub use file::*;
 pub use recipe::{Recipe, RecipeMetadata};

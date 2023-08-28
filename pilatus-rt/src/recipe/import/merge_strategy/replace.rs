@@ -26,9 +26,9 @@ impl super::MergeStrategy for Replace {
         recipe: Recipe,
     ) -> BoxFuture<'a, Result<(), AlreadyExistsError>> {
         async move {
-            if let Some(x) = ctx.recipes_copy.remove(&new_id) {
+            if let Ok(x) = ctx.recipes_copy.remove(&new_id) {
                 self.delete_devices
-                    .extend(x.devices.iter().map(|(id, _)| id));
+                    .extend(x.devices.iter_unordered().map(|(id, _)| id));
             }
             recipes_try_add_new_with_id(
                 ctx.recipes_copy,

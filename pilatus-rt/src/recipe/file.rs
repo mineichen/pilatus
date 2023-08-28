@@ -9,16 +9,30 @@ use futures::{
 };
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
-    FileServiceBuilder, FileServiceTrait, RelativeDirPath, RelativeFilePath, TransactionError,
+    device::DeviceId, FileService, FileServiceBuilder, FileServiceTrait, RelativeDirPath,
+    RelativeFilePath, TransactionError,
 };
-use tokio::{fs, io::AsyncReadExt};
+use tokio::{
+    fs::{self, File},
+    io::{AsyncReadExt, AsyncWriteExt},
+};
 use tracing::trace;
 
 use super::RecipeServiceImpl;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<Registered<Arc<RecipeServiceImpl>>>()
-        .register(|r| TokioFileService::builder(r.get_recipe_dir_path()));
+        .register(|r| r.build_file_service());
+}
+
+impl RecipeServiceImpl {
+    pub(super) fn build_file_service(&self) -> FileServiceBuilder {
+        TokioFileService::builder(self.get_recipe_dir_path())
+    }
+
+    pub(super) fn build_device_file_service(&self, device_id: DeviceId) -> FileService<()> {
+        self.build_file_service().build(device_id)
+    }
 }
 
 #[async_trait::async_trait]
@@ -26,6 +40,20 @@ impl FileServiceTrait for TokioFileService {
     async fn has_file(&self, filename: &RelativeFilePath) -> Result<bool, TransactionError> {
         let s = self.get_filepath(filename);
         Ok(fs::metadata(s).await.is_ok())
+    }
+
+    async fn list_recursive(&self) -> std::io::Result<Vec<PathBuf>> {
+        pilatus::visit_directory_files(self.get_device_dir())
+            .take_while(|f| {
+                std::future::ready(if let Err(e) = f {
+                    e.kind() != std::io::ErrorKind::NotFound
+                } else {
+                    true
+                })
+            })
+            .map(|f| f.map(|f| f.path()))
+            .try_collect()
+            .await
     }
     async fn add_file_unchecked(
         &mut self,

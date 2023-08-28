@@ -67,5 +67,5 @@ async fn replace_self_allowed() {
             .count()
             .await
     );
-    assert_eq!(2, rs.get_all().await.iter().count());
+    assert_eq!(2, rs.state().await.recipes().iter_without_backup().count());
 }

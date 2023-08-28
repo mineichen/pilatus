@@ -154,7 +154,7 @@ mod tests {
     fn serialize_and_deserialize_some() {
         let x = StableHash(NonZeroU64::new(u64::MAX / 2).unwrap());
         let s = serde_json::to_string(&x).unwrap();
-        let x_new = serde_json::from_str(dbg!(&s)).unwrap();
+        let x_new = serde_json::from_str(&s).unwrap();
         assert_eq!(x, x_new);
     }
 

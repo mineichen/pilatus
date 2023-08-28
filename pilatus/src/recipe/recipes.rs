@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::io::{self, BufWriter, Read};
 use std::path::Path;
@@ -10,14 +9,18 @@ use tracing::trace;
 use crate::{device::DeviceId, DeviceConfig, Name, RecipeId};
 use crate::{TransactionError, UntypedDeviceParamsWithVariables};
 
+use super::duplicate_recipe::DuplicateRecipe;
 use super::ord_hash_map::OrdHashMap;
 use super::recipe::Recipe;
 use super::variable::{Variables, VariablesPatch};
 
 // Ensures Recipes to be unique and that there is always an active recipe
+// The uncommitted Recipe is stored in `all` to allow changes via id to affect the temporary Recipe
 #[derive(Debug, Clone, Serialize)]
 pub struct Recipes {
     active_id: RecipeId,
+    // used to check for changes/restore
+    active_backup: Recipe,
     all: OrdHashMap<RecipeId, Recipe>,
     variables: Variables,
 }
@@ -31,6 +34,7 @@ impl<'de> Deserialize<'de> for Recipes {
         #[serde(deny_unknown_fields)]
         pub struct DeserializeRecipes {
             active_id: RecipeId,
+            active_backup: Recipe,
             all: OrdHashMap<RecipeId, Recipe>,
             variables: Variables,
         }
@@ -46,6 +50,7 @@ impl<'de> Deserialize<'de> for Recipes {
 
         Ok(Recipes {
             active_id: raw.active_id,
+            active_backup: raw.active_backup,
             all: raw.all,
             variables: raw.variables,
         })
@@ -55,9 +60,11 @@ impl<'de> Deserialize<'de> for Recipes {
 impl Default for Recipes {
     fn default() -> Self {
         let id = RecipeId::default();
+        let active = Recipe::default();
         Self {
             active_id: id.clone(),
-            all: OrdHashMap::from([(id, Recipe::default())]),
+            active_backup: active.clone(),
+            all: OrdHashMap::from([(id, active)]),
             variables: Default::default(),
         }
     }
@@ -79,23 +86,60 @@ impl AsMut<Variables> for Recipes {
 #[error("Duplicate name '{0}'")]
 pub struct DuplicateNameError(Name);
 
+pub struct ListActiveRecipesItem<'a> {
+    pub id: DeviceId,
+    pub running: &'a DeviceConfig,
+    pub backup: &'a DeviceConfig,
+}
+
 #[allow(dead_code)]
 impl Recipes {
     pub fn new() -> Self {
         Self::default()
     }
 
+    pub fn commit_active(&mut self) {
+        self.active_backup = self.active().1.clone();
+    }
+
+    pub fn list_active_ordered(
+        &self,
+    ) -> impl Iterator<Item = Result<ListActiveRecipesItem<'_>, UncommittedChangesError>> {
+        self.active_without_id()
+            .devices
+            // Todo: Ignore ordering (this is done in recipe::has_active_changes)
+            .iter_ordered()
+            .zip(self.active_backup.devices.iter_ordered())
+            .map(|x| {
+                let ((running_id, running), (backup_id, backup)) = x;
+                if running_id == backup_id {
+                    Ok(ListActiveRecipesItem {
+                        id: *running_id,
+                        running,
+                        backup,
+                    })
+                } else {
+                    Err(UncommittedChangesError)
+                }
+            })
+    }
+
     pub fn build_duplicate(
         &self,
         old_id: RecipeId,
         recipe: &Recipe,
-    ) -> (RecipeId, Recipe, HashMap<DeviceId, DeviceId>) {
-        let (recipe, mappings) = recipe.duplicate();
-        (self.get_unique_id(old_id), recipe, mappings)
+    ) -> (RecipeId, DuplicateRecipe) {
+        (self.get_unique_id(old_id), recipe.duplicate())
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&'_ RecipeId, &'_ Recipe)> {
-        self.all.iter().map(|(k, v)| (k, v))
+    pub fn iter_without_backup(&self) -> impl Iterator<Item = (&'_ RecipeId, &'_ Recipe)> {
+        self.all.iter_unordered()
+    }
+
+    pub fn iter_with_backup(&self) -> impl Iterator<Item = (&'_ RecipeId, &'_ Recipe)> {
+        [(&self.active_id, &self.active_backup)]
+            .into_iter()
+            .chain(self.all.iter_unordered())
     }
 
     pub fn find_variable_usage_in_all_recipes<'a: 'b, 'b>(
@@ -109,46 +153,79 @@ impl Recipes {
             &'a UntypedDeviceParamsWithVariables,
         ),
     > + 'b {
-        self.all.iter().flat_map(|(id, recipe)| {
-            recipe.devices.iter().filter_map(|(device_id, device)| {
-                device
-                    .params
-                    .variables_names()
-                    .any(|v| vars.contains_key(&v))
-                    .then_some((
-                        id.clone(),
-                        device.device_type.to_owned(),
-                        *device_id,
-                        &device.params,
-                    ))
-            })
+        self.iter_with_backup().flat_map(|(id, recipe)| {
+            recipe
+                .devices
+                .iter_unordered()
+                .filter_map(|(device_id, device)| {
+                    device
+                        .params
+                        .variables_names()
+                        .any(|v| vars.contains_key(&v))
+                        .then_some((
+                            id.clone(),
+                            device.device_type.to_owned(),
+                            *device_id,
+                            &device.params,
+                        ))
+                })
         })
     }
 
     pub fn recipeid_per_deviceid(&self) -> impl Iterator<Item = (DeviceId, RecipeId)> + '_ {
-        self.iter()
-            .flat_map(|(rid, v)| v.devices.iter().map(move |(id, _)| (*id, rid.clone())))
+        self.iter_with_backup().flat_map(|(rid, v)| {
+            v.devices
+                .iter_unordered()
+                .map(move |(id, _)| (*id, rid.clone()))
+        })
     }
 
-    pub fn set_active(&mut self, id: &RecipeId) -> bool {
-        if !self.has_recipe(id) {
-            false
+    pub fn has_uncommitted_changes(&self, id: &RecipeId) -> bool {
+        &self.active_id == id && self.has_active_changes()
+    }
+
+    pub fn has_active_changes(&self) -> bool {
+        let running = self.all.get(&self.active_id).expect("Must always exist");
+        if running.count_devices() != self.active_backup.count_devices() {
+            return true;
+        }
+        self.active_backup
+            .devices
+            .iter_ordered()
+            .zip(running.devices.iter_ordered())
+            .any(|(a, b)| a != b)
+    }
+
+    pub fn set_active(&mut self, id: &RecipeId) -> Result<Vec<DeviceId>, SetActiveError> {
+        if let Some(recipe) = self.get_with_id(id) {
+            if self.has_active_changes() {
+                Err((UncommittedChangesError).into())
+            } else {
+                let ids = recipe
+                    .devices
+                    .iter_unordered()
+                    .map(|(id, _)| *id)
+                    .collect::<Vec<_>>();
+                self.active_backup = recipe.clone();
+                self.active_id = id.clone();
+                Ok(ids)
+            }
         } else {
-            self.active_id = id.clone();
-            true
+            Err(SetActiveError::UnknownRecipe(id.clone()))
         }
     }
 
-    pub fn has_device_on_active(&self, id: impl Borrow<DeviceId>) -> bool {
+    pub fn has_device_on_running(&self, id: impl Borrow<DeviceId>) -> bool {
         self.active().1.has_device(id.borrow())
     }
 
     pub fn active(&self) -> (RecipeId, &Recipe) {
-        let id = &self.active_id;
-        (
-            id.clone(),
-            self.all.get(id).expect("Active must always exist"),
-        )
+        (self.active_id.clone(), self.active_without_id())
+    }
+    fn active_without_id(&self) -> &Recipe {
+        self.all
+            .get(&self.active_id)
+            .expect("Active must always exist")
     }
 
     pub fn get_active(&mut self) -> (RecipeId, &mut Recipe) {
@@ -174,11 +251,10 @@ impl Recipes {
             return Err(TransactionError::UnknownRecipeId(old_id.clone()));
         };
 
-        self.all.insert(new_id.clone(), recipe);
-
         if was_active_id {
-            self.active_id = new_id;
+            self.active_id = new_id.clone();
         }
+        self.all.insert(new_id, recipe);
         Ok(())
     }
 
@@ -218,15 +294,21 @@ impl Recipes {
             Ok(())
         }
     }
-
-    pub fn remove(&mut self, id: &RecipeId) -> Option<Recipe> {
-        self.all.remove(id)
+    pub fn remove(&mut self, id: &RecipeId) -> Result<Recipe, RemoveRecipeError> {
+        if id == &self.get_active().0 {
+            Err(RemoveRecipeError::IsActive)
+        } else {
+            self.all
+                .remove(id)
+                .ok_or_else(|| RemoveRecipeError::UnknownRecipe(id.clone()))
+        }
     }
 
     pub fn new_with_recipe(r: Recipe) -> Self {
         let id = RecipeId::default();
         Recipes {
             active_id: id.clone(),
+            active_backup: r.clone(),
             all: OrdHashMap::from([(id, r)]),
             variables: Default::default(),
         }
@@ -254,6 +336,50 @@ impl Recipes {
         }
     }
 }
+#[derive(thiserror::Error, Debug)]
+#[error("Uncommitted changes on active recipe")]
+pub struct UncommittedChangesError;
+
+impl From<UncommittedChangesError> for TransactionError {
+    fn from(_: UncommittedChangesError) -> Self {
+        TransactionError::Other(anyhow::anyhow!("Uncommitted changes on active recipe"))
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SetActiveError {
+    #[error("{0}")]
+    UncommittedChanges(#[from] UncommittedChangesError),
+
+    #[error("Unknown Recipe")]
+    UnknownRecipe(RecipeId),
+}
+
+impl From<SetActiveError> for TransactionError {
+    fn from(value: SetActiveError) -> Self {
+        match value {
+            SetActiveError::UncommittedChanges(x) => x.into(),
+            SetActiveError::UnknownRecipe(id) => TransactionError::UnknownRecipeId(id),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RemoveRecipeError {
+    #[error("Cannot delete active recipe")]
+    IsActive,
+    #[error("Unknown Recipe")]
+    UnknownRecipe(RecipeId),
+}
+
+impl From<RemoveRecipeError> for TransactionError {
+    fn from(value: RemoveRecipeError) -> Self {
+        match value {
+            RemoveRecipeError::IsActive => TransactionError::Other(anyhow::anyhow!("{value}")),
+            RemoveRecipeError::UnknownRecipe(id) => TransactionError::UnknownRecipeId(id),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -269,6 +395,26 @@ mod tests {
         recipes.update_recipe_id(&old_id, new_id.clone()).unwrap();
         let (current_id, _) = recipes.get_active();
         assert_eq!(current_id, new_id);
+    }
+
+    #[test]
+    fn set_active_with_uncommitted_changes_fails() {
+        let mut recipes = Recipes::new();
+        let other_id = recipes.add_new(Recipe::default());
+        let (_, r) = recipes.get_active();
+        r.add_device(DeviceConfig::mock("param"));
+        assert!(recipes.set_active(&other_id).is_err());
+    }
+
+    #[test]
+    fn change_recipe_id_doesnt_reset_active_backup() {
+        let mut recipes = Recipes::new();
+        let (old_id, r) = recipes.get_active();
+        r.add_device(DeviceConfig::mock("param"));
+        assert!(recipes.has_uncommitted_changes(&old_id));
+        let new_id = old_id.suggest_unique().next().unwrap();
+        recipes.update_recipe_id(&old_id, new_id.clone()).unwrap();
+        assert!(recipes.has_uncommitted_changes(&new_id));
     }
 
     #[test]

@@ -7,6 +7,7 @@ use minfac::ServiceCollection;
 
 use crate::{RecipeId, UntypedDeviceParamsWithVariables, UpdateParamsMessageError, Variables};
 
+mod active_state;
 #[cfg(feature = "tokio")]
 mod minfac_ext;
 #[cfg(feature = "tokio")]
@@ -15,6 +16,7 @@ mod system;
 #[cfg(feature = "tokio")]
 mod validation;
 
+pub use active_state::*;
 pub type DeviceResult = Result<()>;
 #[cfg(feature = "tokio")]
 pub use minfac_ext::*;

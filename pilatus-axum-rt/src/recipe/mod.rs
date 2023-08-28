@@ -31,6 +31,8 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
         .http("/get_all", |m| m.get(get_all))
         .http("/new_default", |m| m.put(add_default_recipe))
         .http("/stream",|m| m.get(stream_recipe_update_handler))
+        .http("/commit", |m| m.put(commit_active))
+        .http("/restore", |m| m.put(restore_active))
         .http("/:id/meta", |m| m.put(update_recipe_metadata))
         .http("/:id/clone", |m| m.put(clone_recipe))
         .http("/:id", |m| m.delete(delete_recipe))
@@ -149,7 +151,7 @@ async fn add_default_recipe(
 }
 
 async fn get_all(InjectRegistered(service): InjectRegistered<RecipeService>) -> impl IntoResponse {
-    let recipes = service.get_all().await;
+    let recipes = service.state().await;
     Json(recipes)
 }
 
@@ -198,6 +200,25 @@ async fn update_recipe_metadata(
 #[derive(serde::Deserialize)]
 struct TransactionIdWrapper {
     key: Option<Uuid>,
+}
+
+async fn commit_active(
+    InjectRegistered(service): InjectRegistered<RecipeService>,
+    Query(options): Query<TransactionIdWrapper>,
+) -> Result<(), (StatusCode, String)> {
+    service
+        .commit_active(options.key.unwrap_or_else(Uuid::new_v4))
+        .await
+        .map_err(transaction_error_to_http_resonse)
+}
+
+async fn restore_active(
+    InjectRegistered(service): InjectRegistered<RecipeService>,
+) -> Result<(), (StatusCode, String)> {
+    service
+        .restore_active()
+        .await
+        .map_err(transaction_error_to_http_resonse)
 }
 
 async fn restore_committed(

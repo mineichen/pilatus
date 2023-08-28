@@ -99,6 +99,7 @@ impl<T> DerefMut for FileService<T> {
 #[async_trait::async_trait]
 pub trait FileServiceTrait {
     async fn has_file(&self, filename: &RelativeFilePath) -> Result<bool, TransactionError>;
+    async fn list_recursive(&self) -> std::io::Result<Vec<PathBuf>>;
     async fn add_file_unchecked(
         &mut self,
         file_path: &RelativeFilePath,

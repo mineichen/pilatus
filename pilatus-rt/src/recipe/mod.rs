@@ -5,17 +5,20 @@ use std::io::{self, ErrorKind};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use async_trait::async_trait;
 use futures::stream::BoxStream;
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use minfac::{AllRegistered, Registered, ServiceCollection};
-use pilatus::device::DeviceContext;
+use pilatus::device::{ActiveState, DeviceContext};
 use pilatus::{
     clone_directory_deep, device::DeviceId, visit_directory_files, DeviceConfig, GenericConfig,
     InitRecipeListener, Name, ParameterUpdate, Recipe, RecipeExporter, RecipeId, RecipeImporter,
     RecipeMetadata, RecipeService, RecipeServiceTrait, Recipes, TransactionError,
     TransactionOptions, UntypedDeviceParamsWithVariables, VariableError, Variables, VariablesPatch,
 };
+use pilatus::{RelativeFilePath, UncommittedChangesError};
+use tokio::io::AsyncWriteExt;
 use tokio::{
     fs,
     sync::{broadcast, Mutex},
@@ -86,6 +89,7 @@ impl<X: Into<TransactionError>> From<X> for ChangeDeviceParamsTransactionError {
 
 const RECIPES_FILE_NAME: &str = "recipes.json";
 
+// Todo: Move into "service"-folder with service_builder as submodule
 pub struct RecipeServiceImpl {
     path: PathBuf,
     recipes: Arc<Mutex<Recipes>>,
@@ -153,15 +157,8 @@ impl RecipeServiceTrait for RecipeServiceImpl {
         options: TransactionOptions,
     ) -> Result<(), TransactionError> {
         let mut recipes = self.recipes.lock().await;
-        if recipe_id == recipes.get_active().0 {
-            return Err(TransactionError::Other(anyhow::anyhow!(
-                "Cannot delete active recipe"
-            )));
-        }
 
-        let removed = recipes
-            .remove(&recipe_id)
-            .ok_or(TransactionError::UnknownRecipeId(recipe_id))?;
+        let removed = recipes.remove(&recipe_id)?;
         let path = self.get_recipe_dir_path();
         for device_id in removed.devices.keys() {
             // Ok, as RecipeService creates the subfolder (by default "recipe") and therefore remove_dir_all shouldn't accidentally remove too much
@@ -185,10 +182,9 @@ impl RecipeServiceTrait for RecipeServiceImpl {
         let mut recipes = self.recipes.lock().await;
 
         let original = recipes.get_with_id_or_error(&recipe_id)?;
-        let (new_recipe_id, mut new_recipe, device_mappings) =
-            recipes.build_duplicate(recipe_id, original);
+        let (new_recipe_id, duplicate) = recipes.build_duplicate(recipe_id, original);
 
-        for (old_id, new_id) in device_mappings {
+        for (old_id, new_id) in duplicate.mappings.iter() {
             let path = self.get_recipe_dir_path();
             let src_path = path.join(old_id.to_string());
             let dst_path = path.join(new_id.to_string());
@@ -200,16 +196,18 @@ impl RecipeServiceTrait for RecipeServiceImpl {
                 }
             }
         }
-
-        new_recipe.created = chrono::Utc::now();
-        recipes.add_inexistent(new_recipe_id.clone(), new_recipe.clone());
+        let mut duplicate = duplicate.into_inner();
+        duplicate.recipe.created = chrono::Utc::now();
+        recipes.add_inexistent(new_recipe_id.clone(), duplicate.recipe.clone());
 
         self.save_config(&recipes, options.key).await?;
-        Ok((new_recipe_id, new_recipe))
+        Ok((new_recipe_id, duplicate.recipe))
     }
-    async fn get_all(&self) -> Recipes {
+    async fn state(&self) -> ActiveState {
         let recipes = self.recipes.lock().await;
-        recipes.clone()
+        let has_uncommitted_changes =
+            self.check_active_files(&recipes).await.is_err() || recipes.has_active_changes();
+        ActiveState::new(recipes.clone(), has_uncommitted_changes)
     }
 
     async fn set_recipe_to_active(
@@ -218,14 +216,17 @@ impl RecipeServiceTrait for RecipeServiceImpl {
         options: TransactionOptions,
     ) -> Result<(), TransactionError> {
         let mut recipes = self.recipes.lock().await;
-        if recipes.set_active(&id) {
-            self.save_config(&recipes, options.key)
-                .await
-                .map_err(Into::into)
-        } else {
-            Err(TransactionError::UnknownRecipeId(id))
-        }
+
+        self.check_active_files(&recipes).await?;
+
+        let active_devices = recipes.set_active(&id)?;
+        self.copy_backup_files(active_devices).await?;
+
+        self.save_config(&recipes, options.key)
+            .await
+            .map_err(Into::into)
     }
+
     async fn update_device_params(
         &self,
         recipe_id: RecipeId,
@@ -246,6 +247,29 @@ impl RecipeServiceTrait for RecipeServiceImpl {
         self.save_config(&recipes, options.key).await?;
         Ok(())
     }
+
+    async fn commit_active(&self, transaction_key: Uuid) -> Result<(), TransactionError> {
+        let mut recipes = self.recipes.lock().await;
+
+        self.copy_backup_files(
+            recipes
+                .active()
+                .1
+                .devices
+                .iter_unordered()
+                .map(|(id, _)| *id)
+                .collect::<Vec<_>>(),
+        )
+        .await?;
+        recipes.commit_active();
+        self.save_config(&recipes, transaction_key).await?;
+        Ok(())
+    }
+
+    async fn restore_active(&self) -> Result<(), TransactionError> {
+        Err(TransactionError::Other(anyhow!("Not yet implemented")))
+    }
+
     async fn restore_committed(
         &self,
         recipe_id: RecipeId,
@@ -253,14 +277,12 @@ impl RecipeServiceTrait for RecipeServiceImpl {
         transaction: Uuid,
     ) -> Result<(), TransactionError> {
         let mut recipes = self.recipes.lock().await;
-        // Even if we get an immutable ref in restore_committed(), recipes is still borrowed mut (Current compiler 'bug')
-        let restored = {
-            let device = recipes
-                .get_with_id_or_error_mut(&recipe_id)?
-                .get_device_by_id(device_id)?;
-
-            device.restore_committed()?.clone()
-        };
+        let restored = recipes
+            .get_with_id_or_error_mut(&recipe_id)?
+            .get_device_by_id(device_id)?
+            .restore_committed()?
+            // Even if we get an immutable ref in restore_committed(), recipes is still borrowed mut (Current compiler 'bug')
+            .clone();
         let variables = self
             .apply_params(device_id, &restored, Default::default(), &recipes)
             .await?;
@@ -295,6 +317,67 @@ impl RecipeServiceTrait for RecipeServiceImpl {
 }
 
 impl RecipeServiceImpl {
+    pub async fn check_active_files(&self, recipes: &Recipes) -> Result<(), TransactionError> {
+        let backup_root = self.get_recipe_dir_path().join("backup");
+        for group in recipes.list_active_ordered() {
+            let group = group?;
+            let running_fs = self.build_device_file_service(group.id);
+            running_fs.get_filepath(&RelativeFilePath::new("test.txt").unwrap());
+
+            let mut b_sorted: Vec<_> =
+                pilatus::visit_directory_files(backup_root.join(group.id.to_string()))
+                    .take_while(|f| {
+                        std::future::ready(if let Err(e) = f {
+                            e.kind() != std::io::ErrorKind::NotFound
+                        } else {
+                            true
+                        })
+                    })
+                    .map(|f| f.map(|f| f.path()))
+                    .try_collect()
+                    .await?;
+            let mut r_sorted = running_fs.list_recursive().await?;
+            if b_sorted.len() != r_sorted.len() {
+                Err(UncommittedChangesError)?;
+            }
+
+            b_sorted.sort();
+            r_sorted.sort();
+            for (a, b) in b_sorted.into_iter().zip(r_sorted) {
+                // todo: Don't read entire file into Memory
+                let a = tokio::fs::read(a).await?;
+                let b = tokio::fs::read(b).await?;
+                if a != b {
+                    Err(UncommittedChangesError)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn copy_backup_files(
+        &self,
+        device_ids: impl IntoIterator<Item = DeviceId>,
+    ) -> Result<(), TransactionError> {
+        let path = self.get_recipe_dir_path();
+        let dst_folder = path.join("backup");
+        tokio::fs::remove_dir_all(&dst_folder).await.ok();
+
+        for device_id in device_ids {
+            let device_id_str = device_id.to_string();
+            let src_path = path.join(&device_id_str);
+            let dst_path = dst_folder.join(device_id_str);
+            if let Ok(meta) = fs::metadata(&src_path).await {
+                if meta.is_dir() {
+                    clone_directory_deep(&src_path, dst_path)
+                        .await
+                        .map_err(TransactionError::from_io_producer(&src_path))?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub async fn get_owned_devices_from_active(
         &self,
     ) -> (RecipeId, Vec<(DeviceId, DeviceConfig)>, Variables) {
@@ -304,7 +387,7 @@ impl RecipeServiceImpl {
             id,
             recipe
                 .devices
-                .iter()
+                .iter_unordered()
                 .map(|(k, v)| (*k, v.clone()))
                 .collect(),
             recipes.as_ref().clone(),
@@ -353,7 +436,7 @@ impl RecipeServiceImpl {
             }
         }
 
-        if has_var_changes_on_active || recipes.has_device_on_active(device_id) {
+        if has_var_changes_on_active || recipes.has_device_on_running(device_id) {
             let edit_device_type = &recipes.get_device_or_error(device_id)?.device_type;
             self.device_actions
                 .try_apply(
@@ -378,7 +461,10 @@ impl RecipeServiceImpl {
     async fn save_config(&self, recipes: &Recipes, transaction_key: Uuid) -> Result<(), io::Error> {
         let p = self.get_recipe_file_path();
         trace!(path = ?p, "storing json (async)");
-        tokio::fs::write(p, serde_json::to_vec_pretty(recipes)?).await?;
+        let mut file = tokio::fs::File::create(p).await?;
+        file.write_all(&serde_json::to_vec_pretty(recipes)?).await?;
+        file.flush().await?;
+
         if self.update_sender.send(transaction_key).is_err() {
             debug!("Nobody is listening for recipe update");
         }
@@ -386,9 +472,7 @@ impl RecipeServiceImpl {
     }
 
     fn get_recipe_file_path(&self) -> PathBuf {
-        let mut recipe_file_path = self.path.clone();
-        recipe_file_path.push(RECIPES_FILE_NAME);
-        recipe_file_path
+        self.path.clone().join(RECIPES_FILE_NAME)
     }
 
     pub fn get_recipe_dir_path(&self) -> &PathBuf {
@@ -401,6 +485,7 @@ pub(crate) mod unstable {
     use super::{recipes::recipes_try_add_new_with_id, *};
     use pilatus::{device::DeviceId, Recipe, RecipeId, TransactionError, TransactionOptions};
     use std::{path::PathBuf, sync::Arc};
+    use tokio::fs::File;
     impl RecipeServiceImpl {
         pub fn create_temp_builder() -> (tempfile::TempDir, RecipeServiceBuilder) {
             let dir = tempfile::tempdir().unwrap();
@@ -422,7 +507,11 @@ pub(crate) mod unstable {
             tokio::fs::create_dir_all(&device_path.parent().expect("Must have a parent"))
                 .await
                 .unwrap();
-            tokio::fs::write(&device_path, content).await.unwrap();
+            let mut f = File::create(&device_path)
+                .await
+                .expect("Couldn't create file");
+            f.write_all(content).await.expect("Couldn't write content");
+            f.flush().await.expect("Couldn't flush file");
 
             device_path
         }
@@ -522,7 +611,7 @@ mod tests {
     use serde::Deserialize;
     use serde_json::json;
 
-    use pilatus::UpdateParamsMessageError;
+    use pilatus::{RelativeFilePath, UpdateParamsMessageError};
 
     use super::*;
 
@@ -616,6 +705,96 @@ mod tests {
 
         assert_eq!(dir.path().join("recipes"), rs.path);
         dir.close()?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn set_active_without_changes() -> anyhow::Result<()> {
+        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let rs = rsb.build();
+        let r1_id = rs.get_active_id().await;
+        let mut r2 = Recipe::default();
+        let r2_d1 = r2.add_device(DeviceConfig::mock(""));
+        r2.add_device(DeviceConfig::mock(
+            serde_json::json!({ "id": r2_d1.to_string() }),
+        ));
+
+        rs.build_file_service()
+            .build(r2_d1)
+            .add_file_unchecked(&RelativeFilePath::new("test.txt").unwrap(), b"test")
+            .await
+            .unwrap();
+        let r2_id = rs.add_recipe(r2, Default::default()).await?;
+        rs.set_recipe_to_active(r2_id, Default::default()).await?;
+        rs.set_recipe_to_active(r1_id, Default::default()).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn discard_active_with_new_device_with_files_removes_folder() -> anyhow::Result<()> {
+        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let rs = rsb.build();
+        let did = rs
+            .add_device_to_active_recipe(DeviceConfig::mock(""), Default::default())
+            .await?;
+        let mut fs = rs.build_file_service().build(did);
+        fs.add_file_unchecked(&RelativeFilePath::new("test.txt").unwrap(), b"test")
+            .await
+            .unwrap();
+        assert_eq!(1, fs.list_recursive().await?.len());
+        rs.restore_active().await?;
+        assert_eq!(0, fs.list_recursive().await?.len());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn set_active_forbidden_with_new_device() -> anyhow::Result<()> {
+        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let rs = rsb.build();
+        let r2_id = rs.add_recipe(Recipe::default(), Default::default()).await?;
+        rs.add_device_to_active_recipe(DeviceConfig::mock("params"), Default::default())
+            .await?;
+
+        let Err(TransactionError::Other(_)) = rs
+            .set_recipe_to_active(r2_id.clone(), Default::default())
+            .await else {
+                panic!("Expected Other error")
+            };
+
+        rs.commit_active(Default::default()).await?;
+        rs.set_recipe_to_active(r2_id, Default::default())
+            .await
+            .unwrap();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn set_active_with_fs_change() -> anyhow::Result<()> {
+        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let rs = rsb.build();
+        let mut r2 = Recipe::default();
+        let r2_d1 = r2.add_device(DeviceConfig::mock("params"));
+        let r2_id = rs.add_recipe(r2, Default::default()).await?;
+        let r1_id = rs.get_active_id().await;
+
+        rs.set_recipe_to_active(r2_id, Default::default()).await?;
+        let mut fs = rs.build_device_file_service(r2_d1);
+        fs.add_file_unchecked(&"test.txt".try_into()?, b"test")
+            .await?;
+
+        match rs
+            .set_recipe_to_active(r1_id.clone(), Default::default())
+            .await
+        {
+            Err(TransactionError::Other(_)) => {}
+            e => panic!("Unexpected: {e:?}"),
+        }
+        rs.commit_active(Default::default()).await?;
+        rs.set_recipe_to_active(r1_id, Default::default())
+            .await
+            .unwrap();
+
         Ok(())
     }
 

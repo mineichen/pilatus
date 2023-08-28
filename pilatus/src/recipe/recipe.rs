@@ -7,7 +7,9 @@ use chrono::{DateTime, Utc};
 use sealedstruct::{Seal, ValidationResultExtensions, Validator};
 use serde::{Deserialize, Serialize};
 
-use super::{device_config::DeviceConfig, ord_hash_map::OrdHashMap};
+use super::{
+    device_config::DeviceConfig, duplicate_recipe::DuplicateRecipe, ord_hash_map::OrdHashMap,
+};
 use crate::{
     device::{ActorErrorUnknownDevice, DeviceId},
     Name, RecipeId, UntypedDeviceParamsWithVariables,
@@ -45,7 +47,7 @@ impl Validator for RecipeMetadataRaw {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Recipe {
     pub created: DateTime<Utc>,
@@ -65,17 +67,17 @@ impl Default for Recipe {
 
 impl Recipe {
     /// This method replaces Uuids in the DeviceConfig too, so all links should still work
-    pub fn duplicate(&self) -> (Self, HashMap<DeviceId, DeviceId>) {
-        let mapped = self
+    pub fn duplicate(&self) -> DuplicateRecipe {
+        let mappings = self
             .devices
             .keys()
             .map(|&id| (id, DeviceId::new_v4()))
             .collect::<HashMap<_, _>>();
         let mut config = serde_json::to_string(self).expect("Always works");
-        for (old_id, new_id) in mapped.iter() {
+        for (old_id, new_id) in mappings.iter() {
             config = config.replace(&format!("\"{old_id}\""), &format!("\"{new_id}\""));
         }
-        (serde_json::from_str(&config).expect("Valid json"), mapped)
+        DuplicateRecipe::new_unwrap(mappings, serde_json::from_str(&config).expect("Valid json"))
     }
 
     pub fn has_device(&self, id: &DeviceId) -> bool {
@@ -87,6 +89,10 @@ impl Recipe {
             device_id: id,
             detail: Cow::Owned(format!("Recipe doesn't contain a device with id {id}")),
         })
+    }
+
+    pub fn count_devices(&self) -> usize {
+        self.devices.len()
     }
 
     pub fn get_device_by_id(

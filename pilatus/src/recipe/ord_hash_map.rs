@@ -10,6 +10,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 pub struct OrdHashMap<K, V>(HashMap<K, (usize, V)>);
 
+impl<K: Eq + Hash, V: PartialEq> PartialEq for OrdHashMap<K, V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
 impl<K, V> Default for OrdHashMap<K, V> {
     fn default() -> Self {
         Self(Default::default())
@@ -33,11 +39,18 @@ impl<K: Eq + Hash, V> OrdHashMap<K, V> {
         self.0.get_mut(key).map(|(_, v)| v)
     }
     /// Ordering is not guaranteed
-    pub fn iter(&self) -> impl Iterator<Item = (&'_ K, &'_ V)> {
+    pub fn iter_unordered(&self) -> impl Iterator<Item = (&'_ K, &'_ V)> {
         self.0.iter().map(|(k, (_, v))| (k, v))
     }
+
+    pub fn iter_ordered(&self) -> impl Iterator<Item = (&'_ K, &'_ V)> {
+        let mut x = self.0.iter().collect::<Vec<_>>();
+        x.sort_by_key(|(_, (v, _))| v);
+        x.into_iter().map(|(k, (_, v))| (k, v))
+    }
+
     /// Ordering is not guaranteed
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&'_ K, &'_ mut V)> {
+    pub fn iter_unordered_mut(&mut self) -> impl Iterator<Item = (&'_ K, &'_ mut V)> {
         self.0.iter_mut().map(|(k, (_, v))| (k, v))
     }
     pub fn keys(&self) -> impl Iterator<Item = &K> {
@@ -75,14 +88,12 @@ impl<const SIZE: usize, K: Eq + Hash, V> From<[(K, V); SIZE]> for OrdHashMap<K, 
     }
 }
 
-impl<K: Serialize, V: Serialize> Serialize for OrdHashMap<K, V> {
+impl<K: Serialize + Eq + Hash, V: Serialize> Serialize for OrdHashMap<K, V> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let mut x = self.0.iter().collect::<Vec<_>>();
-        x.sort_by_key(|(_, (v, _))| v);
-        serializer.collect_map(x.into_iter().map(|(k, (_, v))| (k, v)))
+        serializer.collect_map(self.iter_ordered())
     }
 }
 

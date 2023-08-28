@@ -15,7 +15,7 @@ pub(super) async fn recipes_try_add_new_with_id(
     device_actions: &dyn DeviceActions,
 ) -> Result<(), Recipe> {
     let vars: &Variables = recipes.as_ref();
-    let mut iter = new_recipe.devices.iter_mut();
+    let mut iter = new_recipe.devices.iter_unordered_mut();
     while let Some((&id, device)) = iter.next() {
         match device_actions
             .validate(

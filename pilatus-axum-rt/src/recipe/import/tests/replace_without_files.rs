@@ -44,5 +44,5 @@ async fn replace_without_files() {
         .await
         .expect("Merge should work with replace strategy");
 
-    assert_eq!(2, rs.get_all().await.iter().count());
+    assert_eq!(2, rs.state().await.recipes().iter_without_backup().count());
 }

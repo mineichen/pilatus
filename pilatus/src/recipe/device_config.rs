@@ -33,7 +33,7 @@ impl DeviceConfig {
         Ok(Self {
             device_type: device_type.into(),
             device_name,
-            params: UntypedDeviceParamsWithVariables::from_serializable(&params).unwrap(),
+            params: UntypedDeviceParamsWithVariables::from_serializable(&params)?,
             committed_params: None,
         })
     }

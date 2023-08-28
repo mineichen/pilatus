@@ -53,6 +53,14 @@ impl Deref for RelativeFilePath {
     }
 }
 
+impl<'a> TryFrom<&'a str> for RelativeFilePath {
+    type Error = RelativeFilePathError;
+
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
 impl RelativeFilePath {
     pub fn new(value: impl Into<PathBuf>) -> Result<RelativeFilePath, RelativeFilePathError> {
         let buf = value.into();
