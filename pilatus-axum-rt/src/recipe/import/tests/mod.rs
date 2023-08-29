@@ -1,5 +1,5 @@
 use futures::{future::join, Future};
-use pilatus_rt::RecipeServiceImpl;
+use pilatus_rt::RecipeServiceFassade;
 
 use pilatus::{device::DeviceId, DeviceConfig, RecipeExporterTrait, RecipeId, RecipeServiceTrait};
 use tokio::io::DuplexStream;
@@ -20,22 +20,20 @@ async fn build_zip(
     device_config: DeviceConfig,
     files: &[(&'static str, &'static str)],
 ) -> Vec<u8> {
-    let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+    let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
     let rs = rsb.build();
     let active_recipe_id = {
-        let (active_recipe_id, recipe) = rs.get_active().await;
+        let active_recipe_id = rs.get_active_id().await;
         if recipe_id == active_recipe_id {
             active_recipe_id
         } else {
-            rs.add_recipe_with_id(recipe_id.clone(), recipe, Default::default())
+            rs.add_recipe_with_id(recipe_id.clone(), Default::default())
                 .await
                 .unwrap();
             rs.set_recipe_to_active(recipe_id.clone(), Default::default())
                 .await
                 .unwrap();
-            rs.delete_recipe(active_recipe_id, Default::default())
-                .await
-                .unwrap();
+            rs.delete_recipe(active_recipe_id).await.unwrap();
             recipe_id
         }
     };

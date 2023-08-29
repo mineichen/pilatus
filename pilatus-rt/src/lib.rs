@@ -12,7 +12,7 @@ pub use device::*;
 pub use logo::create_default_logo_service;
 pub use recipe::TokioFileService;
 #[cfg(feature = "unstable")]
-pub use recipe::{unstable::*, RecipeServiceImpl};
+pub use recipe::{unstable::*, RecipeServiceFassade, RecipeServiceImpl};
 pub use runtime::Runtime;
 
 pub extern "C" fn register(collection: &mut minfac::ServiceCollection) {

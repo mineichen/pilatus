@@ -5,13 +5,12 @@ use crate::recipe::import::ZipReaderWrapper;
 use futures::io::Cursor;
 use pilatus::{
     DeviceConfig, ImportRecipesOptions, IntoMergeStrategy, RecipeExporterTrait, RecipeServiceTrait,
-    TransactionOptions,
 };
-use pilatus_rt::RecipeServiceImpl;
+use pilatus_rt::RecipeServiceFassade;
 
 #[tokio::test]
 async fn replace_without_files() {
-    let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+    let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
     let rs = Arc::new(rsb.build());
     let active_recipe_id = rs.get_active_id().await;
     let (export_recipe_id, _) = rs
@@ -19,13 +18,9 @@ async fn replace_without_files() {
         .await
         .unwrap();
 
-    rs.add_device_to_recipe(
-        export_recipe_id.clone(),
-        DeviceConfig::mock(1i32),
-        TransactionOptions::default(),
-    )
-    .await
-    .unwrap();
+    rs.add_device_to_recipe(export_recipe_id.clone(), DeviceConfig::mock(1i32))
+        .await
+        .unwrap();
     let rs_clone = rs.clone();
     let data = super::writer_into_vec_unchecked(move |w| {
         let rs = rs_clone;
@@ -33,7 +28,7 @@ async fn replace_without_files() {
     })
     .await;
 
-    RecipeServiceImpl::create_importer(rs.clone())
+    rs.create_importer()
         .import(
             &mut ZipReaderWrapper::new(Cursor::new(data)),
             ImportRecipesOptions {

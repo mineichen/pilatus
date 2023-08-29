@@ -1,15 +1,15 @@
 use futures::{io::Cursor, StreamExt};
 use pilatus::{
     visit_directory_files, DeviceConfig, ImportRecipeError, ImportRecipesOptions,
-    IntoMergeStrategy, RecipeServiceTrait, TransactionOptions,
+    IntoMergeStrategy, RecipeServiceTrait,
 };
-use pilatus_rt::RecipeServiceImpl;
+use pilatus_rt::RecipeServiceFassade;
 
 use crate::recipe::import::{tests::build_zip, ZipReaderWrapper};
 
 #[tokio::test]
 async fn same_device_replaces_with_all_files() {
-    let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
+    let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
     let rs = rsb.build();
     let active_recipe_id = rs.get_active_id().await;
 
@@ -19,18 +19,15 @@ async fn same_device_replaces_with_all_files() {
         .unwrap();
 
     let device_id = rs
-        .add_device_to_recipe(
-            export_recipe_id.clone(),
-            DeviceConfig::mock(1i32),
-            TransactionOptions::default(),
-        )
+        .add_device_to_recipe(export_recipe_id.clone(), DeviceConfig::mock(1i32))
         .await
         .unwrap();
     rs.create_device_file(device_id, "testdir/test.txt", b"foo")
         .await;
     rs.create_device_file(device_id, "foo.txt", b"bar").await;
 
-    let conflicting_import_result = RecipeServiceImpl::create_importer(rs)
+    let conflicting_import_result = rs
+        .create_importer()
         .import(
             &mut ZipReaderWrapper::new(Cursor::new(
                 build_zip(

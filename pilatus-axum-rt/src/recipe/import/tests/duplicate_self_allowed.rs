@@ -3,15 +3,15 @@ use std::sync::Arc;
 use futures::{io::Cursor, StreamExt};
 use pilatus::{
     visit_directory_files, DeviceConfig, ImportRecipeError, ImportRecipesOptions,
-    IntoMergeStrategy, RecipeExporterTrait, RecipeServiceTrait, TransactionOptions,
+    IntoMergeStrategy, RecipeExporterTrait, RecipeServiceTrait,
 };
-use pilatus_rt::RecipeServiceImpl;
+use pilatus_rt::RecipeServiceFassade;
 
 use crate::recipe::import::ZipReaderWrapper;
 
 #[tokio::test]
 async fn duplicate_self_allowed() {
-    let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
+    let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
     let rs = Arc::new(rsb.build());
     let active_recipe_id = rs.get_active_id().await;
 
@@ -21,11 +21,7 @@ async fn duplicate_self_allowed() {
         .unwrap();
 
     let id = rs
-        .add_device_to_recipe(
-            export_recipe_id.clone(),
-            DeviceConfig::mock(1i32),
-            TransactionOptions::default(),
-        )
+        .add_device_to_recipe(export_recipe_id.clone(), DeviceConfig::mock(1i32))
         .await
         .unwrap();
     rs.create_device_file(id, "test.txt", b"content").await;
@@ -37,7 +33,8 @@ async fn duplicate_self_allowed() {
     })
     .await;
 
-    let r = RecipeServiceImpl::create_importer(rs.clone())
+    let r = rs
+        .create_importer()
         .import(
             &mut ZipReaderWrapper::new(Cursor::new(data.clone())),
             ImportRecipesOptions::default(),
@@ -49,7 +46,8 @@ async fn duplicate_self_allowed() {
         panic!("Expected ExistsAlready-error, got {r:?}");
     }
 
-    let r = RecipeServiceImpl::create_importer(rs.clone())
+    let r = rs
+        .create_importer()
         .import(
             &mut ZipReaderWrapper::new(Cursor::new(data)),
             ImportRecipesOptions {

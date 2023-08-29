@@ -1,9 +1,6 @@
 use futures::io::Cursor;
-use pilatus::{
-    DeviceConfig, ImportRecipeError, ImportRecipesOptions, IntoMergeStrategy, RecipeId,
-    TransactionOptions,
-};
-use pilatus_rt::RecipeServiceImpl;
+use pilatus::{DeviceConfig, ImportRecipeError, ImportRecipesOptions, IntoMergeStrategy, RecipeId};
+use pilatus_rt::RecipeServiceFassade;
 
 use crate::recipe::import::ZipReaderWrapper;
 
@@ -27,11 +24,11 @@ async fn conflicting_device_after_import_unspecified() {
 async fn import_recipe_with_different_id_but_including_existing_deviceid(
     merge_strategy: IntoMergeStrategy,
 ) {
-    let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+    let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
     let rs = rsb.build();
     let active_recipe_id = rs.get_active_id().await;
     let device_id = rs
-        .add_device_to_active_recipe(DeviceConfig::mock(1i32), TransactionOptions::default())
+        .add_device_to_active_recipe(DeviceConfig::mock(1i32))
         .await
         .unwrap();
     let import_recipe_id = RecipeId::default().suggest_unique().next().unwrap();
@@ -42,7 +39,8 @@ async fn import_recipe_with_different_id_but_including_existing_deviceid(
         &[],
     )
     .await;
-    let import = RecipeServiceImpl::create_importer(rs)
+    let import = rs
+        .create_importer()
         .import(
             &mut ZipReaderWrapper::new(Cursor::new(zip_data)),
             ImportRecipesOptions {

@@ -9,18 +9,18 @@ use futures::{io::Cursor, pin_mut, StreamExt};
 use pilatus::{EntryWriter, RecipeExporterTrait, RecipeId};
 use tokio::fs;
 
-use crate::recipe::RecipeServiceImpl;
+use super::RecipeServiceFassade;
 
 use super::RecipesExt;
 
 #[async_trait]
-impl RecipeExporterTrait for RecipeServiceImpl {
+impl RecipeExporterTrait for RecipeServiceFassade {
     async fn export<'a>(
         &self,
         recipe_id: RecipeId,
         mut writer: Box<dyn EntryWriter>,
     ) -> anyhow::Result<()> {
-        let mut recipes = self.recipes.lock().await;
+        let mut recipes = self.recipe_service.recipes.lock().await;
         let recipe = recipes.get_with_id_or_error(&recipe_id)?;
 
         let recipe_string = serde_json::to_string_pretty(recipe)?;
@@ -32,7 +32,7 @@ impl RecipeExporterTrait for RecipeServiceImpl {
             .insert(filename, &mut Cursor::new(recipe_string.as_bytes()))
             .await?;
 
-        let recipe_dir_path = self.get_recipe_dir_path();
+        let recipe_dir_path = self.recipe_service.get_recipe_dir_path();
         let recipe_id_str = recipe_id.to_string();
         let output_path_base = Path::new(&recipe_id_str);
         let mut used_variable_names = HashSet::new();

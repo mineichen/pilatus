@@ -117,11 +117,14 @@ pub trait RecipeServiceTrait {
         data: RecipeMetadata,
         options: TransactionOptions,
     ) -> Result<(), TransactionError>;
-    async fn delete_recipe(
+    async fn delete_recipe_with(
         &self,
         recipe_id: RecipeId,
         options: TransactionOptions,
     ) -> Result<(), TransactionError>;
+    async fn delete_recipe(&self, recipe_id: RecipeId) -> Result<(), TransactionError> {
+        self.delete_recipe_with(recipe_id, Default::default()).await
+    }
     async fn clone_recipe(
         &self,
         recipe_id: RecipeId,

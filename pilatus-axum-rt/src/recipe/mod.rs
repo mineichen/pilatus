@@ -122,7 +122,7 @@ async fn delete_recipe(
     Query(options): Query<TransactionOptions>,
 ) -> Result<(), (StatusCode, String)> {
     service
-        .delete_recipe(recipe_id, options)
+        .delete_recipe_with(recipe_id, options)
         .await
         .map_err(transaction_error_to_http_resonse)
 }

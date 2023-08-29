@@ -237,11 +237,13 @@ use super::actions::{DeviceActions, StartDeviceError};
 mod tests {
     use pilatus::DeviceConfig;
 
+    use crate::recipe::RecipeServiceFassade;
+
     use super::*;
 
     #[tokio::test]
     async fn change_device_params_on_active_recipe() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb
             .with_change_strategy(ChangeParamsStrategy::new(
                 "testdevice",
@@ -256,18 +258,22 @@ mod tests {
         let recipe_id = rs.get_active_id().await;
 
         let device_id = rs
+            .recipe_service
             .add_device_to_active_recipe(DeviceConfig::mock(1i32), Default::default())
             .await
             .unwrap();
 
-        rs.change_device_params_on_active_recipe(device_id, 42i32, Default::default())
+        rs.recipe_service
+            .change_device_params_on_active_recipe(device_id, 42i32, Default::default())
             .await
             .expect("Should be updateable");
-        rs.change_device_params_on_active_recipe(device_id, 42u32, Default::default())
+        rs.recipe_service
+            .change_device_params_on_active_recipe(device_id, 42u32, Default::default())
             .await
             .expect_err("Shouldn't be updateable");
 
         let config = rs
+            .recipe_service
             .clone_device_config(recipe_id, device_id)
             .await
             .expect("Should have a device");

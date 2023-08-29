@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use async_trait::async_trait;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use minfac::{AllRegistered, Registered, ServiceCollection};
@@ -15,8 +14,8 @@ use pilatus::UncommittedChangesError;
 use pilatus::{
     clone_directory_deep, device::DeviceId, visit_directory_files, DeviceConfig, GenericConfig,
     InitRecipeListener, Name, ParameterUpdate, Recipe, RecipeExporter, RecipeId, RecipeImporter,
-    RecipeMetadata, RecipeService, RecipeServiceTrait, Recipes, TransactionError,
-    TransactionOptions, UntypedDeviceParamsWithVariables, VariableError, Variables, VariablesPatch,
+    RecipeMetadata, Recipes, TransactionError, TransactionOptions,
+    UntypedDeviceParamsWithVariables, VariableError, Variables, VariablesPatch,
 };
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -33,6 +32,7 @@ use self::recipes::RecipesExt;
 
 mod actions;
 mod export;
+mod fassade;
 mod file;
 mod import;
 mod parameters;
@@ -41,6 +41,7 @@ mod service_builder;
 
 pub use actions::*;
 pub use export::*;
+pub use fassade::*;
 pub use file::TokioFileService;
 pub use import::*;
 pub use parameters::*;
@@ -62,15 +63,13 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
             Arc::new(builder.build())
         },
     );
-    c.with::<Registered<Arc<RecipeServiceImpl>>>()
+    c.with::<Registered<Arc<RecipeServiceFassade>>>()
         .register(|x| x as RecipeExporter);
-
-    c.with::<Registered<Arc<RecipeServiceImpl>>>()
-        .register(|x| x as RecipeService);
 
     c.with::<Registered<Arc<RecipeServiceImpl>>>()
         .register(|x| Box::new(RecipeImporterImpl(x)) as RecipeImporter);
 
+    fassade::register_services(c);
     parameters::register_services(c);
     file::register_services(c);
 }
@@ -112,8 +111,7 @@ impl Debug for RecipeServiceImpl {
     }
 }
 
-#[async_trait]
-impl RecipeServiceTrait for RecipeServiceImpl {
+impl RecipeServiceImpl {
     async fn add_new_default_recipe(
         &self,
         options: TransactionOptions,
@@ -210,7 +208,7 @@ impl RecipeServiceTrait for RecipeServiceImpl {
         ActiveState::new(recipes.clone(), has_uncommitted_changes)
     }
 
-    async fn set_recipe_to_active(
+    pub(super) async fn set_recipe_to_active(
         &self,
         id: RecipeId,
         options: TransactionOptions,
@@ -521,37 +519,8 @@ impl RecipeServiceImpl {
 pub(crate) mod unstable {
     use super::{recipes::recipes_try_add_new_with_id, *};
     use pilatus::{device::DeviceId, Recipe, RecipeId, TransactionError, TransactionOptions};
-    use std::{path::PathBuf, sync::Arc};
-    use tokio::fs::File;
+    use std::sync::Arc;
     impl RecipeServiceImpl {
-        pub fn create_temp_builder() -> (tempfile::TempDir, RecipeServiceBuilder) {
-            let dir = tempfile::tempdir().unwrap();
-            let rs = RecipeServiceBuilder::new(
-                dir.path(),
-                Arc::new(super::parameters::LambdaRecipePermissioner::always_ok()),
-            );
-            (dir, rs)
-        }
-
-        pub async fn create_device_file(
-            &self,
-            did: DeviceId,
-            filename: &str,
-            content: &[u8],
-        ) -> PathBuf {
-            let mut device_path = self.get_device_dir(&did);
-            device_path.push(filename);
-            tokio::fs::create_dir_all(&device_path.parent().expect("Must have a parent"))
-                .await
-                .unwrap();
-            let mut f = File::create(&device_path)
-                .await
-                .expect("Couldn't create file");
-            f.write_all(content).await.expect("Couldn't write content");
-            f.flush().await.expect("Couldn't flush file");
-
-            device_path
-        }
         pub async fn add_recipe_with_id(
             &self,
             id: RecipeId,
@@ -677,7 +646,7 @@ mod tests {
     use serde::Deserialize;
     use serde_json::json;
 
-    use pilatus::{RelativeFilePath, UpdateParamsMessageError};
+    use pilatus::{RecipeServiceTrait, RelativeFilePath, UpdateParamsMessageError};
 
     use super::*;
 
@@ -716,7 +685,7 @@ mod tests {
 
     #[tokio::test]
     async fn change_to_new_variable() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb
             .replace_permissioner(Arc::new(
                 super::parameters::LambdaRecipePermissioner::with_validator(|| {
@@ -726,10 +695,11 @@ mod tests {
             .build();
 
         let device_id = rs
-            .add_device_to_active_recipe(
-                DeviceConfig::new_unchecked("my_type", "MyDevice", json!({ "test": 1})),
-                Default::default(),
-            )
+            .add_device_to_active_recipe(DeviceConfig::new_unchecked(
+                "my_type",
+                "MyDevice",
+                json!({ "test": 1}),
+            ))
             .await?;
         let active_id = rs.get_active_id().await;
         let parameters = serde_json::from_value::<UntypedDeviceParamsWithVariables>(
@@ -755,7 +725,8 @@ mod tests {
             test: i32,
         }
         assert_eq!(
-            rs.recipes
+            rs.recipe_service
+                .recipes
                 .lock()
                 .await
                 .as_ref()
@@ -799,24 +770,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_path_property_assignment() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
 
-        assert_eq!(dir.path().join("recipes"), rs.path);
+        assert_eq!(dir.path().join("recipes"), rs.recipe_service.path);
         dir.close()?;
         Ok(())
     }
 
     #[tokio::test]
     async fn delete_device() -> anyhow::Result<()> {
-        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
         let active_id = rs.get_active_id().await;
         let device_id = rs
-            .add_device_to_active_recipe(DeviceConfig::mock("params"), Default::default())
+            .add_device_to_active_recipe(DeviceConfig::mock("params"))
             .await?;
         let device_id_with_file = rs
-            .add_device_to_active_recipe(DeviceConfig::mock("params"), Default::default())
+            .add_device_to_active_recipe(DeviceConfig::mock("params"))
             .await?;
         let mut file_service = rs.build_device_file_service(device_id);
         file_service
@@ -832,7 +803,7 @@ mod tests {
 
     #[tokio::test]
     async fn set_active_without_changes() -> anyhow::Result<()> {
-        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
         let r1_id = rs.get_active_id().await;
         let mut r2 = Recipe::default();
@@ -841,11 +812,10 @@ mod tests {
             serde_json::json!({ "id": r2_d1.to_string() }),
         ));
 
-        rs.build_file_service()
-            .build(r2_d1)
+        rs.build_device_file_service(r2_d1)
             .add_file_unchecked(&RelativeFilePath::new("test.txt").unwrap(), b"test")
             .await?;
-        let r2_id = rs.add_recipe(r2, Default::default()).await?;
+        let r2_id = rs.add_recipe(r2).await?;
         rs.set_recipe_to_active(r2_id, Default::default()).await?;
         rs.set_recipe_to_active(r1_id, Default::default()).await?;
         Ok(())
@@ -854,12 +824,12 @@ mod tests {
     #[tokio::test]
     #[ignore = "Not yet implemented"]
     async fn discard_active_with_new_device_with_files_removes_folder() -> anyhow::Result<()> {
-        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
         let did = rs
-            .add_device_to_active_recipe(DeviceConfig::mock(""), Default::default())
+            .add_device_to_active_recipe(DeviceConfig::mock(""))
             .await?;
-        let mut fs = rs.build_file_service().build(did);
+        let mut fs = rs.build_device_file_service(did);
         fs.add_file_unchecked(&RelativeFilePath::new("test.txt").unwrap(), b"test")
             .await
             .unwrap();
@@ -872,10 +842,10 @@ mod tests {
 
     #[tokio::test]
     async fn set_active_forbidden_with_new_device() -> anyhow::Result<()> {
-        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
-        let r2_id = rs.add_recipe(Recipe::default(), Default::default()).await?;
-        rs.add_device_to_active_recipe(DeviceConfig::mock("params"), Default::default())
+        let r2_id = rs.add_recipe(Recipe::default()).await?;
+        rs.add_device_to_active_recipe(DeviceConfig::mock("params"))
             .await?;
 
         let Err(TransactionError::Other(_)) = rs
@@ -893,11 +863,11 @@ mod tests {
 
     #[tokio::test]
     async fn set_active_with_fs_change() -> anyhow::Result<()> {
-        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
         let mut r2 = Recipe::default();
         let r2_d1 = r2.add_device(DeviceConfig::mock("params"));
-        let r2_id = rs.add_recipe(r2, Default::default()).await?;
+        let r2_id = rs.add_recipe(r2).await?;
         let r1_id = rs.get_active_id().await;
 
         rs.set_recipe_to_active(r2_id, Default::default()).await?;
@@ -923,11 +893,11 @@ mod tests {
     #[tokio::test]
     async fn set_active_with_renamed_file() -> anyhow::Result<()> {
         let content = b"test";
-        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
         let mut r2 = Recipe::default();
         let r2_d1 = r2.add_device(DeviceConfig::mock("params"));
-        let r2_id = rs.add_recipe(r2, Default::default()).await?;
+        let r2_id = rs.add_recipe(r2).await?;
         let r1_id = rs.get_active_id().await;
         let mut fs = rs.build_device_file_service(r2_d1);
         let initial_filename = "test.txt".try_into()?;
@@ -955,20 +925,19 @@ mod tests {
     #[tokio::test]
     #[rustfmt::skip]
     async fn test_add_device_and_recipe() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
         
         #[derive(Debug,  serde::Serialize, serde::Deserialize, PartialEq, Eq)]
         struct SampleParams {foo: u32, bar: String}
-        let options = TransactionOptions::default();
         
         let device = DeviceConfig::mock(SampleParams {foo: 12, bar: "Hallo".to_string()});
         let device2 = DeviceConfig::new_unchecked(
             "testdevice2","testdevice2name",SampleParams {foo: 14, bar: "Hi".to_string()});
         let recipe = Recipe::default();
-        let recipe_id = rs.add_recipe(recipe, options.clone()).await.unwrap();
-        let device_in_active_recipe_id = rs.add_device_to_active_recipe(device,options.clone()).await.unwrap();
-        let device_in_other_recipe_id = rs.add_device_to_recipe(recipe_id.clone(), device2,options.clone()).await.unwrap();
+        let recipe_id = rs.add_recipe(recipe).await.unwrap();
+        let device_in_active_recipe_id = rs.add_device_to_active_recipe(device).await.unwrap();
+        let device_in_other_recipe_id = rs.add_device_to_recipe(recipe_id.clone(), device2).await.unwrap();
         drop(rs); //all data should be saved to file at this point
 
         //try to read data from from file
@@ -994,28 +963,27 @@ mod tests {
     #[tokio::test]
     #[rustfmt::skip]
     async fn test_clone_and_delete() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
 
         #[derive(Debug,  serde::Serialize, serde::Deserialize, PartialEq, Eq)]
         struct SampleParams {foo: u32, reference: DeviceId}
-        let options = TransactionOptions::default();
                 
         let device = DeviceConfig::mock(SampleParams {foo: 12, reference: DeviceId::new_v4()});
-        let device_in_active_recipe_id = rs.add_device_to_active_recipe(device, options.clone()).await.unwrap();
+        let device_in_active_recipe_id = rs.add_device_to_active_recipe(device).await.unwrap();
 
         let device2 = DeviceConfig::new_unchecked(
             "testdevice2", "testdevice2name", SampleParams {foo: 14, reference: device_in_active_recipe_id});
-        let device_in_other_recipe_id = rs.add_device_to_active_recipe(device2, options.clone()).await.unwrap();
+        let device_in_other_recipe_id = rs.add_device_to_active_recipe(device2).await.unwrap();
         
         rs.create_device_file(device_in_active_recipe_id, "my_file.txt", b"test").await;
 
-        let (new_recipe_id, new_device_config) = rs.clone_recipe(rs.get_active_id().await, options.clone()).await.unwrap();
+        let (new_recipe_id, new_device_config) = rs.clone_recipe(rs.get_active_id().await, Default::default()).await.unwrap();
         assert!(!new_device_config.devices.contains_key(&device_in_other_recipe_id), "Clone contains device with the same id as in the original");
         
         let new_device_path_with_file = 'outer: loop {
             for device_id in new_device_config.devices.keys() {
-                let device_path = rs.get_device_dir(device_id);
+                let device_path = rs.recipe_service.get_device_dir(device_id);
                 if tokio::fs::metadata(&device_path).await.is_ok() {
                     break 'outer device_path;
                 }
@@ -1023,7 +991,7 @@ mod tests {
             panic!("Files were not cloned for new Device");
         };
 
-        rs.delete_recipe(new_recipe_id, options.clone()).await.expect("Can delete freshly cloned");
+        rs.delete_recipe(new_recipe_id).await.expect("Can delete freshly cloned");
         assert!(tokio::fs::metadata(&new_device_path_with_file).await.is_err());
 
         dir.close()?;
@@ -1033,25 +1001,24 @@ mod tests {
     #[tokio::test]
     #[rustfmt::skip]
     async fn test_update_device() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
         let recipe_id = rs.get_active_id().await;
 
         #[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
         struct SampleParams {foo: u32, bar: String}
-        let options = TransactionOptions::default();
 
         let initial_params = SampleParams {foo: 12, bar: "Hallo".to_string()};
         
         let mut device = DeviceConfig::mock(&initial_params);
-        let device_id = rs.add_device_to_active_recipe(device.clone(),options.clone()).await.unwrap();
+        let device_id = rs.add_device_to_active_recipe(device.clone()).await.unwrap();
         
         let new_params = SampleParams { foo: 42, ..initial_params};
         device.params = UntypedDeviceParamsWithVariables::from_serializable(&new_params)?;
         rs.update_device_params(recipe_id.clone(), device_id, ParameterUpdate {
             parameters: device.params.clone(),
             variables: Default::default(),
-        }, options.clone()).await.unwrap();
+        }, Default::default()).await.unwrap();
         drop(rs); //all data should be saved to file at this point
 
        
@@ -1065,7 +1032,7 @@ mod tests {
     #[tokio::test]
     #[rustfmt::skip]
     async fn test_update_device_params() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
 
         let recipe_id = rs.get_active_id().await;
@@ -1077,7 +1044,7 @@ mod tests {
         }
         let options = TransactionOptions::default();
         let device = DeviceConfig::mock(SampleParams {foo: 12, bar: "Hallo".to_string()});
-        let dev_uuid = rs.add_device_to_active_recipe(device.clone(), options.clone()).await?;
+        let dev_uuid = rs.add_device_to_active_recipe(device.clone()).await?;
  
         //update params
         let params = SampleParams{foo: 234, bar: "huhu".to_string()};

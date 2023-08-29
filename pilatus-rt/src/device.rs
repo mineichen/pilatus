@@ -26,13 +26,14 @@ use tokio::task::JoinHandle;
 use tracing::{error, info};
 
 use crate::metadata_future::MetadataFuture;
+use crate::recipe::DeviceSpawnerService;
+use crate::recipe::RecipeServiceFassade;
 use crate::recipe::StartDeviceError;
-use crate::recipe::{DeviceSpawnerService, RecipeServiceImpl};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<(
         Registered<RecipeRunnerImpl>,
-        Registered<Arc<RecipeServiceImpl>>,
+        Registered<Arc<RecipeServiceFassade>>,
         Registered<ActorSystem>,
         Registered<SystemShutdown>,
     )>()
@@ -63,7 +64,7 @@ type RunJob = Sender<(RecipeId, Sender<anyhow::Result<()>>)>;
 async fn run_devices_from_service(
     (runner, recipe_service, actor_system, shutdown): (
         RecipeRunnerImpl,
-        Arc<RecipeServiceImpl>,
+        Arc<RecipeServiceFassade>,
         ActorSystem,
         SystemShutdown,
     ),
@@ -156,11 +157,13 @@ impl RecipeRunnerImpl {
 
     async fn run_active_recipe(
         &self,
-        recipe_service: Arc<RecipeServiceImpl>,
+        recipe_service: Arc<RecipeServiceFassade>,
     ) -> Result<(), anyhow::Error> {
         loop {
-            let (recipe_id, active_devices, variables) =
-                recipe_service.get_owned_devices_from_active().await;
+            let (recipe_id, active_devices, variables) = recipe_service
+                .recipe_service
+                .get_owned_devices_from_active()
+                .await;
             let (tx, rx) = oneshot::channel();
             // Allow new recipe via self.select_recipe()
             *self.state.next_recipe_id.lock().expect("Not poisoned") = Some(tx);

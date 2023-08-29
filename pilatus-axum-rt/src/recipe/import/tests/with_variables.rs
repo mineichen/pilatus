@@ -3,10 +3,9 @@ use std::sync::Arc;
 use futures::io::Cursor;
 use pilatus::{
     DeviceConfig, ImportRecipeError, ImportRecipesOptions, RecipeExporterTrait, RecipeServiceTrait,
-    TransactionOptions,
 };
 use pilatus::{ParameterUpdate, UntypedDeviceParamsWithVariables, VariableConflict};
-use pilatus_rt::RecipeServiceImpl;
+use pilatus_rt::RecipeServiceFassade;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -20,7 +19,7 @@ struct State {
 
 #[tokio::test]
 async fn with_variables() {
-    let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+    let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
     let rs = Arc::new(rsb.build());
     let active_recipe_id = rs.get_active_id().await;
 
@@ -36,7 +35,6 @@ async fn with_variables() {
                 number: 1,
                 text: "initial".into(),
             }),
-            TransactionOptions::default(),
         )
         .await
         .unwrap();
@@ -90,11 +88,10 @@ async fn with_variables() {
     .await
     .unwrap();
 
-    rs.delete_recipe(export_recipe_id_clone, Default::default())
-        .await
-        .unwrap();
+    rs.delete_recipe(export_recipe_id_clone).await.unwrap();
 
-    let r = RecipeServiceImpl::create_importer(rs.clone())
+    let r = rs
+        .create_importer()
         .import(
             &mut ZipReaderWrapper::new(Cursor::new(data.clone())),
             ImportRecipesOptions::default(),
