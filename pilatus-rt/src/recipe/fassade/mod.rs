@@ -112,14 +112,14 @@ pub use unstable::*;
 
 #[async_trait]
 impl RecipeServiceTrait for RecipeServiceFassade {
-    async fn add_new_default_recipe(
+    async fn add_new_default_recipe_with(
         &self,
         options: TransactionOptions,
     ) -> Result<(RecipeId, Recipe), TransactionError> {
         self.recipe_service.add_new_default_recipe(options).await
     }
 
-    async fn update_recipe_metadata(
+    async fn update_recipe_metadata_with(
         &self,
         id: RecipeId,
         data: RecipeMetadata,

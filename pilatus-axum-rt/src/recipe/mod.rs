@@ -144,7 +144,7 @@ async fn add_default_recipe(
     Query(options): Query<TransactionOptions>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let recipe = service
-        .add_new_default_recipe(options)
+        .add_new_default_recipe_with(options)
         .await
         .map_err(transaction_error_to_http_resonse)?;
     Ok(Json(recipe))
@@ -192,7 +192,7 @@ async fn update_recipe_metadata(
     Json(data): Json<RecipeMetadata>,
 ) -> Result<(), (StatusCode, String)> {
     service
-        .update_recipe_metadata(id, data, options)
+        .update_recipe_metadata_with(id, data, options)
         .await
         .map_err(transaction_error_to_http_resonse)
 }

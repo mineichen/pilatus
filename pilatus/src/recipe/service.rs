@@ -107,11 +107,11 @@ pub struct AlreadyExistsError(pub RecipeId);
 pub type RecipeService = Arc<dyn RecipeServiceTrait + Send + Sync>;
 #[async_trait]
 pub trait RecipeServiceTrait {
-    async fn add_new_default_recipe(
+    async fn add_new_default_recipe_with(
         &self,
         options: TransactionOptions,
     ) -> Result<(RecipeId, Recipe), TransactionError>;
-    async fn update_recipe_metadata(
+    async fn update_recipe_metadata_with(
         &self,
         id: RecipeId,
         data: RecipeMetadata,
