@@ -4,7 +4,7 @@
 
 use std::{
     ops::{Deref, DerefMut},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -116,6 +116,7 @@ pub trait FileServiceTrait {
         path: &RelativeDirPath,
     ) -> BoxStream<'static, Result<RelativeFilePath, TransactionError>>;
     fn get_filepath(&self, file_path: &RelativeFilePath) -> PathBuf;
+    fn get_root(&self) -> &Path;
 }
 
 pub trait FileServiceExt {

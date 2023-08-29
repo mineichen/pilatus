@@ -18,6 +18,7 @@ use pilatus::{
     RecipeMetadata, RecipeService, RecipeServiceTrait, Recipes, TransactionError,
     TransactionOptions, UntypedDeviceParamsWithVariables, VariableError, Variables, VariablesPatch,
 };
+use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::{
     fs,
@@ -323,19 +324,18 @@ impl RecipeServiceImpl {
         for group in recipes.iter_running_join_backup() {
             let group = group?;
             let running_fs = self.build_device_file_service(group.id);
-
-            let mut b_sorted: Vec<_> =
-                pilatus::visit_directory_files(backup_root.join(group.id.to_string()))
-                    .take_while(|f| {
-                        std::future::ready(if let Err(e) = f {
-                            e.kind() != std::io::ErrorKind::NotFound
-                        } else {
-                            true
-                        })
+            let backup_device_dir = backup_root.join(group.id.to_string());
+            let mut b_sorted: Vec<_> = pilatus::visit_directory_files(&backup_device_dir)
+                .take_while(|f| {
+                    std::future::ready(if let Err(e) = f {
+                        e.kind() != std::io::ErrorKind::NotFound
+                    } else {
+                        true
                     })
-                    .map(|f| f.map(|f| f.path()))
-                    .try_collect()
-                    .await?;
+                })
+                .map(|f| f.map(|f| f.path()))
+                .try_collect()
+                .await?;
             let mut r_sorted = running_fs.list_recursive().await?;
             if b_sorted.len() != r_sorted.len() {
                 Err(UncommittedChangesError)?;
@@ -344,9 +344,23 @@ impl RecipeServiceImpl {
             b_sorted.sort();
             r_sorted.sort();
             for (a, b) in b_sorted.into_iter().zip(r_sorted) {
-                let mut a = tokio::fs::File::open(a).await?;
-                let mut b = tokio::fs::File::open(b).await?;
-                if !is_content_equal(a, b).await? {
+                let relative_a = a.strip_prefix(&backup_device_dir).unwrap_or_else(|e| {
+                    panic!(
+                        "Was constructed with backup_root above {:?}, {:?} ({e:?})",
+                        a, &backup_device_dir,
+                    )
+                });
+                let relative_b = b.strip_prefix(running_fs.get_root()).unwrap_or_else(|e| {
+                    panic!(
+                        "Was constructed with running_fs above {:?}, {:?} ({e:?})",
+                        b,
+                        running_fs.get_root(),
+                    )
+                });
+
+                if relative_a != relative_b
+                    || !is_content_equal(File::open(&a).await?, File::open(&b).await?).await?
+                {
                     Err(UncommittedChangesError)?;
                 }
             }
@@ -843,6 +857,38 @@ mod tests {
         rs.set_recipe_to_active(r2_id, Default::default()).await?;
         let mut fs = rs.build_device_file_service(r2_d1);
         fs.add_file_unchecked(&"test.txt".try_into()?, b"test")
+            .await?;
+
+        match rs
+            .set_recipe_to_active(r1_id.clone(), Default::default())
+            .await
+        {
+            Err(TransactionError::Other(_)) => {}
+            e => panic!("Unexpected: {e:?}"),
+        }
+        rs.commit_active(Default::default()).await?;
+        rs.set_recipe_to_active(r1_id, Default::default())
+            .await
+            .unwrap();
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn set_active_with_renamed_file() -> anyhow::Result<()> {
+        let content = b"test";
+        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let rs = rsb.build();
+        let mut r2 = Recipe::default();
+        let r2_d1 = r2.add_device(DeviceConfig::mock("params"));
+        let r2_id = rs.add_recipe(r2, Default::default()).await?;
+        let r1_id = rs.get_active_id().await;
+        let mut fs = rs.build_device_file_service(r2_d1);
+        let initial_filename = "test.txt".try_into()?;
+        fs.add_file_unchecked(&initial_filename, content).await?;
+        rs.set_recipe_to_active(r2_id, Default::default()).await?;
+        fs.remove_file(&initial_filename).await?;
+        fs.add_file_unchecked(&"test2.txt".try_into()?, content)
             .await?;
 
         match rs

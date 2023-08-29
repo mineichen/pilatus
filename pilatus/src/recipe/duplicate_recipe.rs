@@ -4,7 +4,6 @@ use sealedstruct::{ValidationError, ValidationResultExtensions};
 
 use crate::{device::DeviceId, Recipe};
 
-// Todo: Remove pub of fields
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, sealedstruct::Seal)]
 pub struct DuplicateRecipeRaw {
     // OriginalId -> DuplicateId

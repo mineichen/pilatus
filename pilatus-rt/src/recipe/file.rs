@@ -40,7 +40,7 @@ impl FileServiceTrait for TokioFileService {
     }
 
     async fn list_recursive(&self) -> std::io::Result<Vec<PathBuf>> {
-        pilatus::visit_directory_files(self.get_device_dir())
+        pilatus::visit_directory_files(&self.root)
             .take_while(|f| {
                 std::future::ready(if let Err(e) = f {
                     e.kind() != std::io::ErrorKind::NotFound
@@ -124,7 +124,11 @@ impl FileServiceTrait for TokioFileService {
     // RelativeFilePath is expected to be relative to the device-folder
     // The returned PathBuf can be used to e.g. open a file with std::fs::File::open().
     fn get_filepath(&self, file_path: &RelativeFilePath) -> PathBuf {
-        self.get_device_dir().join(file_path.get_path())
+        self.root.join(file_path.get_path())
+    }
+
+    fn get_root(&self) -> &Path {
+        &self.root
     }
 }
 
@@ -147,7 +151,7 @@ impl TokioFileService {
         &self,
         path: &RelativeDirPath,
     ) -> impl Stream<Item = Result<RelativeFilePath, TransactionError>> + 'static {
-        let device_dir: Arc<Path> = self.get_device_dir().to_owned().into();
+        let device_dir: Arc<Path> = self.root.to_owned().into();
         let dir_path: Arc<Path> = device_dir.join(path.as_path()).into();
 
         stream::once(fs::read_dir(dir_path.clone())).flat_map(move |x| {
@@ -193,10 +197,6 @@ impl TokioFileService {
                 .boxed()
         })
         //            .map_err(TransactionError::from_io_producer(&dir_path))?;
-    }
-
-    fn get_device_dir(&self) -> &PathBuf {
-        &self.root
     }
 }
 
