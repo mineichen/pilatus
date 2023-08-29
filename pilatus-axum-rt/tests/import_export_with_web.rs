@@ -9,7 +9,7 @@ use pilatus::{
     prelude::*,
     DeviceConfig, RecipeId, SystemTerminator, UpdateParamsMessageError,
 };
-use pilatus_rt::{RecipeServiceImpl, Runtime};
+use pilatus_rt::{RecipeServiceFassade, Runtime};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
@@ -108,7 +108,7 @@ fn upload_zip() -> anyhow::Result<()> {
 async fn generate_zip(
     base: &str,
     client: &hyper::Client<hyper::client::HttpConnector>,
-    s: Arc<RecipeServiceImpl>,
+    s: Arc<RecipeServiceFassade>,
 ) -> anyhow::Result<(RecipeId, Vec<u8>)> {
     let (active_id, _) = get_current(base, client).await?;
     let clone_response_body = hyper::body::to_bytes(
@@ -136,7 +136,7 @@ async fn generate_zip(
     )?;
 
     // Execute with http is not yet implemented
-    s.add_device_to_recipe(clone_id.clone(), DeviceConfig::mock(42), Default::default())
+    s.add_device_to_recipe(clone_id.clone(), DeviceConfig::mock(42))
         .await?;
 
     let export_response_body = hyper::body::to_bytes(
