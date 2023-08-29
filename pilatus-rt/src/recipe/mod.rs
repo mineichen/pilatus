@@ -208,7 +208,7 @@ impl RecipeServiceImpl {
         ActiveState::new(recipes.clone(), has_uncommitted_changes)
     }
 
-    pub(super) async fn activate_recipe_with(
+    pub(super) async fn activate_recipe(
         &self,
         id: RecipeId,
         options: TransactionOptions,

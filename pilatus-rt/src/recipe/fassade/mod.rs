@@ -83,7 +83,7 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         id: RecipeId,
         options: TransactionOptions,
     ) -> Result<(), TransactionError> {
-        self.recipe_service.activate_recipe_with(id, options).await
+        self.recipe_service.activate_recipe(id, options).await
     }
 
     async fn update_device_params_with(
