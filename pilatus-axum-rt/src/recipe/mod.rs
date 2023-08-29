@@ -162,7 +162,7 @@ async fn update_device_params(
     Json(param_update): Json<ParameterUpdate>,
 ) -> Result<(), (StatusCode, String)> {
     service
-        .update_device_params(recipe_id, device_id, param_update, options)
+        .update_device_params_with(recipe_id, device_id, param_update, options)
         .await
         .map_err(|e| {
             struct DeviceConfigWrapper(ValidationErrors);

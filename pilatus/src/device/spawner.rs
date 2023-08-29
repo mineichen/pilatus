@@ -198,7 +198,6 @@ impl<'a, T: Send + 'a> InfallibleParamApplier<T> for RecipeServiceParamApplier<'
                         parameters,
                         variables: Default::default(),
                     },
-                    Default::default(),
                 )
                 .await
             {

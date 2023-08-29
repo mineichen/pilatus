@@ -715,8 +715,7 @@ mod tests {
                     serde_json::from_str("42").unwrap(),
                 ))
                 .collect(),
-            },
-            Default::default(),
+            }
         )
         .await?;
 
@@ -747,8 +746,7 @@ mod tests {
                         serde_json::from_str("4242").unwrap(),
                     ))
                     .collect(),
-                },
-                Default::default(),
+                }
             )
             .await;
 
@@ -1016,7 +1014,7 @@ mod tests {
         rs.update_device_params(recipe_id.clone(), device_id, ParameterUpdate {
             parameters: device.params.clone(),
             variables: Default::default(),
-        }, Default::default()).await.unwrap();
+        }).await.unwrap();
         drop(rs); //all data should be saved to file at this point
 
        
@@ -1040,7 +1038,6 @@ mod tests {
             foo: u32,
             bar: String,
         }
-        let options = TransactionOptions::default();
         let device = DeviceConfig::mock(SampleParams {foo: 12, bar: "Hallo".to_string()});
         let dev_uuid = rs.add_device_to_active_recipe(device.clone()).await?;
  
@@ -1050,7 +1047,7 @@ mod tests {
         rs.update_device_params(recipe_id.clone(), dev_uuid, ParameterUpdate {
             parameters: UntypedDeviceParamsWithVariables::from_serializable(&params)?,
             variables: Default::default(),
-        },options.clone()).await?;
+        }).await?;
         drop(rs); //all data should be saved to file at this point
 
        let rs = RecipeServiceBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok())).build();

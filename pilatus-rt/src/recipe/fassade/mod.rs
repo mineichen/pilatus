@@ -160,7 +160,7 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         self.recipe_service.activate_recipe_with(id, options).await
     }
 
-    async fn update_device_params(
+    async fn update_device_params_with(
         &self,
         recipe_id: RecipeId,
         device_id: DeviceId,

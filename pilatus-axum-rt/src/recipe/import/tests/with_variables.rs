@@ -52,7 +52,6 @@ async fn with_variables() {
             .into_iter()
             .collect(),
         },
-        Default::default(),
     )
     .await
     .unwrap();
@@ -80,7 +79,6 @@ async fn with_variables() {
                 .into_iter()
                 .collect(),
         },
-        Default::default(),
     )
     .await
     .unwrap();
