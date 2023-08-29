@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use minfac::{AllRegistered, Registered, ServiceCollection};
-use pilatus::device::{ActiveState, DeviceContext};
+use pilatus::device::{ActiveState, ActorErrorUnknownDevice, DeviceContext};
 use pilatus::UncommittedChangesError;
 use pilatus::{
     clone_directory_deep, device::DeviceId, visit_directory_files, DeviceConfig, GenericConfig,
@@ -160,10 +160,9 @@ impl RecipeServiceTrait for RecipeServiceImpl {
         let mut recipes = self.recipes.lock().await;
 
         let removed = recipes.remove(&recipe_id)?;
-        let path = self.get_recipe_dir_path();
         for device_id in removed.devices.keys() {
             // Ok, as RecipeService creates the subfolder (by default "recipe") and therefore remove_dir_all shouldn't accidentally remove too much
-            if let Err(e) = tokio::fs::remove_dir_all(&path.join(device_id.to_string())).await {
+            if let Err(e) = tokio::fs::remove_dir_all(&self.get_device_dir(device_id)).await {
                 if e.kind() != ErrorKind::NotFound {
                     return Err(e.into());
                 }
@@ -249,6 +248,10 @@ impl RecipeServiceTrait for RecipeServiceImpl {
         Ok(())
     }
 
+    async fn restore_active(&self) -> Result<(), TransactionError> {
+        Err(TransactionError::Other(anyhow!("Not yet implemented")))
+    }
+
     async fn commit_active(&self, transaction_key: Uuid) -> Result<(), TransactionError> {
         let mut recipes = self.recipes.lock().await;
 
@@ -267,8 +270,25 @@ impl RecipeServiceTrait for RecipeServiceImpl {
         Ok(())
     }
 
-    async fn restore_active(&self) -> Result<(), TransactionError> {
-        Err(TransactionError::Other(anyhow!("Not yet implemented")))
+    async fn delete_device(
+        &self,
+        recipe_id: RecipeId,
+        device_id: DeviceId,
+    ) -> Result<(), TransactionError> {
+        let mut recipes = self.recipes.lock().await;
+        let recipe = recipes.get_with_id_or_error_mut(&recipe_id)?;
+        if recipe.devices.remove(&device_id).is_none() {
+            Err(ActorErrorUnknownDevice {
+                device_id,
+                detail: "Not found in recipe".into(),
+            }
+            .into())
+        } else {
+            tokio::fs::remove_dir_all(self.get_device_dir(&device_id))
+                .await
+                .ok();
+            Ok(())
+        }
     }
 
     async fn restore_committed(
@@ -488,6 +508,10 @@ impl RecipeServiceImpl {
         self.path.clone().join(RECIPES_FILE_NAME)
     }
 
+    fn get_device_dir(&self, device_id: &DeviceId) -> PathBuf {
+        self.get_recipe_dir_path().join(device_id.to_string())
+    }
+
     pub fn get_recipe_dir_path(&self) -> &PathBuf {
         &self.path
     }
@@ -515,7 +539,7 @@ pub(crate) mod unstable {
             filename: &str,
             content: &[u8],
         ) -> PathBuf {
-            let mut device_path = self.get_recipe_dir_path().join(did.to_string());
+            let mut device_path = self.get_device_dir(&did);
             device_path.push(filename);
             tokio::fs::create_dir_all(&device_path.parent().expect("Must have a parent"))
                 .await
@@ -784,6 +808,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delete_device() -> anyhow::Result<()> {
+        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
+        let rs = rsb.build();
+        let active_id = rs.get_active_id().await;
+        let device_id = rs
+            .add_device_to_active_recipe(DeviceConfig::mock("params"), Default::default())
+            .await?;
+        let device_id_with_file = rs
+            .add_device_to_active_recipe(DeviceConfig::mock("params"), Default::default())
+            .await?;
+        let mut file_service = rs.build_device_file_service(device_id);
+        file_service
+            .add_file_unchecked(&"bar/test.txt".try_into()?, b"content")
+            .await?;
+
+        rs.delete_device(active_id.clone(), device_id).await?;
+        rs.delete_device(active_id, device_id_with_file).await?;
+        assert!(!file_service.get_root().exists());
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn set_active_without_changes() -> anyhow::Result<()> {
         let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();
@@ -797,8 +844,7 @@ mod tests {
         rs.build_file_service()
             .build(r2_d1)
             .add_file_unchecked(&RelativeFilePath::new("test.txt").unwrap(), b"test")
-            .await
-            .unwrap();
+            .await?;
         let r2_id = rs.add_recipe(r2, Default::default()).await?;
         rs.set_recipe_to_active(r2_id, Default::default()).await?;
         rs.set_recipe_to_active(r1_id, Default::default()).await?;
@@ -969,7 +1015,7 @@ mod tests {
         
         let new_device_path_with_file = 'outer: loop {
             for device_id in new_device_config.devices.keys() {
-                let device_path = rs.get_recipe_dir_path().join(device_id.to_string());
+                let device_path = rs.get_device_dir(device_id);
                 if tokio::fs::metadata(&device_path).await.is_ok() {
                     break 'outer device_path;
                 }

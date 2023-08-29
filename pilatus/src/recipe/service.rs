@@ -117,7 +117,6 @@ pub trait RecipeServiceTrait {
         data: RecipeMetadata,
         options: TransactionOptions,
     ) -> Result<(), TransactionError>;
-
     async fn delete_recipe(
         &self,
         recipe_id: RecipeId,
@@ -129,7 +128,6 @@ pub trait RecipeServiceTrait {
         options: TransactionOptions,
     ) -> Result<(RecipeId, Recipe), TransactionError>;
     async fn state(&self) -> ActiveState;
-
     async fn set_recipe_to_active(
         &self,
         id: RecipeId,
@@ -144,14 +142,17 @@ pub trait RecipeServiceTrait {
     ) -> Result<(), TransactionError>;
     async fn restore_active(&self) -> Result<(), TransactionError>;
     async fn commit_active(&self, transaction_key: Uuid) -> Result<(), TransactionError>;
-
+    async fn delete_device(
+        &self,
+        recipe_id: RecipeId,
+        device_id: DeviceId,
+    ) -> Result<(), TransactionError>;
     async fn restore_committed(
         &self,
         recipe_id: RecipeId,
         device_id: DeviceId,
         transaction: Uuid,
     ) -> Result<(), TransactionError>;
-
     async fn update_device_name(
         &self,
         recipe_id: RecipeId,
