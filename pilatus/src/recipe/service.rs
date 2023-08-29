@@ -117,6 +117,7 @@ pub trait RecipeServiceTrait {
         data: RecipeMetadata,
         options: TransactionOptions,
     ) -> Result<(), TransactionError>;
+
     async fn delete_recipe_with(
         &self,
         recipe_id: RecipeId,
@@ -125,17 +126,32 @@ pub trait RecipeServiceTrait {
     async fn delete_recipe(&self, recipe_id: RecipeId) -> Result<(), TransactionError> {
         self.delete_recipe_with(recipe_id, Default::default()).await
     }
-    async fn clone_recipe(
+
+    async fn duplicate_recipe_with(
         &self,
         recipe_id: RecipeId,
         options: TransactionOptions,
     ) -> Result<(RecipeId, Recipe), TransactionError>;
+    async fn duplicate_recipe(
+        &self,
+        recipe_id: RecipeId,
+    ) -> Result<(RecipeId, Recipe), TransactionError> {
+        self.duplicate_recipe_with(recipe_id, Default::default())
+            .await
+    }
+
     async fn state(&self) -> ActiveState;
-    async fn set_recipe_to_active(
+
+    async fn activate_recipe_with(
         &self,
         id: RecipeId,
         options: TransactionOptions,
     ) -> Result<(), TransactionError>;
+
+    async fn activate_recipe(&self, id: RecipeId) -> Result<(), TransactionError> {
+        self.activate_recipe_with(id, Default::default()).await
+    }
+
     async fn update_device_params(
         &self,
         recipe_id: RecipeId,
@@ -168,6 +184,7 @@ pub trait RecipeServiceTrait {
 
 #[derive(Deserialize, Clone)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct TransactionOptions {
     pub key: Uuid,
     pub committed: bool,

@@ -15,7 +15,6 @@ use pilatus::device::DeviceContext;
 use pilatus::device::InfallibleParamApplier;
 use pilatus::device::RecipeServiceParamApplier;
 use pilatus::device::WithInfallibleParamUpdate;
-use pilatus::TransactionOptions;
 use pilatus::Variables;
 use pilatus::{
     device::{ActorSystem, DeviceId, FinalizeRecipeExecution, RecipeRunner, RecipeRunnerTrait},
@@ -190,7 +189,7 @@ impl RecipeRunnerImpl {
                 Ok((next_id, select_recipe_response)) => {
                     let _ignore_absent_receiver = select_recipe_response.send(
                         recipe_service
-                            .set_recipe_to_active(next_id, TransactionOptions::default())
+                            .activate_recipe(next_id)
                             .await
                             .map_err(Into::into),
                     );

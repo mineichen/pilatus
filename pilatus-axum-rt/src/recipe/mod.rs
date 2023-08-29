@@ -133,7 +133,7 @@ async fn clone_recipe(
     Query(options): Query<TransactionOptions>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let recipe = service
-        .clone_recipe(recipe_id, options)
+        .duplicate_recipe_with(recipe_id, options)
         .await
         .map_err(transaction_error_to_http_resonse)?;
     Ok(Json(recipe))

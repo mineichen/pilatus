@@ -172,7 +172,7 @@ impl RecipeServiceImpl {
             .map_err(Into::into)
     }
 
-    async fn clone_recipe(
+    async fn duplicate_recipe(
         &self,
         recipe_id: RecipeId,
         options: TransactionOptions,
@@ -208,7 +208,7 @@ impl RecipeServiceImpl {
         ActiveState::new(recipes.clone(), has_uncommitted_changes)
     }
 
-    pub(super) async fn set_recipe_to_active(
+    pub(super) async fn activate_recipe_with(
         &self,
         id: RecipeId,
         options: TransactionOptions,
@@ -735,9 +735,7 @@ mod tests {
             Foo { test: 42 }
         );
 
-        let (clone_id, _) = rs
-            .clone_recipe(active_id.clone(), Default::default())
-            .await?;
+        let (clone_id, _) = rs.duplicate_recipe(active_id.clone()).await?;
         let second_update = rs
             .update_device_params(
                 active_id,
@@ -816,8 +814,8 @@ mod tests {
             .add_file_unchecked(&RelativeFilePath::new("test.txt").unwrap(), b"test")
             .await?;
         let r2_id = rs.add_recipe(r2).await?;
-        rs.set_recipe_to_active(r2_id, Default::default()).await?;
-        rs.set_recipe_to_active(r1_id, Default::default()).await?;
+        rs.activate_recipe(r2_id).await?;
+        rs.activate_recipe(r1_id).await?;
         Ok(())
     }
 
@@ -849,13 +847,13 @@ mod tests {
             .await?;
 
         let Err(TransactionError::Other(_)) = rs
-            .set_recipe_to_active(r2_id.clone(), Default::default())
+            .activate_recipe(r2_id.clone())
             .await else {
                 panic!("Expected Other error")
             };
 
         rs.commit_active(Default::default()).await?;
-        rs.set_recipe_to_active(r2_id, Default::default())
+        rs.activate_recipe(r2_id)
             .await
             .unwrap();
         Ok(())
@@ -870,20 +868,20 @@ mod tests {
         let r2_id = rs.add_recipe(r2).await?;
         let r1_id = rs.get_active_id().await;
 
-        rs.set_recipe_to_active(r2_id, Default::default()).await?;
+        rs.activate_recipe(r2_id).await?;
         let mut fs = rs.build_device_file_service(r2_d1);
         fs.add_file_unchecked(&"test.txt".try_into()?, b"test")
             .await?;
 
         match rs
-            .set_recipe_to_active(r1_id.clone(), Default::default())
+            .activate_recipe(r1_id.clone())
             .await
         {
             Err(TransactionError::Other(_)) => {}
             e => panic!("Unexpected: {e:?}"),
         }
         rs.commit_active(Default::default()).await?;
-        rs.set_recipe_to_active(r1_id, Default::default())
+        rs.activate_recipe(r1_id)
             .await
             .unwrap();
 
@@ -902,20 +900,20 @@ mod tests {
         let mut fs = rs.build_device_file_service(r2_d1);
         let initial_filename = "test.txt".try_into()?;
         fs.add_file_unchecked(&initial_filename, content).await?;
-        rs.set_recipe_to_active(r2_id, Default::default()).await?;
+        rs.activate_recipe(r2_id).await?;
         fs.remove_file(&initial_filename).await?;
         fs.add_file_unchecked(&"test2.txt".try_into()?, content)
             .await?;
 
         match rs
-            .set_recipe_to_active(r1_id.clone(), Default::default())
+            .activate_recipe(r1_id.clone())
             .await
         {
             Err(TransactionError::Other(_)) => {}
             e => panic!("Unexpected: {e:?}"),
         }
         rs.commit_active(Default::default()).await?;
-        rs.set_recipe_to_active(r1_id, Default::default())
+        rs.activate_recipe(r1_id)
             .await
             .unwrap();
 
@@ -978,7 +976,7 @@ mod tests {
         
         rs.create_device_file(device_in_active_recipe_id, "my_file.txt", b"test").await;
 
-        let (new_recipe_id, new_device_config) = rs.clone_recipe(rs.get_active_id().await, Default::default()).await.unwrap();
+        let (new_recipe_id, new_device_config) = rs.duplicate_recipe(rs.get_active_id().await).await.unwrap();
         assert!(!new_device_config.devices.contains_key(&device_in_other_recipe_id), "Clone contains device with the same id as in the original");
         
         let new_device_path_with_file = 'outer: loop {

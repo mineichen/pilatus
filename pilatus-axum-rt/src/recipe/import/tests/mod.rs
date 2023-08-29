@@ -30,9 +30,7 @@ async fn build_zip(
             rs.add_recipe_with_id(recipe_id.clone(), Default::default())
                 .await
                 .unwrap();
-            rs.set_recipe_to_active(recipe_id.clone(), Default::default())
-                .await
-                .unwrap();
+            rs.activate_recipe(recipe_id.clone()).await.unwrap();
             rs.delete_recipe(active_recipe_id).await.unwrap();
             recipe_id
         }

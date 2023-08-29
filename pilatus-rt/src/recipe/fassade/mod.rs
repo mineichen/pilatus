@@ -138,24 +138,26 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         self.recipe_service.delete_recipe(recipe_id, options).await
     }
 
-    async fn clone_recipe(
+    async fn duplicate_recipe_with(
         &self,
         recipe_id: RecipeId,
         options: TransactionOptions,
     ) -> Result<(RecipeId, Recipe), TransactionError> {
-        self.recipe_service.clone_recipe(recipe_id, options).await
+        self.recipe_service
+            .duplicate_recipe(recipe_id, options)
+            .await
     }
 
     async fn state(&self) -> ActiveState {
         self.recipe_service.state().await
     }
 
-    async fn set_recipe_to_active(
+    async fn activate_recipe_with(
         &self,
         id: RecipeId,
         options: TransactionOptions,
     ) -> Result<(), TransactionError> {
-        self.recipe_service.set_recipe_to_active(id, options).await
+        self.recipe_service.activate_recipe_with(id, options).await
     }
 
     async fn update_device_params(

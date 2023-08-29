@@ -13,10 +13,7 @@ async fn replace_without_files() {
     let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
     let rs = Arc::new(rsb.build());
     let active_recipe_id = rs.get_active_id().await;
-    let (export_recipe_id, _) = rs
-        .clone_recipe(active_recipe_id, Default::default())
-        .await
-        .unwrap();
+    let (export_recipe_id, _) = rs.duplicate_recipe(active_recipe_id).await.unwrap();
 
     rs.add_device_to_recipe(export_recipe_id.clone(), DeviceConfig::mock(1i32))
         .await
