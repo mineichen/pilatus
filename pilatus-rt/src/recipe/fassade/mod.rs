@@ -180,13 +180,14 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         self.recipe_service.commit_active(transaction_key).await
     }
 
-    async fn delete_device(
+    async fn delete_device_with(
         &self,
         recipe_id: RecipeId,
         device_id: DeviceId,
+        options: TransactionOptions,
     ) -> Result<(), TransactionError> {
         self.recipe_service
-            .delete_device(recipe_id, device_id)
+            .delete_device(recipe_id, device_id, options)
             .await
     }
 
@@ -201,7 +202,7 @@ impl RecipeServiceTrait for RecipeServiceFassade {
             .await
     }
 
-    async fn update_device_name(
+    async fn update_device_name_with(
         &self,
         recipe_id: RecipeId,
         device_id: DeviceId,

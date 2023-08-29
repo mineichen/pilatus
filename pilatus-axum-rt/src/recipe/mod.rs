@@ -245,7 +245,7 @@ async fn update_device_name(
     let device_name =
         Name::new(device_name).map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()))?;
     service
-        .update_device_name(recipe_id, device_id, device_name, options)
+        .update_device_name_with(recipe_id, device_id, device_name, options)
         .await
         .map_err(transaction_error_to_http_resonse)
 }

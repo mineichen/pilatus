@@ -147,7 +147,6 @@ pub trait RecipeServiceTrait {
         id: RecipeId,
         options: TransactionOptions,
     ) -> Result<(), TransactionError>;
-
     async fn activate_recipe(&self, id: RecipeId) -> Result<(), TransactionError> {
         self.activate_recipe_with(id, Default::default()).await
     }
@@ -159,7 +158,6 @@ pub trait RecipeServiceTrait {
         values: ParameterUpdate,
         options: TransactionOptions,
     ) -> Result<(), TransactionError>;
-
     async fn update_device_params(
         &self,
         recipe_id: RecipeId,
@@ -172,18 +170,29 @@ pub trait RecipeServiceTrait {
 
     async fn restore_active(&self) -> Result<(), TransactionError>;
     async fn commit_active(&self, transaction_key: Uuid) -> Result<(), TransactionError>;
+
+    async fn delete_device_with(
+        &self,
+        recipe_id: RecipeId,
+        device_id: DeviceId,
+        options: TransactionOptions,
+    ) -> Result<(), TransactionError>;
     async fn delete_device(
         &self,
         recipe_id: RecipeId,
         device_id: DeviceId,
-    ) -> Result<(), TransactionError>;
+    ) -> Result<(), TransactionError> {
+        self.delete_device_with(recipe_id, device_id, Default::default())
+            .await
+    }
+
     async fn restore_committed(
         &self,
         recipe_id: RecipeId,
         device_id: DeviceId,
         transaction: Uuid,
     ) -> Result<(), TransactionError>;
-    async fn update_device_name(
+    async fn update_device_name_with(
         &self,
         recipe_id: RecipeId,
         device_id: DeviceId,

@@ -272,6 +272,7 @@ impl RecipeServiceImpl {
         &self,
         recipe_id: RecipeId,
         device_id: DeviceId,
+        options: TransactionOptions,
     ) -> Result<(), TransactionError> {
         let mut recipes = self.recipes.lock().await;
         let recipe = recipes.get_with_id_or_error_mut(&recipe_id)?;
@@ -279,14 +280,14 @@ impl RecipeServiceImpl {
             Err(ActorErrorUnknownDevice {
                 device_id,
                 detail: "Not found in recipe".into(),
-            }
-            .into())
+            })?
         } else {
             tokio::fs::remove_dir_all(self.get_device_dir(&device_id))
                 .await
                 .ok();
-            Ok(())
-        }
+        };
+        self.save_config(&recipes, options.key).await?;
+        Ok(())
     }
 
     async fn restore_committed(
