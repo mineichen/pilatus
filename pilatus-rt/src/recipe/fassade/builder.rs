@@ -1,12 +1,9 @@
 use std::sync::Arc;
 
-use crate::recipe::{
-    actions::DeviceActions, ChangeParamsStrategy, RecipeServiceBuilder, RecipeServiceImpl,
+use crate::{
+    recipe::{actions::DeviceActions, ChangeParamsStrategy, RecipeServiceBuilder},
+    RecipeServiceFassade,
 };
-
-pub struct RecipeServiceFassade {
-    pub(crate) recipe_service: Arc<RecipeServiceImpl>,
-}
 
 pub struct RecipeServiceFassadeBuilder {
     pub recipe_builder: RecipeServiceBuilder,

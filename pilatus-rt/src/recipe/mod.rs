@@ -334,9 +334,7 @@ impl RecipeServiceImpl {
             .filter_map(|x| async { x.ok() })
             .boxed()
     }
-}
 
-impl RecipeServiceImpl {
     // Checks running device-ids only. If Backup contains more devices, differences are detected in Recipes::has_active_changes
     pub async fn check_active_files(&self, recipes: &Recipes) -> Result<(), TransactionError> {
         let backup_root = self.get_recipe_dir_path().join("backup");
@@ -480,15 +478,7 @@ impl RecipeServiceImpl {
         Ok(patched_vars)
     }
 
-    #[cfg(any(test, feature = "unstable"))]
-    pub async fn clone_device_config(
-        &self,
-        _recipe_id: RecipeId,
-        device_id: DeviceId,
-    ) -> Result<DeviceConfig, TransactionError> {
-        let recipes = self.recipes.lock().await;
-        Ok(recipes.get_device_or_error(device_id)?.clone())
-    }
+    
 
     async fn save_config(&self, recipes: &Recipes, transaction_key: Uuid) -> Result<(), io::Error> {
         let p = self.get_recipe_file_path();
@@ -522,6 +512,14 @@ pub(crate) mod unstable {
     use pilatus::{device::DeviceId, Recipe, RecipeId, TransactionError, TransactionOptions};
     use std::sync::Arc;
     impl RecipeServiceImpl {
+        pub async fn clone_device_config(
+            &self,
+            _recipe_id: RecipeId,
+            device_id: DeviceId,
+        ) -> Result<DeviceConfig, TransactionError> {
+            let recipes = self.recipes.lock().await;
+            Ok(recipes.get_device_or_error(device_id)?.clone())
+        }
         pub async fn add_recipe_with_id(
             &self,
             id: RecipeId,
@@ -725,7 +723,7 @@ mod tests {
             test: i32,
         }
         assert_eq!(
-            rs.recipe_service
+            rs.recipe_service()
                 .recipes
                 .lock()
                 .await
@@ -769,8 +767,8 @@ mod tests {
     async fn test_path_property_assignment() -> anyhow::Result<()> {
         let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
-
-        assert_eq!(dir.path().join("recipes"), rs.recipe_service.path);
+        
+        assert_eq!(dir.path().join("recipes"), rs.recipe_service().path);
         dir.close()?;
         Ok(())
     }
@@ -980,7 +978,7 @@ mod tests {
         
         let new_device_path_with_file = 'outer: loop {
             for device_id in new_device_config.devices.keys() {
-                let device_path = rs.recipe_service.get_device_dir(device_id);
+                let device_path = rs.recipe_service().get_device_dir(device_id);
                 if tokio::fs::metadata(&device_path).await.is_ok() {
                     break 'outer device_path;
                 }

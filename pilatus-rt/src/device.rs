@@ -154,15 +154,10 @@ impl RecipeRunnerImpl {
         Ok(())
     }
 
-    async fn run_active_recipe(
-        &self,
-        recipe_service: Arc<RecipeServiceFassade>,
-    ) -> Result<(), anyhow::Error> {
+    async fn run_active_recipe(&self, rs: Arc<RecipeServiceFassade>) -> Result<(), anyhow::Error> {
         loop {
-            let (recipe_id, active_devices, variables) = recipe_service
-                .recipe_service
-                .get_owned_devices_from_active()
-                .await;
+            let (recipe_id, active_devices, variables) =
+                rs.recipe_service().get_owned_devices_from_active().await;
             let (tx, rx) = oneshot::channel();
             // Allow new recipe via self.select_recipe()
             *self.state.next_recipe_id.lock().expect("Not poisoned") = Some(tx);
@@ -173,7 +168,7 @@ impl RecipeRunnerImpl {
                     RecipeServiceParamApplier {
                         device_id,
                         recipe_id: recipe_id.clone(),
-                        service: recipe_service.as_ref() as &(dyn RecipeServiceTrait + Send + Sync),
+                        service: rs.as_ref() as &(dyn RecipeServiceTrait + Send + Sync),
                     }
                     .apply(update)
                 },
@@ -187,12 +182,8 @@ impl RecipeRunnerImpl {
 
             match rx.await {
                 Ok((next_id, select_recipe_response)) => {
-                    let _ignore_absent_receiver = select_recipe_response.send(
-                        recipe_service
-                            .activate_recipe(next_id)
-                            .await
-                            .map_err(Into::into),
-                    );
+                    let _ignore_absent_receiver = select_recipe_response
+                        .send(rs.activate_recipe(next_id).await.map_err(Into::into));
                 }
                 Err(_) => break,
             }

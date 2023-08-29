@@ -258,22 +258,20 @@ mod tests {
         let recipe_id = rs.get_active_id().await;
 
         let device_id = rs
-            .recipe_service
-            .add_device_to_active_recipe(DeviceConfig::mock(1i32), Default::default())
+            .add_device_to_active_recipe(DeviceConfig::mock(1i32))
             .await
             .unwrap();
-
-        rs.recipe_service
+        let service = rs.recipe_service();
+        service
             .change_device_params_on_active_recipe(device_id, 42i32, Default::default())
             .await
             .expect("Should be updateable");
-        rs.recipe_service
+        service
             .change_device_params_on_active_recipe(device_id, 42u32, Default::default())
             .await
             .expect_err("Shouldn't be updateable");
 
-        let config = rs
-            .recipe_service
+        let config = service
             .clone_device_config(recipe_id, device_id)
             .await
             .expect("Should have a device");
