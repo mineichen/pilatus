@@ -18,33 +18,23 @@ use pilatus::{TransactionError, TransactionOptions, UntypedDeviceParamsWithVaria
 use super::{ChangeDeviceParamsTransactionError, RecipeServiceBuilder, RecipeServiceImpl};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
-    c.with::<AllRegistered<Box<dyn DeviceHandler>>>()
-        .register(DeviceSpawnerService::new);
+    c.with::<(
+        AllRegistered<Box<dyn DeviceHandler>>,
+        Registered<ActorSystem>,
+    )>()
+    .register(|(handlers, system)| DeviceSpawnerService::new(handlers, system));
 
-    c.with::<(Registered<DeviceSpawnerService>, Registered<ActorSystem>)>()
-        .register(|(spawner_service, actor_system)| {
-            Arc::new(DeviceActionsFassade {
-                spawner_service,
-                actor_system,
-            }) as Arc<dyn DeviceActions>
-        });
+    c.with::<Registered<DeviceSpawnerService>>()
+        .register(|s| Arc::new(s) as Arc<dyn DeviceActions>);
 }
 
-/// Bundles all dependencies for interactions with a Device.
-/// The Device shouldn't have Dependencies on services
-#[derive(Clone, Debug)]
-struct DeviceActionsFassade {
-    spawner_service: DeviceSpawnerService,
-    actor_system: ActorSystem,
-}
-
-impl DeviceActions for DeviceActionsFassade {
+impl DeviceActions for DeviceSpawnerService {
     fn validate(
         &self,
         device_type: &str,
         ctx: DeviceContext,
     ) -> BoxFuture<Result<WithInfallibleParamUpdate<()>, TransactionError>> {
-        let spawner = self.spawner_service.get_spawner(device_type);
+        let spawner = self.get_spawner(device_type);
         async move { spawner?.validate(ctx).await.map_err(Into::into) }.boxed()
     }
     fn try_apply(
@@ -52,7 +42,7 @@ impl DeviceActions for DeviceActionsFassade {
         device_type: &str,
         ctx: DeviceContext,
     ) -> BoxFuture<Result<(), TransactionError>> {
-        let spawner = self.spawner_service.get_spawner(device_type);
+        let spawner = self.get_spawner(device_type);
         async move {
             spawner?
                 .update(ctx, self.actor_system.clone())
@@ -65,21 +55,11 @@ impl DeviceActions for DeviceActionsFassade {
         }
         .boxed()
     }
-
-    fn spawn(
-        &self,
-        device_type: &str,
-        ctx: DeviceContext,
-        provider: WeakServiceProvider,
-    ) -> BoxFuture<Result<DeviceActionSpawnOk, StartDeviceError>> {
-        self.spawner_service
-            .spawn(device_type, ctx, provider)
-            .boxed()
-    }
 }
 
 #[derive(Clone)]
 pub struct DeviceSpawnerService {
+    actor_system: ActorSystem,
     map: HashMap<&'static str, Box<dyn DeviceHandler>>,
 }
 
@@ -92,8 +72,12 @@ impl Debug for DeviceSpawnerService {
 }
 
 impl DeviceSpawnerService {
-    pub fn new(devices: impl Iterator<Item = Box<dyn DeviceHandler>>) -> Self {
+    pub fn new(
+        devices: impl Iterator<Item = Box<dyn DeviceHandler>>,
+        actor_system: ActorSystem,
+    ) -> Self {
         Self {
+            actor_system,
             map: devices.map(|d| (d.get_device_type(), d)).collect(),
         }
     }
@@ -193,8 +177,6 @@ mod testutil {
         TransactionError,
     };
 
-    use crate::recipe::{actions::StartDeviceError, DeviceActionSpawnOk};
-
     pub struct LambdaRecipePermissioner<TValidator> {
         validator: TValidator,
     }
@@ -244,22 +226,12 @@ mod testutil {
         ) -> BoxFuture<Result<(), TransactionError>> {
             futures::future::ready(Ok(())).boxed()
         }
-
-        fn spawn(
-            &self,
-            _device_type: &str,
-            _ctx: DeviceContext,
-            _provider: minfac::WeakServiceProvider,
-        ) -> BoxFuture<Result<DeviceActionSpawnOk, StartDeviceError>> {
-            unimplemented!()
-        }
     }
 }
 #[cfg(any(test, feature = "unstable"))]
 pub use testutil::*;
 
 use super::actions::{DeviceActions, StartDeviceError};
-use super::DeviceActionSpawnOk;
 
 #[cfg(test)]
 mod tests {

@@ -1,23 +1,13 @@
 use std::fmt::Debug;
 
 use futures::future::BoxFuture;
-use minfac::WeakServiceProvider;
-use tokio::task::JoinHandle;
 
 use pilatus::{
-    device::{DeviceContext, DeviceResult, SpawnError, WithInfallibleParamUpdate},
+    device::{DeviceContext, SpawnError, WithInfallibleParamUpdate},
     TransactionError, UpdateParamsMessageError,
 };
 
-pub type DeviceActionSpawnOk = WithInfallibleParamUpdate<JoinHandle<DeviceResult>>;
-
 pub trait DeviceActions: Debug + Send + Sync {
-    fn spawn(
-        &self,
-        device_type: &str,
-        ctx: DeviceContext,
-        provider: WeakServiceProvider,
-    ) -> BoxFuture<Result<DeviceActionSpawnOk, StartDeviceError>>;
     fn validate(
         &self,
         device_type: &str,

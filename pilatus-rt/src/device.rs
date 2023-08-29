@@ -123,7 +123,7 @@ impl RecipeRunnerImpl {
         let (tx, rx) = oneshot::channel();
         sender
             .send((recipe_id, tx))
-            .map_err(|_| anyhow::anyhow!("Couldn't send Uuid to channel"))?;
+            .map_err(|_| anyhow::anyhow!("Couldn't send RecipeId to channel"))?;
         Ok(rx
             .map_err(Into::into)
             .and_then(|x| async move { x })
@@ -312,7 +312,7 @@ mod tests {
         let runner = RecipeRunnerImpl::new(
             weak_provider,
             Arc::new(state),
-            DeviceSpawnerService::new(provider.get_all()),
+            DeviceSpawnerService::new(provider.get_all(), ActorSystem::new()),
             Vec::new(),
         );
         runner
