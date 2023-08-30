@@ -1,6 +1,7 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::ops::DerefMut;
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -13,9 +14,9 @@ use pilatus::device::{
     ActorSystem, DeviceContext, DeviceHandler, DeviceId, DeviceResult, UpdateDeviceError,
     WithInfallibleParamUpdate,
 };
-use pilatus::{TransactionError, TransactionOptions, UntypedDeviceParamsWithVariables};
+use pilatus::{Recipes, TransactionError, TransactionOptions, UntypedDeviceParamsWithVariables};
 
-use super::{ChangeDeviceParamsTransactionError, RecipeServiceBuilder, RecipeServiceImpl};
+use super::{ChangeDeviceParamsTransactionError, RecipeDataService, RecipeServiceBuilder};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<(
@@ -122,16 +123,14 @@ impl ChangeParamsStrategy {
     }
 }
 
-impl RecipeServiceImpl {
+impl<'a, TRecipe: DerefMut<Target = Recipes>> RecipeDataService<'a, TRecipe> {
     pub async fn change_device_params_on_active_recipe<T: Any>(
-        &self,
+        &mut self,
         device_id: DeviceId,
         msg: T,
         options: TransactionOptions,
     ) -> Result<(), ChangeDeviceParamsTransactionError> {
-        let mut recipes = self.recipes.lock().await;
-
-        let device = recipes.active().1.device_by_id(device_id)?;
+        let device = self.recipes.active().1.device_by_id(device_id)?;
         let modifier = self
             .change_strategies
             .get(&(&device.device_type, TypeId::of::<T>()))
@@ -147,13 +146,12 @@ impl RecipeServiceImpl {
         let new_params = (modifier)(&device.params, msg)?;
 
         let variables = self
-            .apply_params(device_id, &new_params, Default::default(), &recipes)
+            .apply_params(device_id, &new_params, Default::default())
             .await?;
 
-        options.update_device_params(recipes.get_active().1, device_id, new_params)?;
+        options.update_device_params(self.recipes.get_active().1, device_id, new_params)?;
 
-        *recipes.as_mut() = variables;
-        self.save_config(&recipes, options.key).await?;
+        *self.recipes.as_mut() = variables;
         Ok(())
     }
 }
@@ -261,19 +259,21 @@ mod tests {
             .add_device_to_active_recipe(DeviceConfig::mock(1i32))
             .await
             .unwrap();
-        let service = rs.recipe_service();
-        service
-            .change_device_params_on_active_recipe(device_id, 42i32, Default::default())
+        {
+            let mut service = rs.recipe_service_write().await;
+            service
+                .change_device_params_on_active_recipe(device_id, 42i32, Default::default())
+                .await
+                .expect("Should be updateable");
+            service
+                .change_device_params_on_active_recipe(device_id, 42u32, Default::default())
+                .await
+                .expect_err("Shouldn't be updateable");
+        }
+        let config = rs
+            .recipe_service_read()
             .await
-            .expect("Should be updateable");
-        service
-            .change_device_params_on_active_recipe(device_id, 42u32, Default::default())
-            .await
-            .expect_err("Shouldn't be updateable");
-
-        let config = service
-            .clone_device_config(recipe_id, device_id)
-            .await
+            .device_config(recipe_id, device_id)
             .expect("Should have a device");
         assert_eq!(config, DeviceConfig::mock(42i32));
 

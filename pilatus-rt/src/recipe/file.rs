@@ -9,27 +9,16 @@ use futures::{
 };
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
-    device::DeviceId, FileService, FileServiceBuilder, FileServiceTrait, RelativeDirPath,
-    RelativeFilePath, TransactionError,
+    FileServiceBuilder, FileServiceTrait, RelativeDirPath, RelativeFilePath, TransactionError,
 };
 use tokio::{fs, io::AsyncReadExt};
 use tracing::trace;
 
-use super::RecipeServiceImpl;
+use super::RecipeServiceFassade;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
-    c.with::<Registered<Arc<RecipeServiceImpl>>>()
+    c.with::<Registered<Arc<RecipeServiceFassade>>>()
         .register(|r| r.build_file_service());
-}
-
-impl RecipeServiceImpl {
-    pub(super) fn build_file_service(&self) -> FileServiceBuilder {
-        TokioFileService::builder(self.get_recipe_dir_path())
-    }
-
-    pub(super) fn build_device_file_service(&self, device_id: DeviceId) -> FileService<()> {
-        self.build_file_service().build(device_id)
-    }
 }
 
 #[async_trait::async_trait]

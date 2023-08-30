@@ -28,20 +28,17 @@ use tracing::{trace, warn};
 use uuid::Uuid;
 
 use self::merge_strategy::{MergeStrategy, MergeStrategyContext};
-use crate::recipe::RecipeServiceImpl;
-
-use super::actions::DeviceActions;
+use super::RecipeServiceFassade;
 
 mod merge_strategy;
 
 #[must_use]
 #[derive(Debug)]
 pub struct Importer {
-    service: Arc<RecipeServiceImpl>,
+    service: Arc<RecipeServiceFassade>,
     recipes: HashMap<RecipeId, Recipe>,
     variables: Variables,
     tmp: TempDir,
-    device_actions: Arc<dyn DeviceActions>,
 }
 
 #[async_trait]
@@ -72,10 +69,10 @@ impl Importer {
         mut strategy: impl MergeStrategy,
     ) -> Result<(), ImportRecipeError> {
         let service = self.service.clone();
-        let mut recipes_lock = service.recipes.lock().await;
+        let mut recipes_lock = service.recipe_service_write().await;
 
-        let (active_id, _) = recipes_lock.get_active();
-        let mut recipes_copy = recipes_lock.clone();
+        let (active_id, _) = recipes_lock.recipes.get_active();
+        let mut recipes_copy = recipes_lock.recipes.clone();
 
         let mut errors = HashSet::new();
 
@@ -89,7 +86,7 @@ impl Importer {
                 .handle_json(
                     MergeStrategyContext {
                         recipes_copy: &mut recipes_copy,
-                        device_actions: self.device_actions.as_ref(),
+                        device_actions: self.service.recipe_service().device_actions.as_ref(),
                     },
                     recipe_id.clone(),
                     recipe.clone(),
@@ -114,14 +111,12 @@ impl Importer {
         }
 
         let finalize = async {
-            let recipe_path = self.service.get_recipe_dir_path();
+            let recipe_path = self.service.recipe_dir_path();
             strategy.finalize(recipe_path, self.tmp.path()).await?;
 
             pilatus::clone_directory_deep(self.tmp.path(), recipe_path).await?;
-            *recipes_lock = recipes_copy;
-            self.service
-                .save_config(&recipes_lock, Uuid::new_v4())
-                .await?;
+            *recipes_lock.recipes = recipes_copy;
+            recipes_lock.commit(Uuid::new_v4()).await?;
             Result::<_, IrreversibleError>::Ok(())
         }
         .await;
@@ -136,7 +131,7 @@ impl Importer {
 type ImportResult = Result<ImporterData, ImportRecipeError>;
 type ImporterData = (HashMap<RecipeId, Recipe>, Variables);
 
-pub struct RecipeImporterImpl(pub Arc<RecipeServiceImpl>);
+pub struct RecipeImporterImpl(pub Arc<RecipeServiceFassade>);
 
 #[async_trait]
 impl RecipeImporterTrait for RecipeImporterImpl {
@@ -158,7 +153,6 @@ impl RecipeImporterTrait for RecipeImporterImpl {
                     recipes,
                     variables,
                     tmp,
-                    device_actions: self.0.device_actions.clone(),
                 })
                 .apply(options.merge_strategy)
                 .await
@@ -172,7 +166,7 @@ impl RecipeImporterTrait for RecipeImporterImpl {
         }
     }
 }
-impl RecipeServiceImpl {
+impl RecipeServiceFassade {
     async fn import_into_path(&self, r: &mut dyn EntryReader, root: PathBuf) -> ImportResult {
         let mut data = Vec::new();
         let mut recipes = HashMap::new();

@@ -207,16 +207,17 @@ async fn commit_active(
     Query(options): Query<TransactionIdWrapper>,
 ) -> Result<(), (StatusCode, String)> {
     service
-        .commit_active(options.key.unwrap_or_else(Uuid::new_v4))
+        .commit_active_with(options.key.unwrap_or_else(Uuid::new_v4))
         .await
         .map_err(transaction_error_to_http_resonse)
 }
 
 async fn restore_active(
     InjectRegistered(service): InjectRegistered<RecipeService>,
+    Query(options): Query<TransactionIdWrapper>,
 ) -> Result<(), (StatusCode, String)> {
     service
-        .restore_active()
+        .restore_active_with(options.key.unwrap_or_else(Uuid::new_v4))
         .await
         .map_err(transaction_error_to_http_resonse)
 }

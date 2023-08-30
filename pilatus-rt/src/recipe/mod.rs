@@ -2,7 +2,8 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
 use std::io::{self, ErrorKind};
-use std::path::PathBuf;
+use std::ops::{Deref, DerefMut};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -13,16 +14,17 @@ use pilatus::device::{ActiveState, ActorErrorUnknownDevice, DeviceContext};
 use pilatus::UncommittedChangesError;
 use pilatus::{
     clone_directory_deep, device::DeviceId, visit_directory_files, DeviceConfig, GenericConfig,
-    InitRecipeListener, Name, ParameterUpdate, Recipe, RecipeExporter, RecipeId, RecipeImporter,
-    RecipeMetadata, Recipes, TransactionError, TransactionOptions,
-    UntypedDeviceParamsWithVariables, VariableError, Variables, VariablesPatch,
+    InitRecipeListener, Name, ParameterUpdate, Recipe, RecipeId, RecipeMetadata, Recipes,
+    TransactionError, TransactionOptions, UntypedDeviceParamsWithVariables, VariableError,
+    Variables, VariablesPatch,
 };
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use tokio::{
     fs,
     io::AsyncRead,
-    sync::{broadcast, Mutex},
+    sync::{broadcast, RwLock},
 };
 use tracing::{debug, error, trace};
 use uuid::Uuid;
@@ -63,11 +65,6 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
             Arc::new(builder.build())
         },
     );
-    c.with::<Registered<Arc<RecipeServiceFassade>>>()
-        .register(|x| x as RecipeExporter);
-
-    c.with::<Registered<Arc<RecipeServiceImpl>>>()
-        .register(|x| Box::new(RecipeImporterImpl(x)) as RecipeImporter);
 
     fassade::register_services(c);
     parameters::register_services(c);
@@ -90,9 +87,9 @@ impl<X: Into<TransactionError>> From<X> for ChangeDeviceParamsTransactionError {
 
 const RECIPES_FILE_NAME: &str = "recipes.json";
 
-pub struct RecipeServiceImpl {
+pub struct RecipeServiceAccessor {
     path: PathBuf,
-    recipes: Arc<Mutex<Recipes>>,
+    recipes: Arc<RwLock<Recipes>>,
     device_actions: Arc<dyn DeviceActions>,
     listeners: Vec<InitRecipeListener>,
     update_sender: broadcast::Sender<Uuid>,
@@ -101,246 +98,28 @@ pub struct RecipeServiceImpl {
     change_strategies: HashMap<(&'static str, TypeId), Box<dyn Any + Send + Sync>>,
 }
 
-impl Debug for RecipeServiceImpl {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RecipeService")
-            .field("path", &self.path)
-            .field("recipes", &self.recipes)
-            .field("recipe_permissioner", &self.device_actions)
-            .finish()
-    }
+pub struct RecipeDataService<'a, T: 'a> {
+    path: &'a Path,
+    recipes: T,
+    device_actions: &'a dyn DeviceActions,
+    listeners: &'a [InitRecipeListener],
+    update_sender: &'a broadcast::Sender<Uuid>,
+    change_strategies: &'a HashMap<(&'static str, TypeId), Box<dyn Any + Send + Sync>>,
 }
 
-impl RecipeServiceImpl {
-    async fn add_new_default_recipe(
-        &self,
-        options: TransactionOptions,
-    ) -> Result<(RecipeId, Recipe), TransactionError> {
-        let mut recipes = self.recipes.lock().await;
-        let mut recipe = Recipe::default();
-
-        // add all default devices
-        for listener in self.listeners.iter() {
-            listener.call(&mut recipe);
-        }
-
-        let new_id = recipes.add_new(recipe.clone());
-        self.save_config(&recipes, options.key).await?;
-
-        Ok((new_id, recipe))
-    }
-
-    async fn update_recipe_metadata(
-        &self,
-        id: RecipeId,
-        data: RecipeMetadata,
-        options: TransactionOptions,
-    ) -> Result<(), TransactionError> {
-        let raw = data.into_inner();
-        let mut recipes = self.recipes.lock().await;
-
-        if id != raw.new_id {
-            recipes.update_recipe_id(&id, raw.new_id.clone())?;
-        }
-
-        let r = recipes.get_with_id_or_error_mut(&raw.new_id)?;
-        r.tags = raw.tags;
-        self.save_config(&recipes, options.key)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn delete_recipe(
-        &self,
-        recipe_id: RecipeId,
-        options: TransactionOptions,
-    ) -> Result<(), TransactionError> {
-        let mut recipes = self.recipes.lock().await;
-
-        let removed = recipes.remove(&recipe_id)?;
-        for device_id in removed.devices.keys() {
-            // Ok, as RecipeService creates the subfolder (by default "recipe") and therefore remove_dir_all shouldn't accidentally remove too much
-            if let Err(e) = tokio::fs::remove_dir_all(&self.get_device_dir(device_id)).await {
-                if e.kind() != ErrorKind::NotFound {
-                    return Err(e.into());
-                }
-            }
-        }
-
-        self.save_config(&recipes, options.key)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn duplicate_recipe(
-        &self,
-        recipe_id: RecipeId,
-        options: TransactionOptions,
-    ) -> Result<(RecipeId, Recipe), TransactionError> {
-        let mut recipes = self.recipes.lock().await;
-
-        let original = recipes.get_with_id_or_error(&recipe_id)?;
-        let (new_recipe_id, duplicate) = recipes.build_duplicate(recipe_id, original);
-
-        for (old_id, new_id) in duplicate.mappings.iter() {
-            let path = self.get_recipe_dir_path();
-            let src_path = path.join(old_id.to_string());
-            let dst_path = path.join(new_id.to_string());
-            if let Ok(meta) = fs::metadata(&src_path).await {
-                if meta.is_dir() {
-                    clone_directory_deep(&src_path, dst_path)
-                        .await
-                        .map_err(TransactionError::from_io_producer(&src_path))?;
-                }
-            }
-        }
-        let mut duplicate = duplicate.into_inner();
-        duplicate.recipe.created = chrono::Utc::now();
-        recipes.add_inexistent(new_recipe_id.clone(), duplicate.recipe.clone());
-
-        self.save_config(&recipes, options.key).await?;
-        Ok((new_recipe_id, duplicate.recipe))
-    }
+impl<'a, T: Deref<Target = Recipes>> RecipeDataService<'a, T> {
     async fn state(&self) -> ActiveState {
-        let recipes = self.recipes.lock().await;
         let has_uncommitted_changes =
-            self.check_active_files(&recipes).await.is_err() || recipes.has_active_changes();
-        ActiveState::new(recipes.clone(), has_uncommitted_changes)
-    }
-
-    pub(super) async fn activate_recipe(
-        &self,
-        id: RecipeId,
-        options: TransactionOptions,
-    ) -> Result<(), TransactionError> {
-        let mut recipes = self.recipes.lock().await;
-
-        self.check_active_files(&recipes).await?;
-
-        let active_devices = recipes.set_active(&id)?;
-        self.copy_backup_files(active_devices).await?;
-
-        self.save_config(&recipes, options.key)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn update_device_params(
-        &self,
-        recipe_id: RecipeId,
-        device_id: DeviceId,
-        values: ParameterUpdate,
-        options: TransactionOptions,
-    ) -> Result<(), TransactionError> {
-        let mut recipes = self.recipes.lock().await;
-        let variables = self
-            .apply_params(device_id, &values.parameters, values.variables, &recipes)
-            .await?;
-        let recipe = recipes
-            .get_with_id_or_error_mut(&recipe_id)
-            .expect("Always works after apply_params");
-
-        options.update_device_params(recipe, device_id, values.parameters)?;
-        *recipes.as_mut() = variables;
-        self.save_config(&recipes, options.key).await?;
-        Ok(())
-    }
-
-    async fn restore_active(&self) -> Result<(), TransactionError> {
-        Err(TransactionError::Other(anyhow!("Not yet implemented")))
-    }
-
-    async fn commit_active(&self, transaction_key: Uuid) -> Result<(), TransactionError> {
-        let mut recipes = self.recipes.lock().await;
-
-        self.copy_backup_files(
-            recipes
-                .active()
-                .1
-                .devices
-                .iter_unordered()
-                .map(|(id, _)| *id)
-                .collect::<Vec<_>>(),
-        )
-        .await?;
-        recipes.commit_active();
-        self.save_config(&recipes, transaction_key).await?;
-        Ok(())
-    }
-
-    async fn delete_device(
-        &self,
-        recipe_id: RecipeId,
-        device_id: DeviceId,
-        options: TransactionOptions,
-    ) -> Result<(), TransactionError> {
-        let mut recipes = self.recipes.lock().await;
-        let recipe = recipes.get_with_id_or_error_mut(&recipe_id)?;
-        if recipe.devices.remove(&device_id).is_none() {
-            Err(ActorErrorUnknownDevice {
-                device_id,
-                detail: "Not found in recipe".into(),
-            })?
-        } else {
-            tokio::fs::remove_dir_all(self.get_device_dir(&device_id))
-                .await
-                .ok();
-        };
-        self.save_config(&recipes, options.key).await?;
-        Ok(())
-    }
-
-    async fn restore_committed(
-        &self,
-        recipe_id: RecipeId,
-        device_id: DeviceId,
-        transaction: Uuid,
-    ) -> Result<(), TransactionError> {
-        let mut recipes = self.recipes.lock().await;
-        let restored = recipes
-            .get_with_id_or_error_mut(&recipe_id)?
-            .get_device_by_id(device_id)?
-            .restore_committed()?
-            // Even if we get an immutable ref in restore_committed(), recipes is still borrowed mut (Current compiler 'bug')
-            .clone();
-        let variables = self
-            .apply_params(device_id, &restored, Default::default(), &recipes)
-            .await?;
-        *recipes.as_mut() = variables;
-        self.save_config(&recipes, transaction).await?;
-
-        Ok(())
-    }
-
-    async fn update_device_name(
-        &self,
-        recipe_id: RecipeId,
-        device_id: DeviceId,
-        name: Name,
-        options: TransactionOptions,
-    ) -> Result<(), TransactionError> {
-        let mut recipes = self.recipes.lock().await;
-
-        recipes
-            .get_with_id_or_error_mut(&recipe_id)?
-            .get_device_by_id(device_id)?
-            .device_name = name;
-
-        self.save_config(&recipes, options.key).await?;
-        Ok(())
-    }
-    fn get_update_receiver(&self) -> BoxStream<'static, Uuid> {
-        tokio_stream::wrappers::BroadcastStream::new(self.update_sender.subscribe())
-            .filter_map(|x| async { x.ok() })
-            .boxed()
+            self.check_active_files().await.is_err() || self.recipes.has_active_changes();
+        ActiveState::new(Recipes::clone(&self.recipes), has_uncommitted_changes)
     }
 
     // Checks running device-ids only. If Backup contains more devices, differences are detected in Recipes::has_active_changes
-    pub async fn check_active_files(&self, recipes: &Recipes) -> Result<(), TransactionError> {
-        let backup_root = self.get_recipe_dir_path().join("backup");
-        for group in recipes.iter_running_join_backup() {
+    pub async fn check_active_files(&self) -> Result<(), TransactionError> {
+        let backup_root = self.recipe_dir_path().join("backup");
+        for group in self.recipes.iter_running_join_backup() {
             let group = group?;
-            let running_fs = self.build_device_file_service(group.id);
+            let running_fs = TokioFileService::builder(self.recipe_dir_path()).build(group.id);
             let backup_device_dir = backup_root.join(group.id.to_string());
             let mut b_sorted: Vec<_> = pilatus::visit_directory_files(&backup_device_dir)
                 .take_while(|f| {
@@ -385,34 +164,10 @@ impl RecipeServiceImpl {
         Ok(())
     }
 
-    async fn copy_backup_files(
-        &self,
-        device_ids: impl IntoIterator<Item = DeviceId>,
-    ) -> Result<(), TransactionError> {
-        let path = self.get_recipe_dir_path();
-        let dst_folder = path.join("backup");
-        tokio::fs::remove_dir_all(&dst_folder).await.ok();
-
-        for device_id in device_ids {
-            let device_id_str = device_id.to_string();
-            let src_path = path.join(&device_id_str);
-            let dst_path = dst_folder.join(device_id_str);
-            if let Ok(meta) = fs::metadata(&src_path).await {
-                if meta.is_dir() {
-                    clone_directory_deep(&src_path, dst_path)
-                        .await
-                        .map_err(TransactionError::from_io_producer(&src_path))?;
-                }
-            }
-        }
-        Ok(())
-    }
-
     pub async fn get_owned_devices_from_active(
         &self,
     ) -> (RecipeId, Vec<(DeviceId, DeviceConfig)>, Variables) {
-        let mut recipes = self.recipes.lock().await;
-        let (id, recipe) = recipes.get_active();
+        let (id, recipe) = self.recipes.active();
         (
             id,
             recipe
@@ -420,8 +175,115 @@ impl RecipeServiceImpl {
                 .iter_unordered()
                 .map(|(k, v)| (*k, v.clone()))
                 .collect(),
-            recipes.as_ref().clone(),
+            self.recipes.as_ref().clone(),
         )
+    }
+
+    pub fn recipe_dir_path(&self) -> &Path {
+        self.path
+    }
+
+    fn get_recipe_file_path(&self) -> PathBuf {
+        self.path.join(RECIPES_FILE_NAME)
+    }
+
+    fn device_dir(&self, device_id: &DeviceId) -> PathBuf {
+        self.path.join(device_id.to_string())
+    }
+}
+
+impl<'a, T: DerefMut<Target = Recipes>> RecipeDataService<'a, T> {
+    async fn delete_device(
+        &mut self,
+        recipe_id: RecipeId,
+        device_id: DeviceId,
+    ) -> Result<(), TransactionError> {
+        let recipe = self.recipes.get_with_id_or_error_mut(&recipe_id)?;
+        if recipe.devices.remove(&device_id).is_none() {
+            Err(ActorErrorUnknownDevice {
+                device_id,
+                detail: "Not found in recipe".into(),
+            })?
+        } else {
+            tokio::fs::remove_dir_all(self.device_dir(&device_id))
+                .await
+                .ok();
+        };
+        Ok(())
+    }
+
+    async fn add_new_default_recipe(&mut self) -> Result<(RecipeId, Recipe), TransactionError> {
+        let mut recipe = Recipe::default();
+
+        // add all default devices
+        for listener in self.listeners.iter() {
+            listener.call(&mut recipe);
+        }
+
+        let new_id = self.recipes.add_new(recipe.clone());
+
+        Ok((new_id, recipe))
+    }
+
+    async fn update_recipe_metadata(
+        &mut self,
+        id: RecipeId,
+        data: RecipeMetadata,
+    ) -> Result<(), TransactionError> {
+        let raw = data.into_inner();
+
+        if id != raw.new_id {
+            self.recipes.update_recipe_id(&id, raw.new_id.clone())?;
+        }
+
+        let r = self.recipes.get_with_id_or_error_mut(&raw.new_id)?;
+        r.tags = raw.tags;
+        Ok(())
+    }
+
+    async fn delete_recipe(&mut self, recipe_id: RecipeId) -> Result<(), TransactionError> {
+        let removed = self.recipes.remove(&recipe_id)?;
+        for device_id in removed.devices.keys() {
+            // Ok, as RecipeService creates the subfolder (by default "recipe") and therefore remove_dir_all shouldn't accidentally remove too much
+            if let Err(e) = tokio::fs::remove_dir_all(&self.device_dir(device_id)).await {
+                if e.kind() != ErrorKind::NotFound {
+                    return Err(e.into());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn commit_active(&mut self) -> Result<(), TransactionError> {
+        self.copy_backup_files(
+            self.recipes
+                .active()
+                .1
+                .devices
+                .iter_unordered()
+                .map(|(id, _)| *id)
+                .collect::<Vec<_>>(),
+        )
+        .await?;
+        self.recipes.commit_active();
+        Ok(())
+    }
+
+    async fn update_device_params(
+        &mut self,
+        recipe_id: RecipeId,
+        device_id: DeviceId,
+        values: ParameterUpdate,
+        options: &TransactionOptions,
+    ) -> Result<(), TransactionError> {
+        let variables = self
+            .apply_params(device_id, &values.parameters, values.variables)
+            .await?;
+        let recipe = self.recipes.get_with_id_or_error_mut(&recipe_id)?;
+
+        options.update_device_params(recipe, device_id, values.parameters)?;
+        *self.recipes.as_mut() = variables;
+        Ok(())
     }
 
     async fn apply_params(
@@ -429,19 +291,18 @@ impl RecipeServiceImpl {
         device_id: DeviceId,
         params: &UntypedDeviceParamsWithVariables,
         variables: VariablesPatch,
-        recipes: &Recipes,
     ) -> Result<Variables, TransactionError> {
         let usages = if !variables.is_empty() {
-            recipes
+            self.recipes
                 .find_variable_usage_in_all_recipes(&variables)
                 .collect()
         } else {
             Vec::new()
         };
-        let patched_vars = recipes.as_ref().patch(variables);
+        let patched_vars = self.recipes.as_ref().patch(variables);
 
         let mut has_var_changes_on_active = false;
-        let (active_id, _) = recipes.active();
+        let (active_id, _) = self.recipes.active();
 
         for (recipe_id, device_type, device_id, params) in usages {
             if recipe_id == active_id {
@@ -466,8 +327,8 @@ impl RecipeServiceImpl {
             }
         }
 
-        if has_var_changes_on_active || recipes.has_device_on_running(device_id) {
-            let edit_device_type = &recipes.get_device_or_error(device_id)?.device_type;
+        if has_var_changes_on_active || self.recipes.has_device_on_running(device_id) {
+            let edit_device_type = &self.recipes.get_device_or_error(device_id)?.device_type;
             self.device_actions
                 .try_apply(
                     edit_device_type,
@@ -478,12 +339,106 @@ impl RecipeServiceImpl {
         Ok(patched_vars)
     }
 
-    
+    async fn restore_committed(
+        &mut self,
+        recipe_id: RecipeId,
+        device_id: DeviceId,
+    ) -> Result<(), TransactionError> {
+        let restored = self
+            .recipes
+            .get_with_id_or_error_mut(&recipe_id)?
+            .get_device_by_id(device_id)?
+            .restore_committed()?
+            // Even if we get an immutable ref in restore_committed(), recipes is still borrowed mut (Current compiler 'bug')
+            .clone();
+        let variables = self
+            .apply_params(device_id, &restored, Default::default())
+            .await?;
+        *self.recipes.as_mut() = variables;
 
-    async fn save_config(&self, recipes: &Recipes, transaction_key: Uuid) -> Result<(), io::Error> {
+        Ok(())
+    }
+
+    async fn restore_active(&mut self) -> Result<(), TransactionError> {
+        Err(TransactionError::Other(anyhow!("Not yet implemented")))
+    }
+
+    pub(super) async fn activate_recipe(&mut self, id: RecipeId) -> Result<(), TransactionError> {
+        self.check_active_files().await?;
+
+        let active_devices = self.recipes.set_active(&id)?;
+        self.copy_backup_files(active_devices).await
+    }
+
+    async fn copy_backup_files(
+        &self,
+        device_ids: impl IntoIterator<Item = DeviceId>,
+    ) -> Result<(), TransactionError> {
+        let path = self.recipe_dir_path();
+        let dst_folder = path.join("backup");
+        tokio::fs::remove_dir_all(&dst_folder).await.ok();
+
+        for device_id in device_ids {
+            let device_id_str = device_id.to_string();
+            let src_path = path.join(&device_id_str);
+            let dst_path = dst_folder.join(device_id_str);
+            if let Ok(meta) = fs::metadata(&src_path).await {
+                if meta.is_dir() {
+                    clone_directory_deep(&src_path, dst_path)
+                        .await
+                        .map_err(TransactionError::from_io_producer(&src_path))?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn duplicate_recipe(
+        &mut self,
+        recipe_id: RecipeId,
+    ) -> Result<(RecipeId, Recipe), TransactionError> {
+        let original = self.recipes.get_with_id_or_error(&recipe_id)?;
+        let (new_recipe_id, duplicate) = self.recipes.build_duplicate(recipe_id, original);
+
+        for (old_id, new_id) in duplicate.mappings.iter() {
+            let path = self.recipe_dir_path();
+            let src_path = path.join(old_id.to_string());
+            let dst_path = path.join(new_id.to_string());
+            if let Ok(meta) = fs::metadata(&src_path).await {
+                if meta.is_dir() {
+                    clone_directory_deep(&src_path, dst_path)
+                        .await
+                        .map_err(TransactionError::from_io_producer(&src_path))?;
+                }
+            }
+        }
+        let mut duplicate = duplicate.into_inner();
+        duplicate.recipe.created = chrono::Utc::now();
+        self.recipes
+            .add_inexistent(new_recipe_id.clone(), duplicate.recipe.clone());
+
+        Ok((new_recipe_id, duplicate.recipe))
+    }
+
+    async fn update_device_name(
+        &mut self,
+        recipe_id: RecipeId,
+        device_id: DeviceId,
+        name: Name,
+    ) -> Result<(), TransactionError> {
+        self.recipes
+            .get_with_id_or_error_mut(&recipe_id)?
+            .get_device_by_id(device_id)?
+            .device_name = name;
+
+        Ok(())
+    }
+
+    async fn commit(&self, transaction_key: Uuid) -> io::Result<()> {
         let p = self.get_recipe_file_path();
         trace!(path = ?p, "storing json (async)");
         let mut file = tokio::fs::File::create(p).await?;
+        let recipes: &Recipes = &self.recipes;
         file.write_all(&serde_json::to_vec_pretty(recipes)?).await?;
         file.flush().await?;
 
@@ -492,119 +447,116 @@ impl RecipeServiceImpl {
         }
         Ok(())
     }
+}
 
-    fn get_recipe_file_path(&self) -> PathBuf {
-        self.path.clone().join(RECIPES_FILE_NAME)
+impl Debug for RecipeServiceAccessor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RecipeService")
+            .field("path", &self.path)
+            .field("recipes", &self.recipes)
+            .field("recipe_permissioner", &self.device_actions)
+            .finish()
+    }
+}
+
+impl RecipeServiceAccessor {
+    async fn write(&self) -> RecipeDataService<RwLockWriteGuard<'_, Recipes>> {
+        RecipeDataService {
+            path: &self.path,
+            recipes: self.recipes.write().await,
+            device_actions: self.device_actions.deref(),
+            listeners: &self.listeners,
+            update_sender: &self.update_sender,
+            change_strategies: &self.change_strategies,
+        }
+    }
+    async fn read(&self) -> RecipeDataService<RwLockReadGuard<'_, Recipes>> {
+        RecipeDataService {
+            path: &self.path,
+            recipes: self.recipes.read().await,
+            device_actions: self.device_actions.deref(),
+            listeners: &self.listeners,
+            update_sender: &self.update_sender,
+            change_strategies: &self.change_strategies,
+        }
     }
 
-    fn get_device_dir(&self, device_id: &DeviceId) -> PathBuf {
-        self.get_recipe_dir_path().join(device_id.to_string())
-    }
-
-    pub fn get_recipe_dir_path(&self) -> &PathBuf {
-        &self.path
+    fn get_update_receiver(&self) -> BoxStream<'static, Uuid> {
+        tokio_stream::wrappers::BroadcastStream::new(self.update_sender.subscribe())
+            .filter_map(|x| async { x.ok() })
+            .boxed()
     }
 }
 
 #[cfg(any(test, feature = "unstable"))]
 pub(crate) mod unstable {
     use super::{recipes::recipes_try_add_new_with_id, *};
-    use pilatus::{device::DeviceId, Recipe, RecipeId, TransactionError, TransactionOptions};
-    use std::sync::Arc;
-    impl RecipeServiceImpl {
-        pub async fn clone_device_config(
+    use pilatus::{device::DeviceId, Recipe, RecipeId, TransactionError};
+
+    impl<'a, T: Deref<Target = Recipes>> RecipeDataService<'a, T> {
+        pub fn device_config(
             &self,
             _recipe_id: RecipeId,
             device_id: DeviceId,
         ) -> Result<DeviceConfig, TransactionError> {
-            let recipes = self.recipes.lock().await;
-            Ok(recipes.get_device_or_error(device_id)?.clone())
+            Ok(self.recipes.get_device_or_error(device_id)?.clone())
         }
+        pub fn get_active_id(&self) -> RecipeId {
+            self.recipes.active().0
+        }
+    }
+
+    impl<'a, T: DerefMut<Target = Recipes>> RecipeDataService<'a, T> {
         pub async fn add_recipe_with_id(
-            &self,
+            &mut self,
             id: RecipeId,
             recipe: Recipe,
-            options: TransactionOptions,
         ) -> Result<(), TransactionError> {
-            let mut recipes = self.recipes.lock().await;
-            recipes_try_add_new_with_id(
-                &mut recipes,
-                id.clone(),
-                recipe,
-                self.device_actions.as_ref(),
-            )
-            .await
-            .map_err(|_| TransactionError::Other(anyhow::anyhow!("Recipe {id} already exists ")))?;
-            self.save_config(&recipes, options.key).await?;
+            recipes_try_add_new_with_id(&mut self.recipes, id.clone(), recipe, self.device_actions)
+                .await
+                .map_err(|_| {
+                    TransactionError::Other(anyhow::anyhow!("Recipe {id} already exists "))
+                })?;
             Ok(())
-        }
-        pub async fn get_active_id(&self) -> RecipeId {
-            let mut recipes = self.recipes.lock().await;
-            recipes.get_active().0
-        }
-
-        pub async fn get_active(&self) -> (RecipeId, Recipe) {
-            let mut recipes = self.recipes.lock().await;
-            let (id, r) = recipes.get_active();
-            (id, r.clone())
         }
 
         /// Has no duplication Detection for Device-IDs yet
         /// Implemented for Testing purpose
-        pub async fn add_recipe(
-            &self,
-            r: Recipe,
-            options: TransactionOptions,
-        ) -> Result<RecipeId, TransactionError> {
-            let mut recipes = self.recipes.lock().await;
-            let id = recipes.add_new(r);
-            self.save_config(&recipes, options.key).await?;
+        pub async fn add_recipe(&mut self, r: Recipe) -> Result<RecipeId, TransactionError> {
+            let id = self.recipes.add_new(r);
             Ok(id)
         }
-
         pub async fn add_device_to_recipe(
-            &self,
+            &mut self,
             recipe_id: RecipeId,
             device: DeviceConfig,
-            options: TransactionOptions,
         ) -> Result<DeviceId, TransactionError> {
-            let mut recipes = self.recipes.lock().await;
-            let id = recipes
+            let id = self
+                .recipes
                 .get_with_id_or_error_mut(&recipe_id)?
                 .add_device(device);
-            self.save_config(&recipes, options.key).await?;
             Ok(id)
         }
 
         pub async fn add_device_with_id(
-            &self,
+            &mut self,
             recipe_id: RecipeId,
             id: DeviceId,
             device: DeviceConfig,
         ) -> Result<(), TransactionError> {
-            let mut recipes = self.recipes.lock().await;
-            let recipe = recipes.get_with_id_or_error_mut(&recipe_id)?;
+            let recipe = self.recipes.get_with_id_or_error_mut(&recipe_id)?;
             recipe
                 .add_device_with_id(id, device)
                 .map_err(|x| TransactionError::Other(x.into()))?;
-            self.save_config(&recipes, Uuid::new_v4()).await?;
             Ok(())
         }
 
         pub async fn add_device_to_active_recipe(
-            &self,
+            &mut self,
             device: DeviceConfig,
-            options: TransactionOptions,
         ) -> Result<DeviceId, TransactionError> {
-            let mut recipes = self.recipes.lock().await;
-            let id = recipes.get_active().1.add_device(device);
-            self.save_config(&recipes, options.key).await?;
+            let id = self.recipes.get_active().1.add_device(device);
             Ok(id)
-        }
-
-        pub fn create_importer(this: impl Into<Arc<Self>>) -> RecipeImporter {
-            let x: Arc<Self> = this.into();
-            Box::new(RecipeImporterImpl(x))
         }
     }
 }
@@ -714,7 +666,7 @@ mod tests {
                     serde_json::from_str("42").unwrap(),
                 ))
                 .collect(),
-            }
+            },
         )
         .await?;
 
@@ -723,10 +675,9 @@ mod tests {
             test: i32,
         }
         assert_eq!(
-            rs.recipe_service()
-                .recipes
-                .lock()
+            rs.recipe_service_read()
                 .await
+                .recipes
                 .as_ref()
                 .resolve(&parameters)?
                 .params_as::<Foo>()?,
@@ -745,7 +696,7 @@ mod tests {
                         serde_json::from_str("4242").unwrap(),
                     ))
                     .collect(),
-                }
+                },
             )
             .await;
 
@@ -767,8 +718,8 @@ mod tests {
     async fn test_path_property_assignment() -> anyhow::Result<()> {
         let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
-        
-        assert_eq!(dir.path().join("recipes"), rs.recipe_service().path);
+
+        assert_eq!(dir.path().join("recipes"), rs.recipe_dir_path());
         dir.close()?;
         Ok(())
     }
@@ -849,10 +800,8 @@ mod tests {
                 panic!("Expected Other error")
             };
 
-        rs.commit_active(Default::default()).await?;
-        rs.activate_recipe(r2_id)
-            .await
-            .unwrap();
+        rs.commit_active().await?;
+        rs.activate_recipe(r2_id).await.unwrap();
         Ok(())
     }
 
@@ -870,17 +819,12 @@ mod tests {
         fs.add_file_unchecked(&"test.txt".try_into()?, b"test")
             .await?;
 
-        match rs
-            .activate_recipe(r1_id.clone())
-            .await
-        {
+        match rs.activate_recipe(r1_id.clone()).await {
             Err(TransactionError::Other(_)) => {}
             e => panic!("Unexpected: {e:?}"),
         }
-        rs.commit_active(Default::default()).await?;
-        rs.activate_recipe(r1_id)
-            .await
-            .unwrap();
+        rs.commit_active().await?;
+        rs.activate_recipe(r1_id).await.unwrap();
 
         Ok(())
     }
@@ -902,17 +846,12 @@ mod tests {
         fs.add_file_unchecked(&"test2.txt".try_into()?, content)
             .await?;
 
-        match rs
-            .activate_recipe(r1_id.clone())
-            .await
-        {
+        match rs.activate_recipe(r1_id.clone()).await {
             Err(TransactionError::Other(_)) => {}
             e => panic!("Unexpected: {e:?}"),
         }
-        rs.commit_active(Default::default()).await?;
-        rs.activate_recipe(r1_id)
-            .await
-            .unwrap();
+        rs.commit_active().await?;
+        rs.activate_recipe(r1_id).await.unwrap();
 
         Ok(())
     }
@@ -937,15 +876,15 @@ mod tests {
 
         //try to read data from from file
         
-        let rs = RecipeServiceBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok()))
+        let rs = RecipeServiceFassadeBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok()))
         .build();
-        let dev = rs.clone_device_config(recipe_id.clone(), device_in_other_recipe_id).await?;
+        let dev = rs.device_config(recipe_id.clone(), device_in_other_recipe_id).await?;
         assert_eq!(dev.device_type, "testdevice2".to_string());
         let testdevice2_params = serde_json::from_value::<SampleParams>(serde_json::Value::clone(&dev.params))?;
         assert_eq!(testdevice2_params.foo, 14);
         assert_eq!(testdevice2_params.bar, "Hi".to_string());
 
-        let dev = rs.clone_device_config(recipe_id, device_in_active_recipe_id).await?;
+        let dev = rs.device_config(recipe_id, device_in_active_recipe_id).await?;
         assert_eq!(dev.device_type, "testdevice".to_string());
         let testdevice_params = serde_json::from_value::<SampleParams>(serde_json::Value::clone(&dev.params))?;
         assert_eq!(testdevice_params.foo, 12);
@@ -978,7 +917,7 @@ mod tests {
         
         let new_device_path_with_file = 'outer: loop {
             for device_id in new_device_config.devices.keys() {
-                let device_path = rs.recipe_service().get_device_dir(device_id);
+                let device_path = rs.device_dir(device_id);
                 if tokio::fs::metadata(&device_path).await.is_ok() {
                     break 'outer device_path;
                 }
@@ -1017,8 +956,8 @@ mod tests {
         drop(rs); //all data should be saved to file at this point
 
        
-        let rs = RecipeServiceBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok())).build();
-        let s = rs.clone_device_config(recipe_id, device_id).await.unwrap();
+        let rs = RecipeServiceFassadeBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok())).build();
+        let s = rs.device_config(recipe_id, device_id).await.unwrap();
         assert_eq!(device.params, s.params);
         dir.close()?;
         Ok(())
@@ -1049,8 +988,8 @@ mod tests {
         }).await?;
         drop(rs); //all data should be saved to file at this point
 
-       let rs = RecipeServiceBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok())).build();
-       let s = rs.clone_device_config(recipe_id, dev_uuid).await.unwrap();
+       let rs = RecipeServiceFassadeBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok())).build();
+       let s = rs.device_config(recipe_id, dev_uuid).await.unwrap();
 
        assert_eq!(234, serde_json::from_value::<SampleParams>(serde_json::Value::clone(&s.params))?.foo);
        dir.close()?;

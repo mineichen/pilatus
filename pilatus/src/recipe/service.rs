@@ -168,8 +168,15 @@ pub trait RecipeServiceTrait {
             .await
     }
 
-    async fn restore_active(&self) -> Result<(), TransactionError>;
-    async fn commit_active(&self, transaction_key: Uuid) -> Result<(), TransactionError>;
+    async fn restore_active_with(&self, transaction_key: Uuid) -> Result<(), TransactionError>;
+    async fn restore_active(&self) -> Result<(), TransactionError> {
+        self.restore_active_with(Uuid::new_v4()).await
+    }
+
+    async fn commit_active_with(&self, transaction_key: Uuid) -> Result<(), TransactionError>;
+    async fn commit_active(&self) -> Result<(), TransactionError> {
+        self.commit_active_with(Uuid::new_v4()).await
+    }
 
     async fn delete_device_with(
         &self,

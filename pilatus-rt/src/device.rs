@@ -156,8 +156,11 @@ impl RecipeRunnerImpl {
 
     async fn run_active_recipe(&self, rs: Arc<RecipeServiceFassade>) -> Result<(), anyhow::Error> {
         loop {
-            let (recipe_id, active_devices, variables) =
-                rs.recipe_service().get_owned_devices_from_active().await;
+            let (recipe_id, active_devices, variables) = rs
+                .recipe_service_read()
+                .await
+                .get_owned_devices_from_active()
+                .await;
             let (tx, rx) = oneshot::channel();
             // Allow new recipe via self.select_recipe()
             *self.state.next_recipe_id.lock().expect("Not poisoned") = Some(tx);

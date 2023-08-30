@@ -6,11 +6,11 @@ use std::{
     sync::Arc,
 };
 
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tracing::debug;
 
 use super::InitRecipeListener;
-use crate::recipe::RecipeServiceImpl;
+use crate::recipe::RecipeServiceAccessor;
 use pilatus::{Recipe, Recipes};
 
 use super::actions::DeviceActions;
@@ -46,16 +46,16 @@ impl RecipeServiceBuilder {
         self
     }
 
-    pub fn build(self) -> RecipeServiceImpl {
+    pub fn build(self) -> RecipeServiceAccessor {
         let mut path = self.path.join("recipes"); // /root/recipes
         for c in 1..100 {
             match Self::try_from_file_or_new(&path, self.listeners.as_ref()) {
                 Ok(recipes) => {
                     let (update_sender, _) = tokio::sync::broadcast::channel(10);
-                    return RecipeServiceImpl {
+                    return RecipeServiceAccessor {
                         device_actions: self.device_actions,
                         path,
-                        recipes: Arc::new(Mutex::new(recipes)),
+                        recipes: Arc::new(RwLock::new(recipes)),
                         listeners: self.listeners,
                         update_sender,
                         change_strategies: self.change_strategies,

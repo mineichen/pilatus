@@ -9,30 +9,54 @@ use pilatus::{
     device::DeviceId, Name, ParameterUpdate, Recipe, RecipeId, RecipeMetadata, RecipeService,
     RecipeServiceTrait, TransactionError, TransactionOptions,
 };
+use pilatus::{FileServiceBuilder, RecipeExporter, RecipeImporter};
+use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use uuid::Uuid;
 
-use super::RecipeServiceImpl;
+use crate::TokioFileService;
+
+use super::{RecipeDataService, RecipeImporterImpl, RecipeServiceAccessor};
 
 mod builder;
 
 pub use builder::*;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
-    c.with::<Registered<Arc<RecipeServiceImpl>>>()
+    c.with::<Registered<Arc<RecipeServiceAccessor>>>()
         .register(|recipe_service| Arc::new(RecipeServiceFassade { recipe_service }))
         .alias(|x| x as RecipeService);
+    c.with::<Registered<Arc<RecipeServiceFassade>>>()
+        .register(|x| x as RecipeExporter);
+
+    c.with::<Registered<Arc<RecipeServiceFassade>>>()
+        .register(|x| Box::new(RecipeImporterImpl(x)) as RecipeImporter);
 }
 
+#[derive(Clone, Debug)]
 pub struct RecipeServiceFassade {
-    recipe_service: Arc<RecipeServiceImpl>,
+    recipe_service: Arc<RecipeServiceAccessor>,
 }
 
 impl RecipeServiceFassade {
-    pub fn recipe_service(&self) -> &RecipeServiceImpl {
+    pub(super) fn recipe_service(&self) -> &RecipeServiceAccessor {
         &self.recipe_service
     }
+    pub async fn recipe_service_read(
+        &self,
+    ) -> RecipeDataService<RwLockReadGuard<pilatus::Recipes>> {
+        self.recipe_service.read().await
+    }
+
+    pub async fn recipe_service_write(
+        &self,
+    ) -> RecipeDataService<RwLockWriteGuard<pilatus::Recipes>> {
+        self.recipe_service.write().await
+    }
     pub fn recipe_dir_path(&self) -> &Path {
-        self.recipe_service.get_recipe_dir_path()
+        &self.recipe_service.path
+    }
+    pub(super) fn build_file_service(&self) -> FileServiceBuilder {
+        TokioFileService::builder(self.recipe_dir_path())
     }
 }
 
@@ -42,7 +66,10 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         &self,
         options: TransactionOptions,
     ) -> Result<(RecipeId, Recipe), TransactionError> {
-        self.recipe_service.add_new_default_recipe(options).await
+        let mut s = self.recipe_service_write().await;
+        let r = s.add_new_default_recipe().await?;
+        s.commit(options.key).await?;
+        Ok(r)
     }
 
     async fn update_recipe_metadata_with(
@@ -51,9 +78,10 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         data: RecipeMetadata,
         options: TransactionOptions,
     ) -> Result<(), TransactionError> {
-        self.recipe_service
-            .update_recipe_metadata(id, data, options)
-            .await
+        let mut s = self.recipe_service_write().await;
+        s.update_recipe_metadata(id, data).await?;
+        s.commit(options.key).await?;
+        Ok(())
     }
 
     async fn delete_recipe_with(
@@ -61,7 +89,10 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         recipe_id: RecipeId,
         options: TransactionOptions,
     ) -> Result<(), TransactionError> {
-        self.recipe_service.delete_recipe(recipe_id, options).await
+        let mut s = self.recipe_service_write().await;
+        s.delete_recipe(recipe_id).await?;
+        s.commit(options.key).await?;
+        Ok(())
     }
 
     async fn duplicate_recipe_with(
@@ -69,13 +100,14 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         recipe_id: RecipeId,
         options: TransactionOptions,
     ) -> Result<(RecipeId, Recipe), TransactionError> {
-        self.recipe_service
-            .duplicate_recipe(recipe_id, options)
-            .await
+        let mut s = self.recipe_service_write().await;
+        let r = s.duplicate_recipe(recipe_id).await?;
+        s.commit(options.key).await?;
+        Ok(r)
     }
 
     async fn state(&self) -> ActiveState {
-        self.recipe_service.state().await
+        self.recipe_service_read().await.state().await
     }
 
     async fn activate_recipe_with(
@@ -83,7 +115,10 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         id: RecipeId,
         options: TransactionOptions,
     ) -> Result<(), TransactionError> {
-        self.recipe_service.activate_recipe(id, options).await
+        let mut s = self.recipe_service_write().await;
+        s.activate_recipe(id).await?;
+        s.commit(options.key).await?;
+        Ok(())
     }
 
     async fn update_device_params_with(
@@ -93,17 +128,25 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         values: ParameterUpdate,
         options: TransactionOptions,
     ) -> Result<(), TransactionError> {
-        self.recipe_service
-            .update_device_params(recipe_id, device_id, values, options)
-            .await
+        let mut s = self.recipe_service_write().await;
+        s.update_device_params(recipe_id, device_id, values, &options)
+            .await?;
+        s.commit(options.key).await?;
+        Ok(())
     }
 
-    async fn restore_active(&self) -> Result<(), TransactionError> {
-        self.recipe_service.restore_active().await
+    async fn restore_active_with(&self, transaction_key: Uuid) -> Result<(), TransactionError> {
+        let mut s = self.recipe_service_write().await;
+        s.restore_active().await?;
+        s.commit(transaction_key).await?;
+        Ok(())
     }
 
-    async fn commit_active(&self, transaction_key: Uuid) -> Result<(), TransactionError> {
-        self.recipe_service.commit_active(transaction_key).await
+    async fn commit_active_with(&self, transaction_key: Uuid) -> Result<(), TransactionError> {
+        let mut s = self.recipe_service_write().await;
+        s.commit_active().await?;
+        s.commit(transaction_key).await?;
+        Ok(())
     }
 
     async fn delete_device_with(
@@ -112,20 +155,22 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         device_id: DeviceId,
         options: TransactionOptions,
     ) -> Result<(), TransactionError> {
-        self.recipe_service
-            .delete_device(recipe_id, device_id, options)
-            .await
+        let mut s = self.recipe_service.write().await;
+        s.delete_device(recipe_id, device_id).await?;
+        s.commit(options.key).await?;
+        Ok(())
     }
 
     async fn restore_committed(
         &self,
         recipe_id: RecipeId,
         device_id: DeviceId,
-        transaction: Uuid,
+        transaction_key: Uuid,
     ) -> Result<(), TransactionError> {
-        self.recipe_service
-            .restore_committed(recipe_id, device_id, transaction)
-            .await
+        let mut s = self.recipe_service_write().await;
+        s.restore_committed(recipe_id, device_id).await?;
+        s.commit(transaction_key).await?;
+        Ok(())
     }
 
     async fn update_device_name_with(
@@ -135,9 +180,10 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         name: Name,
         options: TransactionOptions,
     ) -> Result<(), TransactionError> {
-        self.recipe_service
-            .update_device_name(recipe_id, device_id, name, options)
-            .await
+        let mut s = self.recipe_service_write().await;
+        s.update_device_name(recipe_id, device_id, name).await?;
+        s.commit(options.key).await?;
+        Ok(())
     }
 
     fn get_update_receiver(&self) -> BoxStream<'static, Uuid> {
@@ -152,7 +198,7 @@ pub(crate) mod unstable {
     use crate::recipe::{RecipeImporterImpl, RecipeServiceBuilder};
 
     use super::*;
-    use std::sync::Arc;
+    use std::{path::PathBuf, sync::Arc};
     impl RecipeServiceFassade {
         pub fn create_temp_builder() -> (tempfile::TempDir, RecipeServiceFassadeBuilder) {
             let dir = tempfile::tempdir().unwrap();
@@ -164,27 +210,44 @@ pub(crate) mod unstable {
             };
             (dir, rs)
         }
+        pub fn device_dir(&self, device_id: &DeviceId) -> PathBuf {
+            self.recipe_dir_path().join(device_id.to_string())
+        }
+
+        pub async fn device_config(
+            &self,
+            recipe_id: RecipeId,
+            device_id: DeviceId,
+        ) -> Result<DeviceConfig, TransactionError> {
+            self.recipe_service_read()
+                .await
+                .device_config(recipe_id, device_id)
+        }
 
         pub async fn add_recipe_with_id(
             &self,
             id: RecipeId,
             recipe: Recipe,
         ) -> Result<(), TransactionError> {
-            self.recipe_service
-                .add_recipe_with_id(id, recipe, Default::default())
-                .await
+            let mut s = self.recipe_service_write().await;
+            s.add_recipe_with_id(id, recipe).await?;
+            s.commit(Uuid::new_v4()).await?;
+            Ok(())
         }
 
         pub async fn get_active_id(&self) -> RecipeId {
-            self.recipe_service.get_active_id().await
+            self.recipe_service_read().await.get_active_id()
         }
 
-        pub fn build_device_file_service(&self, id: DeviceId) -> FileService<()> {
-            self.recipe_service.build_device_file_service(id)
+        pub fn build_device_file_service(&self, device_id: DeviceId) -> FileService<()> {
+            self.build_file_service().build(device_id)
         }
 
         pub async fn add_recipe(&self, r: Recipe) -> Result<RecipeId, TransactionError> {
-            self.recipe_service.add_recipe(r, Default::default()).await
+            let mut s = self.recipe_service_write().await;
+            let r = s.add_recipe(r).await?;
+            s.commit(Uuid::new_v4()).await?;
+            Ok(r)
         }
 
         pub async fn add_device_with_id(
@@ -193,22 +256,34 @@ pub(crate) mod unstable {
             id: DeviceId,
             device: DeviceConfig,
         ) -> Result<(), TransactionError> {
-            self.recipe_service
-                .add_device_with_id(recipe_id, id, device)
-                .await
+            let mut s = self.recipe_service_write().await;
+            s.add_device_with_id(recipe_id, id, device).await?;
+            s.commit(Uuid::new_v4()).await?;
+            Ok(())
         }
 
         pub async fn add_device_to_active_recipe(
             &self,
             device: DeviceConfig,
         ) -> Result<DeviceId, TransactionError> {
-            self.recipe_service
-                .add_device_to_active_recipe(device, Default::default())
-                .await
+            let mut s = self.recipe_service_write().await;
+            let r = s.add_device_to_active_recipe(device).await?;
+            s.commit(Uuid::new_v4()).await?;
+            Ok(r)
         }
 
+        pub async fn add_device_to_recipe(
+            &self,
+            recipe_id: RecipeId,
+            device: DeviceConfig,
+        ) -> Result<DeviceId, TransactionError> {
+            let mut s = self.recipe_service_write().await;
+            let r = s.add_device_to_recipe(recipe_id, device).await?;
+            s.commit(Uuid::new_v4()).await?;
+            Ok(r)
+        }
         pub fn create_importer(&self) -> RecipeImporter {
-            Box::new(RecipeImporterImpl(self.recipe_service.clone()))
+            Box::new(RecipeImporterImpl(Arc::new(self.clone())))
         }
 
         pub async fn create_device_file(&self, did: DeviceId, filename: &str, content: &[u8]) {
@@ -217,16 +292,6 @@ pub(crate) mod unstable {
                 .add_file_unchecked(&filename.try_into().unwrap(), content)
                 .await
                 .unwrap();
-        }
-
-        pub async fn add_device_to_recipe(
-            &self,
-            recipe_id: RecipeId,
-            device: DeviceConfig,
-        ) -> Result<DeviceId, TransactionError> {
-            self.recipe_service
-                .add_device_to_recipe(recipe_id, device, Default::default())
-                .await
         }
     }
 }

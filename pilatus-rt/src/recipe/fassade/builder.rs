@@ -1,15 +1,18 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
-use crate::{
-    recipe::{actions::DeviceActions, ChangeParamsStrategy, RecipeServiceBuilder},
-    RecipeServiceFassade,
-};
+use super::RecipeServiceFassade;
+use crate::recipe::{actions::DeviceActions, ChangeParamsStrategy, RecipeServiceBuilder};
 
 pub struct RecipeServiceFassadeBuilder {
     pub recipe_builder: RecipeServiceBuilder,
 }
 
 impl RecipeServiceFassadeBuilder {
+    pub fn new(path: impl Into<PathBuf>, device_actions: Arc<dyn DeviceActions>) -> Self {
+        RecipeServiceFassadeBuilder {
+            recipe_builder: RecipeServiceBuilder::new(path, device_actions),
+        }
+    }
     pub fn with_change_strategy(mut self, s: ChangeParamsStrategy) -> RecipeServiceFassadeBuilder {
         self.recipe_builder = self.recipe_builder.with_change_strategy(s);
         self

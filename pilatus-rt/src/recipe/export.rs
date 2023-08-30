@@ -20,7 +20,8 @@ impl RecipeExporterTrait for RecipeServiceFassade {
         recipe_id: RecipeId,
         mut writer: Box<dyn EntryWriter>,
     ) -> anyhow::Result<()> {
-        let mut recipes = self.recipe_service().recipes.lock().await;
+        let recipes_service = self.recipe_service_read().await;
+        let recipes = &recipes_service.recipes;
         let recipe = recipes.get_with_id_or_error(&recipe_id)?;
 
         let recipe_string = serde_json::to_string_pretty(recipe)?;
@@ -62,7 +63,7 @@ impl RecipeExporterTrait for RecipeServiceFassade {
                 }
             }
         }
-        let variables = recipes.as_mut();
+        let variables = recipes.as_ref();
         let variable_map = used_variable_names
             .into_iter()
             .map(|x| match variables.resolve_key(&x) {
