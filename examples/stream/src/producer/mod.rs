@@ -144,7 +144,8 @@ async fn stream_binance_data(mut recv_subscription: Receiver<Registrar>) {
                 col.get_active_topics().as_slice(),
                 &[ChannelType::Heartbeat],
             )
-            .await else {
+            .await
+            else {
                 warn!("Cannot connect: Wait 1s before retry");
                 if recv_subscription.is_terminated() {
                     return;

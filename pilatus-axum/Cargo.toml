@@ -9,10 +9,10 @@ version = "0.1.0"
 anyhow = "1.0"
 async-stream = "0.3"
 async-trait = "0.1"
-axum = {version = "0.6", features = ["ws"]}
+axum = {version = "0.7", features = ["ws"]}
 bytes = "1"
 futures = "0.3"
-jpeg-encoder = {version = "0.5", features = ["simd"], optional = true}
+jpeg-encoder = {version = "0.6", features = ["simd"], optional = true}
 minfac = "0.0.1"
 pilatus = {path = "../pilatus", features = ["tokio"]}
 pilatus-engineering = {path = "../pilatus-engineering", optional = true}

@@ -7,6 +7,7 @@ use minfac::{Registered, ServiceCollection, WeakServiceProvider};
 use pilatus::{prelude::*, GenericConfig, OnceExtractor, SystemShutdown};
 use pilatus_axum::MinfacRouter;
 use serde::Deserialize;
+use tokio::net::TcpListener;
 use tower_http::{cors::CorsLayer, services::ServeDir};
 use tracing::{debug, info};
 
@@ -68,40 +69,40 @@ async fn axum_service(
         web_config.socket, web_config.frontend
     );
 
-    let server = axum::Server::try_bind(&web_config.socket)
-        .context("Cannot start webserver. Is pilatus running already?")?
-        .serve(
-            axum::Router::new()
-                .nest(
-                    "/api",
-                    provider
-                        .get_all::<MinfacRouter>()
-                        .fold(axum::Router::new(), |acc, n| {
-                            acc.merge(n.extract_unchecked())
-                        }),
-                )
-                .fallback_service(get_service(ServeDir::new(web_config.frontend)))
-                .layer(super::inject::InjectLayer(provider))
-                .layer(
-                    CorsLayer::new()
-                        .allow_origin(tower_http::cors::Any)
-                        .allow_methods(tower_http::cors::Any)
-                        .allow_headers(tower_http::cors::Any),
-                )
-                .layer(axum::extract::DefaultBodyLimit::max(web_config.body_limit))
-                .layer(tower_http::trace::TraceLayer::new_for_http())
-                .into_make_service(),
-        );
-
+    let listener = TcpListener::bind(&web_config.socket)
+        .await
+        .context("Cannot open TCP-Connection for webserver. Is pilatus running already?")?;
     private_state
         .0
         .extract_unchecked()
-        .send(server.local_addr())
+        .send(listener.local_addr()?)
         .expect("Receiver is stored within DI-Container");
-    server
-        .with_graceful_shutdown(shutdown)
-        .await
-        .map_err(Into::into)
+    axum::serve(
+        listener,
+        axum::Router::new()
+            .nest(
+                "/api",
+                provider
+                    .get_all::<MinfacRouter>()
+                    .fold(axum::Router::new(), |acc, n| {
+                        acc.merge(n.extract_unchecked())
+                    }),
+            )
+            .fallback_service(get_service(ServeDir::new(web_config.frontend)))
+            .layer(super::inject::InjectLayer(provider))
+            .layer(
+                CorsLayer::new()
+                    .allow_origin(tower_http::cors::Any)
+                    .allow_methods(tower_http::cors::Any)
+                    .allow_headers(tower_http::cors::Any),
+            )
+            .layer(axum::extract::DefaultBodyLimit::max(web_config.body_limit))
+            .layer(tower_http::trace::TraceLayer::new_for_http())
+            .into_make_service(),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await
+    .map_err(Into::into)
 }
 
 #[cfg(test)]

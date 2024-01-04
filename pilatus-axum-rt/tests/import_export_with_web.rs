@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::{fs::File, io::Write, sync::Arc};
 
 use futures::{sink::SinkExt, StreamExt};
-use hyper::{Request, StatusCode};
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
     device::{ActorSystem, DeviceContext, DeviceResult, DeviceValidationContext},
@@ -10,6 +9,7 @@ use pilatus::{
     DeviceConfig, RecipeId, SystemTerminator, UpdateParamsMessageError,
 };
 use pilatus_rt::{RecipeServiceFassade, Runtime};
+use reqwest::StatusCode;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
@@ -69,7 +69,7 @@ fn upload_zip() -> anyhow::Result<()> {
         let port = web_stats.socket_addr().await.port();
         assert_ne!(port, 80);
         let base = format!("http://127.0.0.1:{port}/api");
-        let client = hyper::Client::new();
+        let client = reqwest::Client::new();
         let (clone_id, data) = generate_zip(&base, &client, recipe_service).await.unwrap();
 
         let (mut sock, _response) =
@@ -107,21 +107,16 @@ fn upload_zip() -> anyhow::Result<()> {
 
 async fn generate_zip(
     base: &str,
-    client: &hyper::Client<hyper::client::HttpConnector>,
+    client: &reqwest::Client,
     s: Arc<RecipeServiceFassade>,
 ) -> anyhow::Result<(RecipeId, Vec<u8>)> {
     let (active_id, _) = get_current(base, client).await?;
-    let clone_response_body = hyper::body::to_bytes(
-        client
-            .request(
-                Request::builder()
-                    .method("PUT")
-                    .uri(format!("{base}/recipe/{}/clone", active_id))
-                    .body(hyper::Body::default())?,
-            )
-            .await?,
-    )
-    .await?;
+    let clone_response_body = client
+        .put(format!("{base}/recipe/{}/clone", active_id))
+        .send()
+        .await?
+        .bytes()
+        .await?;
 
     let clone_id: RecipeId = serde_json::from_value(
         serde_json::from_slice::<serde_json::Value>(&clone_response_body[..])?
@@ -139,28 +134,19 @@ async fn generate_zip(
     s.add_device_to_recipe(clone_id.clone(), DeviceConfig::mock(42))
         .await?;
 
-    let export_response_body = hyper::body::to_bytes(
-        client
-            .request(
-                Request::builder()
-                    .method("GET")
-                    .uri(format!("{base}/recipe/{}/export", clone_id))
-                    .body(hyper::Body::default())?,
-            )
-            .await?,
-    )
-    .await?
-    .to_vec();
+    let export_response_body = client
+        .get(format!("{base}/recipe/{}/export", clone_id))
+        .send()
+        .await?
+        .bytes()
+        .await?
+        .to_vec();
 
     assert!(!export_response_body.is_empty());
 
     let delete_response_status = client
-        .request(
-            Request::builder()
-                .method("DELETE")
-                .uri(format!("{base}/recipe/{}", clone_id))
-                .body(hyper::Body::default())?,
-        )
+        .delete(format!("{base}/recipe/{}", clone_id))
+        .send()
         .await?
         .status();
     assert_eq!(delete_response_status, StatusCode::OK);
@@ -170,14 +156,14 @@ async fn generate_zip(
 
 async fn get_current(
     base: &str,
-    client: &hyper::Client<hyper::client::HttpConnector>,
+    client: &reqwest::Client,
 ) -> Result<(RecipeId, Vec<RecipeId>), anyhow::Error> {
-    let get_active_response_body = hyper::body::to_bytes(
-        client
-            .get(format!("{base}/recipe/get_all").parse().unwrap())
-            .await?,
-    )
-    .await?;
+    let get_active_response_body = client
+        .get(format!("{base}/recipe/get_all"))
+        .send()
+        .await?
+        .bytes()
+        .await?;
     let json_response = serde_json::from_slice::<serde_json::Value>(&get_active_response_body[..])?;
     let active_id: RecipeId = serde_json::from_value(
         json_response

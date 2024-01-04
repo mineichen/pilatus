@@ -7,7 +7,7 @@
 <h1>Heartbeats of bitcoin</h1>
 <div id="data"></div>
 <script>
-    const addr = `ws://${location.host}${(location.port!=='') ? `:${location.port}` : ''}/api/coinbase`;
+    const addr = `ws://${location.host}/api/coinbase`;
     console.log("Connecting to", addr);
     const exampleSocket = new WebSocket(addr);
     exampleSocket.onmessage = (e) => {

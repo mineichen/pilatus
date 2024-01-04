@@ -14,8 +14,7 @@ use minfac::{Registered, Resolvable};
 
 use super::{
     extract::{
-        ws::WebSocketUpgrade, Abort, BodyStream, Inject, InjectAll, InjectRegistered, Json, Path,
-        Query,
+        ws::WebSocketUpgrade, Abort, Body, Inject, InjectAll, InjectRegistered, Json, Path, Query,
     },
     ws::WebSocketDropperService,
     AbortServiceInterface,
@@ -58,10 +57,10 @@ impl<T> DependencyProvider for Json<T> {
 }
 impl<T> RecursiveDependencyProvider for Json<T> {}
 
-impl DependencyProvider for BodyStream {
+impl DependencyProvider for Body {
     type Dep = ();
 }
-impl RecursiveDependencyProvider for BodyStream {}
+impl RecursiveDependencyProvider for Body {}
 
 impl DependencyProvider for HeaderMap {
     type Dep = ();

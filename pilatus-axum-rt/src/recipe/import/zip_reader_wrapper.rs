@@ -61,7 +61,9 @@ impl<'a, T: AsyncRead + Unpin + Send> EntryReader for ZipReaderWrapper<'a, T> {
                     return None;
                 }
             };
-            let ZipStates::Reading(e) = &mut self.0 else { unreachable!();};
+            let ZipStates::Reading(e) = &mut self.0 else {
+                unreachable!();
+            };
             let e = e.reader_mut();
             let filename = match e.entry().filename().clone().into_string() {
                 Ok(x) => x,

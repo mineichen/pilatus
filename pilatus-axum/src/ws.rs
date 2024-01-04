@@ -25,7 +25,7 @@ impl WebSocketUpgrade {
         self.inner
     }
 
-    pub fn on_upgrade<C, Fut>(self, callback: C) -> axum::http::Response<axum::body::BoxBody>
+    pub fn on_upgrade<C, Fut>(self, callback: C) -> axum::http::Response<axum::body::Body>
     where
         C: FnOnce(ws::WebSocket) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,

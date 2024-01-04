@@ -700,8 +700,10 @@ mod tests {
             )
             .await;
 
-        let Err(TransactionError::InvalidVariable(VariableError {recipe_id, reason})) = second_update else {
-             panic!("Should fail as the clone is asked to be ok, but it returns an Error: {second_update:?}");
+        let Err(TransactionError::InvalidVariable(VariableError { recipe_id, reason })) =
+            second_update
+        else {
+            panic!("Should fail as the clone is asked to be ok, but it returns an Error: {second_update:?}");
         };
 
         assert_eq!(recipe_id, clone_id);
@@ -794,11 +796,9 @@ mod tests {
         rs.add_device_to_active_recipe(DeviceConfig::mock("params"))
             .await?;
 
-        let Err(TransactionError::Other(_)) = rs
-            .activate_recipe(r2_id.clone())
-            .await else {
-                panic!("Expected Other error")
-            };
+        let Err(TransactionError::Other(_)) = rs.activate_recipe(r2_id.clone()).await else {
+            panic!("Expected Other error")
+        };
 
         rs.commit_active().await?;
         rs.activate_recipe(r2_id).await.unwrap();

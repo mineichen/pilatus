@@ -147,9 +147,11 @@ impl Variables {
             )),
             JsonValue::Object(mut o) => {
                 let Some(JsonValue::String(var_name)) = o.get("__var") else {
-                    return Ok(JsonValue::Object(o.into_iter().map(|(k,v)| {
-                        self.remove_resolved(v, patch).map(|v| (k, v))
-                    }).collect::<Result<_,_>>()?));
+                    return Ok(JsonValue::Object(
+                        o.into_iter()
+                            .map(|(k, v)| self.remove_resolved(v, patch).map(|v| (k, v)))
+                            .collect::<Result<_, _>>()?,
+                    ));
                 };
                 let var_name = var_name.to_string();
                 let Some(x) = o.remove("resolved") else {

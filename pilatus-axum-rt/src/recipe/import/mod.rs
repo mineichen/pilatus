@@ -96,7 +96,7 @@ async fn import_recipes_upgraded(
                 let strategy = loop {
                     let Some(r) = socket.recv().await else {
                         info!("Recipe import aborted by client");
-                        return Ok(())
+                        return Ok(());
                     };
                     let r = r?;
                     if let Message::Text(x) = &r {

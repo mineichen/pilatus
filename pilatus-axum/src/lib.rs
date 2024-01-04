@@ -15,7 +15,7 @@ use futures::{channel::oneshot, future::Shared};
 
 pub use abort::AbortServiceInterface;
 pub use axum::{
-    body::{Bytes, StreamBody},
+    body::{Body, Bytes},
     http,
     response::{sse, AppendHeaders, Html, IntoResponse, Response},
 };
@@ -30,7 +30,8 @@ pub mod extract {
     pub struct InjectRegistered<T: std::any::Any>(pub T);
     pub use super::abort::Abort;
     pub struct InjectAll<T: std::any::Any>(pub ServiceIterator<Registered<T>>);
-    pub use axum::extract::{BodyStream, FromRequestParts, Json, Path, Query};
+    pub use axum::body::Body;
+    pub use axum::extract::{FromRequestParts, Json, Path, Query};
     use minfac::{Registered, ServiceIterator};
 
     pub mod ws {

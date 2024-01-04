@@ -1,16 +1,12 @@
 //!
 //! Streams everything the closure(writer) writes to the http-body
 
-use std::pin::Pin;
-
 use anyhow::Error;
-use axum::{body::StreamBody, response::IntoResponse};
-use bytes::Bytes;
-use futures::{stream::StreamExt,Stream, future::FusedFuture}; 
+use axum::{body::Body, response::IntoResponse};
+use futures::future::FusedFuture;
 
-type  DynBytesStream = dyn Stream<Item = Result<Bytes, Error>> + Send + 'static;
 pub struct IoStreamBody {
-    inner: StreamBody<Pin<Box<DynBytesStream>>>,
+    inner: Body,
 }
 
 impl IntoResponse for IoStreamBody {
@@ -26,42 +22,39 @@ impl IoStreamBody {
         let (mut rx, tx) = piper::pipe(2000);
         let fut = (fut)(tx);
         Self {
-            inner: StreamBody::new(
-                async_stream::stream! { 
-                    let mut fut = std::pin::pin!(fut);
-                    
-                    loop{
-                        let mut buf = vec![0; 1500]; 
-                        let mut reader = std::pin::pin!(futures::AsyncReadExt::read(&mut rx, &mut buf[..]));
-                       
-                        let r = match futures::future::select(&mut fut, &mut reader).await {
-                            futures::future::Either::Left((r, other)) => {
-                                if let Err(e) = r {
-                                    yield Err(e);
-                                    break;
-                                }
-                                other.await
-                            },
-                            futures::future::Either::Right((r,_)) => r
-                        };
-                        match r {
-                            Ok(num_bytes) => {
-                                if num_bytes == 0 {
-                                    break;
-                                }
-                                buf.truncate(num_bytes);
-                                yield Ok(buf.into());
+            inner: Body::from_stream(async_stream::stream! {
+                let mut fut = std::pin::pin!(fut);
 
-                            }
-                            Err(e) => {
-                                yield Err(anyhow::Error::from(e));
+                loop{
+                    let mut buf = vec![0; 1500];
+                    let mut reader = std::pin::pin!(futures::AsyncReadExt::read(&mut rx, &mut buf[..]));
+
+                    let r = match futures::future::select(&mut fut, &mut reader).await {
+                        futures::future::Either::Left((r, other)) => {
+                            if let Err(e) = r {
+                                yield Result::<Vec<u8>, anyhow::Error>::Err(e);
                                 break;
                             }
+                            other.await
+                        },
+                        futures::future::Either::Right((r,_)) => r
+                    };
+                    match r {
+                        Ok(num_bytes) => {
+                            if num_bytes == 0 {
+                                break;
+                            }
+                            buf.truncate(num_bytes);
+                            yield Ok(buf);
+
+                        }
+                        Err(e) => {
+                            yield Err(anyhow::Error::from(e));
+                            break;
                         }
                     }
                 }
-                .boxed(),
-            )
+            }),
         }
     }
 }

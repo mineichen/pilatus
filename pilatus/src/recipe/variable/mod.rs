@@ -145,7 +145,7 @@ impl Variables {
             self.mappings
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
-                .chain(patch.into_iter())
+                .chain(patch)
                 .collect(),
         )
     }
