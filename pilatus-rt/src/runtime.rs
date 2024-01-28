@@ -8,8 +8,6 @@ use pilatus::{GenericConfig, HostedService};
 
 use crate::metadata_future::MetadataFuture;
 
-use super::occurance_counter::OccuranceCounter;
-
 pub struct Runtime {
     services: ServiceCollection,
 }
@@ -89,30 +87,37 @@ impl ConfiguredRuntime {
     pub fn run(self, other: impl futures::Future<Output = ()>) {
         info!("Tokio runtime has started.");
         self.tokio.block_on(futures::future::join(other, async {
-            let (mut names, mut tasks): (OccuranceCounter<String>, FuturesUnordered<_>) = self
+            let mut tasks: FuturesUnordered<_> = self
                 .provider
                 .get_all::<HostedService>()
                 .filter_map(|i| match i.call((&self.provider).into()) {
                     Ok(x) => {
                         let name = i.get_name().to_string();
-                        Some((name.clone(), MetadataFuture::new(name, x)))
+                        Some(MetadataFuture::new(name, x))
                     }
                     Err(e) => {
                         error!("Failed to call HostedService: {}", e);
                         None
                     }
                 })
-                .unzip();
+                .collect();
             while let Some((name, finished)) = tasks.next().await {
                 let flattened = finished.map_err(anyhow::Error::from).and_then(|e| e);
-                let is_removed = names.remove(&name);
-                debug_assert!(is_removed, "Couldn't remove HostedService");
                 match flattened {
                     Ok(_) => {
-                        info!(
-                            "HostedService '{name}' stopped. '{}' remaining",
-                            names.len()
-                        );
+                        let mut remaining_tasks = tasks.iter();
+
+                        if let Some(x) = remaining_tasks.next() {
+                            if remaining_tasks.next().is_none() {
+                                let remaining_name = x.get_meta();
+                                info!(
+                                    "HostedService '{remaining_name}' stopped. Just service '{remaining_name}' is remaining"
+                                );
+                                continue;
+                            }
+                        }
+                        let count = tasks.len();
+                        info!("HostedService '{name}' stopped. '{count}' remaining");
                     }
                     Err(e) => {
                         for cause in e.chain() {

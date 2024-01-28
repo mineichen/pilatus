@@ -1,7 +1,6 @@
 mod device;
 mod logo;
 mod metadata_future;
-mod occurance_counter;
 mod recipe;
 mod runtime;
 mod shutdown;
