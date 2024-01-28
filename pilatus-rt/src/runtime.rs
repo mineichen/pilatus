@@ -120,9 +120,7 @@ impl ConfiguredRuntime {
                         info!("HostedService '{name}' stopped. '{count}' remaining");
                     }
                     Err(e) => {
-                        for cause in e.chain() {
-                            error!("Handled on hosted service '{name}': {cause}");
-                        }
+                        error!("Handled on hosted service '{name}': {e:?}");
                     }
                 }
             }
