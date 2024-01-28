@@ -65,6 +65,11 @@ impl Runtime {
         );
         self.services.register_instance(tokio.clone());
         let provider = self.services.build().expect("has all dependencies");
+
+        // Tracing is initialized a second time to get default-loglevels from pilatus plugins
+        // This is useful so plugins can define their minimal topic-severity to avoid polluting the logs from their dependency
+        // e.g. tokio-tungstenite logs a lot of data
+        // pre_init() allows logs during the ServiceCollection::register() phase
         #[cfg(feature = "tracing")]
         crate::tracing::init(&provider).expect("Error during tracing setup");
 

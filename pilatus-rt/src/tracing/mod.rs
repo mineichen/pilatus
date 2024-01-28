@@ -11,7 +11,7 @@ use self::logfile_writer::LogFileWriter;
 mod logfile_writer;
 
 /// Initializes tracing during the ServiceProvider::register_services phase
-/// Init should be called afterwards to allow plugins to affect the logging
+/// Init must be called afterwards to allow plugins to affect the logging
 pub(super) fn pre_init(
     config: &GenericConfig,
     services: &mut ServiceCollection,
@@ -20,7 +20,7 @@ pub(super) fn pre_init(
 
     services
         .with::<Registered<Arc<TracingState>>>()
-        .register(|c| {
+        .register::<TracingConfig>(|c| {
             c.config
                 .get()
                 .expect("tracing::init must be called to setup the final logging")
@@ -33,6 +33,7 @@ pub(super) fn pre_init(
 
 struct TracingState {
     _handle: WorkerGuard,
+    // Used to update the TracingLevels when tracing is running already
     updater: Box<dyn Fn(&TracingConfig) + Send + Sync>,
     config: OnceLock<TracingConfig>,
 }
