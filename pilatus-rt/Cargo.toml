@@ -22,7 +22,7 @@ uuid = { version = "1", features = ["serde", "v4"] }
 tracing = "0.1"
 tempfile = "3"
 futures = "0.3"
-itertools = "0.11"
+itertools = "0.12"
 pin-project = "1.0.10"
 serde_json = "1.0"
 thiserror = "1"
@@ -33,12 +33,11 @@ bytes = "1"
 
 
 # tracing
-console-subscriber = { version = "0.1", optional = true }
+console-subscriber = { version = "0.2", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 tracing-appender = { version = "0.2", optional = true }
 
 [dev-dependencies]
-hyper = { version = "0.14.23", features = ["client"] }
 pilatus = { path = "../pilatus", features = ["unstable"] }
 
 
