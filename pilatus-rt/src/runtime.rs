@@ -33,7 +33,9 @@ impl Runtime {
         info!("Start pilatus within root '{:?}'", config.root);
 
         services.register_instance(config);
-        services.register_instance(pilatus::Settings::new(settings).expect("Settings not found"));
+        services.register_instance(
+            pilatus::Settings::new(settings).expect("Found invalid data in settings.json"),
+        );
         pilatus::register(&mut services);
         crate::register(&mut services);
 
