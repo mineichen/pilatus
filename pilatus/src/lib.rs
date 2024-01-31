@@ -11,7 +11,6 @@ mod recipe;
 mod relative;
 mod settings;
 mod shutdown;
-#[cfg(feature = "tokio")]
 mod sync;
 mod tracing;
 mod uuid_wrapper;
