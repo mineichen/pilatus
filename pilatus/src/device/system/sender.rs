@@ -76,6 +76,7 @@ impl UntypedActorMessageSender {
     }
 }
 
+#[derive(Clone)]
 pub struct WeakUntypedActorMessageSender {
     device_id: DeviceId,
     mpsc_sender: Weak<InternalSender>,
