@@ -12,10 +12,7 @@ mod logfile_writer;
 
 /// Initializes tracing during the ServiceProvider::register_services phase
 /// Init must be called afterwards to allow plugins to affect the logging
-pub(super) fn pre_init(
-    config: &GenericConfig,
-    services: &mut ServiceCollection,
-) -> Result<(), TryInitError> {
+pub(super) fn pre_init(config: &GenericConfig, services: &mut ServiceCollection) -> bool {
     let tracing_config = TracingConfig::from((config, []));
 
     services
@@ -26,9 +23,9 @@ pub(super) fn pre_init(
                 .expect("tracing::init must be called to setup the final logging")
                 .clone()
         });
-    init_tracing(&tracing_config).map(|state| {
-        services.register_instance(Arc::new(state));
-    })
+    let (result, state) = init_tracing(&tracing_config);
+    services.register_instance(Arc::new(state));
+    result.is_ok()
 }
 
 struct TracingState {
@@ -38,15 +35,20 @@ struct TracingState {
     config: OnceLock<TracingConfig>,
 }
 
-pub(super) fn init(p: &ServiceProvider) -> Result<(), Box<dyn std::error::Error>> {
+pub(super) fn init(
+    p: &ServiceProvider,
+    pre_init_success: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let config: GenericConfig = p.get().ok_or("Expects to have GenericConfig")?;
     let tracing_state: Arc<TracingState> = p
         .get()
         .ok_or("Expects to have TracingState (have you called pre_init?)")?;
 
     let tracing_config = TracingConfig::from((&config, p.get_all::<TracingTopic>()));
-    (tracing_state.updater)(&tracing_config);
-    debug!("Use trace-filter: {}", tracing_config.log_string());
+    if pre_init_success {
+        debug!("Use trace-filter: {}", tracing_config.log_string());
+        (tracing_state.updater)(&tracing_config);
+    }
 
     tracing_state
         .config
@@ -55,7 +57,7 @@ pub(super) fn init(p: &ServiceProvider) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
-fn init_tracing(config: &TracingConfig) -> Result<TracingState, TryInitError> {
+fn init_tracing(config: &TracingConfig) -> (Result<(), TryInitError>, TracingState) {
     let filter_config = config.log_string();
 
     let file = config.file().expect("Only works with file_logging enabled");
@@ -117,9 +119,12 @@ fn init_tracing(config: &TracingConfig) -> Result<TracingState, TryInitError> {
         file.path.canonicalize(),
     );
 
-    result.map(|_| TracingState {
-        config: OnceLock::<TracingConfig>::new(),
-        _handle: guard,
-        updater,
-    })
+    (
+        result,
+        TracingState {
+            config: OnceLock::<TracingConfig>::new(),
+            _handle: guard,
+            updater,
+        },
+    )
 }

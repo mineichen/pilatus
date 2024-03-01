@@ -10,6 +10,8 @@ use crate::metadata_future::MetadataFuture;
 
 pub struct Runtime {
     services: ServiceCollection,
+    #[cfg(feature = "tracing")]
+    tracing: bool,
 }
 
 impl Default for Runtime {
@@ -27,7 +29,8 @@ impl Runtime {
         let config = GenericConfig::new(root).expect("Invalid config");
 
         #[cfg(feature = "tracing")]
-        crate::tracing::pre_init(&config, &mut services).expect("Should be able to setup logging");
+        let tracing = crate::tracing::pre_init(&config, &mut services);
+
         info!("Start pilatus within root '{:?}'", config.root);
 
         services.register_instance(config);
@@ -37,7 +40,11 @@ impl Runtime {
         pilatus::register(&mut services);
         crate::register(&mut services);
 
-        Self { services }
+        Self {
+            services,
+            #[cfg(feature = "tracing")]
+            tracing,
+        }
     }
 
     pub fn register(mut self, registrar: extern "C" fn(&mut ServiceCollection)) -> Self {
@@ -69,7 +76,7 @@ impl Runtime {
         // e.g. tokio-tungstenite logs a lot of data
         // pre_init() allows logs during the ServiceCollection::register() phase
         #[cfg(feature = "tracing")]
-        crate::tracing::init(&provider).expect("Error during tracing setup");
+        crate::tracing::init(&provider, self.tracing).expect("Error during tracing setup");
 
         ConfiguredRuntime { tokio, provider }
     }
