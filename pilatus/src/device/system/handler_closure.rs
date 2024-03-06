@@ -5,7 +5,7 @@ use futures::{
     Future, FutureExt,
 };
 
-use super::{ActorMessage, ActorResult, HandlerResult, MaybeTask};
+use super::{ActorMessage, ActorResult, HandlerClosureResponse, HandlerResult};
 
 pub trait HandlerClosure<'a, TState, TMsg: ActorMessage> {
     type Fut: Future<Output = Self::Result> + 'a + Send;
@@ -16,7 +16,7 @@ pub trait HandlerClosure<'a, TState, TMsg: ActorMessage> {
         state: &'a mut TState,
         msg: TMsg,
         c: HandlerClosureContext<TMsg>,
-    ) -> BoxFuture<'a, MaybeTask>;
+    ) -> BoxFuture<'a, HandlerClosureResponse>;
 }
 
 pub struct HandlerClosureContext<TMsg: ActorMessage> {
@@ -39,7 +39,7 @@ where
         state: &'a mut TState,
         msg: TMsg,
         response_channel: HandlerClosureContext<TMsg>,
-    ) -> BoxFuture<'a, MaybeTask> {
+    ) -> BoxFuture<'a, HandlerClosureResponse> {
         let result = (self)(state, msg);
         async { result.await.handle_as_result(response_channel) }.boxed()
     }
@@ -70,7 +70,7 @@ where
         state: &'a mut TState,
         msg: TMsg,
         mut ctx: HandlerClosureContext<TMsg>,
-    ) -> BoxFuture<'a, MaybeTask> {
+    ) -> BoxFuture<'a, HandlerClosureResponse> {
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let future = self.0(state, msg, abort_registration).fuse();
         async move {

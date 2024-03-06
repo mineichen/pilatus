@@ -247,7 +247,11 @@ impl<TMsg: ActorMessage> MessageWithResponse<TMsg> {
 }
 
 pub trait MessageHandler<TState>: Send + Sync {
-    fn handle<'a>(&self, state: &'a mut TState, boxed_msg: BoxMessage) -> BoxFuture<'a, MaybeTask>;
+    fn handle<'a>(
+        &self,
+        state: &'a mut TState,
+        boxed_msg: BoxMessage,
+    ) -> BoxFuture<'a, HandlerClosureResponse>;
     fn respond_with_unknown_device(
         &self,
         state: &mut TState,
@@ -264,7 +268,11 @@ where
     TState: Send + Sync,
     TMsg: ActorMessage,
 {
-    fn handle<'a>(&self, state: &'a mut TState, boxed_msg: BoxMessage) -> BoxFuture<'a, MaybeTask> {
+    fn handle<'a>(
+        &self,
+        state: &'a mut TState,
+        boxed_msg: BoxMessage,
+    ) -> BoxFuture<'a, HandlerClosureResponse> {
         let h_cloned = self.0.clone();
         let h_cloned: TFn = h_cloned;
         let MessageWithResponse {
@@ -346,7 +354,7 @@ type Task = tokio::task::JoinHandle<()>;
 #[cfg(not(feature = "tokio"))]
 type Task = futures::future::BoxFuture<'static, ()>;
 
-type MaybeTask = Option<Task>;
+type HandlerClosureResponse = Option<Task>;
 
 pub trait ActorExecutionStrategy<TState> {
     fn execute<'a>(
@@ -354,7 +362,7 @@ pub trait ActorExecutionStrategy<TState> {
         handler: &'a dyn MessageHandler<TState>,
         state: &'a mut TState,
         untyped_message: BoxMessage,
-    ) -> BoxFuture<'a, MaybeTask>;
+    ) -> BoxFuture<'a, HandlerClosureResponse>;
 }
 
 struct AlwaysHandleStrategy;
@@ -364,7 +372,7 @@ impl<TState> ActorExecutionStrategy<TState> for AlwaysHandleStrategy {
         handler: &'a dyn MessageHandler<TState>,
         state: &'a mut TState,
         untyped_message: BoxMessage,
-    ) -> BoxFuture<'a, MaybeTask> {
+    ) -> BoxFuture<'a, HandlerClosureResponse> {
         handler.handle(state, untyped_message)
     }
 }
@@ -410,7 +418,8 @@ impl<TState: 'static + Send + Sync> ActorDevice<TState> {
         self
     }
 
-    pub fn add_blocking_handler_till_abort<TMsg: ActorMessage>(self) -> Self {
+    #[cfg(feature = "unstable")]
+    pub fn add_waiting_handler_till_abort<TMsg: ActorMessage>(self) -> Self {
         async fn blocking<TState, TMsg: ActorMessage>(
             _state: &mut TState,
             _msg: TMsg,
@@ -422,6 +431,12 @@ impl<TState: 'static + Send + Sync> ActorDevice<TState> {
             Err(ActorError::Aborted)
         }
         self.add_handler(WithAbort::new(blocking::<TState, TMsg>))
+    }
+
+    #[deprecated = "Blocking got a new notion with blocking_handlers... The name became confusing"]
+    #[cfg(feature = "unstable")]
+    pub fn add_blocking_handler_till_abort<TMsg: ActorMessage>(self) -> Self {
+        self.add_waiting_handler_till_abort::<TMsg>()
     }
 
     pub async fn execute(self, state: TState) -> TState {
