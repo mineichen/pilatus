@@ -2,6 +2,7 @@ use std::{
     any::{Any, TypeId},
     borrow::Cow,
     collections::{HashMap, HashSet},
+    convert::Infallible,
     fmt::Debug,
     future::poll_fn,
     marker::PhantomData,
@@ -260,15 +261,66 @@ pub trait MessageHandler<TState>: Send + Sync {
     );
 }
 
-struct TypedMessageHandler<THandlerClosure: Send + Sync, TState, TMsg>(
+#[cfg(any(feature = "tokio", feature = "rayon", test))]
+struct SyncMessageHandler<TState, TMsg: ActorMessage>(
+    fn(&mut TState, TMsg) -> ActorResult<TMsg>,
+    PhantomData<(TState, Mutex<TMsg>)>,
+);
+
+#[cfg(any(feature = "tokio", feature = "rayon", test))]
+impl<TState, TMsg> MessageHandler<TState> for SyncMessageHandler<TState, TMsg>
+where
+    TState: Send + Sync + 'static,
+    TMsg: ActorMessage,
+{
+    fn handle(
+        &self,
+        mut state: TState,
+        boxed_msg: BoxMessage,
+    ) -> BoxFuture<'static, (TState, HandlerClosureResponse)> {
+        let MessageWithResponse {
+            msg,
+            response_channel,
+        } = *boxed_msg
+            .0
+            .downcast::<MessageWithResponse<TMsg>>()
+            .expect("Must be castable. This is most likely an internal bug of the ActorSystem");
+        let func = self.0;
+
+        async move {
+            let (r, state) =
+                crate::sync::process_blocking::<_, ActorError<Infallible>>(move || {
+                    let r = (func)(&mut state, msg);
+                    Ok((r, state))
+                })
+                .await
+                .expect("Can't fail here, otherwise state is gone");
+            response_channel.send(r).ok();
+
+            (state, None)
+        }
+        .boxed()
+    }
+
+    fn respond_with_unknown_device(
+        &self,
+        _state: &mut TState,
+        boxed_msg: BoxMessage,
+        detail: Cow<'static, str>,
+    ) {
+        respond_with_unknown_device::<TMsg>(boxed_msg, detail)
+    }
+}
+
+struct AsyncMessageHandler<THandlerClosure: Send + Sync, TState, TMsg>(
     THandlerClosure,
     PhantomData<(TState, Mutex<TMsg>)>,
 );
 
 impl<THandlerClosure, TState, TMsg> MessageHandler<TState>
-    for TypedMessageHandler<THandlerClosure, TState, TMsg>
+    for AsyncMessageHandler<THandlerClosure, TState, TMsg>
 where
-    THandlerClosure: for<'a> HandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
+    THandlerClosure: for<'a> AsyncHandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
     TState: Send + Sync + 'static,
     TMsg: ActorMessage,
 {
@@ -294,7 +346,6 @@ where
         async move {
             let r = h_cloned
                 .call(&mut state, msg, HandlerClosureContext { response_channel })
-                //.boxed()
                 .await;
             (state, r)
         }
@@ -307,19 +358,27 @@ where
         boxed_msg: BoxMessage,
         detail: Cow<'static, str>,
     ) {
-        let MessageWithResponse {
-            response_channel, ..
-        } = *boxed_msg
-            .0
-            .downcast::<MessageWithResponse<TMsg>>()
-            .expect("Must be castable. This is most likely an internal bug of the ActorSystem");
-        let _ignore_not_consumed = response_channel.send(Err(ActorErrorUnknownDevice {
-            device_id: DeviceId::nil(),
-            detail,
-        }
-        .into()));
+        respond_with_unknown_device::<TMsg>(boxed_msg, detail)
     }
 }
+
+fn respond_with_unknown_device<TMsg: ActorMessage>(
+    boxed_msg: BoxMessage,
+    detail: Cow<'static, str>,
+) {
+    let MessageWithResponse {
+        response_channel, ..
+    } = *boxed_msg
+        .0
+        .downcast::<MessageWithResponse<TMsg>>()
+        .expect("Must be castable. This is most likely an internal bug of the ActorSystem");
+    let _ignore_not_consumed = response_channel.send(Err(ActorErrorUnknownDevice {
+        device_id: DeviceId::nil(),
+        detail,
+    }
+    .into()));
+}
+
 mod releaser {
     use std::any::TypeId;
 
@@ -419,12 +478,26 @@ impl<TState> ActorDevice<TState> {
 impl<TState: 'static + Send + Sync> ActorDevice<TState> {
     pub fn add_handler<TMsg: ActorMessage>(
         mut self,
-        h: impl for<'a> HandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
+        h: impl for<'a> AsyncHandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
     ) -> Self {
         let typeid = TypeId::of::<TMsg>();
         self.post
             .handlers
-            .insert(typeid, Box::new(TypedMessageHandler(h, PhantomData)));
+            .insert(typeid, Box::new(AsyncMessageHandler(h, PhantomData)));
+        self.post.manager.publish_message(typeid);
+        self
+    }
+
+    #[cfg(any(feature = "tokio", feature = "rayon", test))]
+    pub fn add_sync_handler<TMsg: ActorMessage>(
+        mut self,
+        h: fn(&mut TState, TMsg) -> ActorResult<TMsg>,
+    ) -> Self {
+        let typeid = TypeId::of::<TMsg>();
+        self.post.handlers.insert(
+            typeid,
+            Box::new(SyncMessageHandler::<TState, TMsg>(h, PhantomData)),
+        );
         self.post.manager.publish_message(typeid);
         self
     }
@@ -641,6 +714,34 @@ mod tests {
 
         let (state, _) = futures::future::join(
             system.register(id).add_handler(handler).execute(State(0)),
+            async move {
+                tokio::time::sleep(Duration::from_micros(10)).await;
+                let result = system.ask(id, I32Message(42)).await;
+                assert_eq!(42i64, result.unwrap());
+                system.forget_senders();
+            },
+        )
+        .await;
+        assert_eq!(state.0, 42);
+    }
+
+    #[tokio::test]
+    async fn handle_sync_messages() {
+        let system = ActorSystem::new();
+        let id = DeviceId::new_v4();
+
+        fn handler(state: &mut State, msg: I32Message) -> Result<i64, ActorError<String>> {
+            state.0 = msg.0;
+            Ok(msg.0 as i64)
+        }
+
+        struct State(i32);
+
+        let (state, _) = futures::future::join(
+            system
+                .register(id)
+                .add_sync_handler(handler)
+                .execute(State(0)),
             async move {
                 tokio::time::sleep(Duration::from_micros(10)).await;
                 let result = system.ask(id, I32Message(42)).await;

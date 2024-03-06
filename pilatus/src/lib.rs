@@ -28,7 +28,6 @@ pub use recipe::*;
 pub use relative::*;
 pub use settings::Settings;
 pub use shutdown::*;
-#[cfg(feature = "tokio")]
 pub use sync::*;
 
 #[cfg(feature = "tokio")]

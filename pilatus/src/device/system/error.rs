@@ -40,7 +40,7 @@ impl<T: Debug> From<oneshot::Canceled> for ActorError<T> {
     }
 }
 
-#[cfg(feature = "tokio")]
+#[cfg(any(feature = "tokio", test))]
 impl<T: Debug> From<tokio::time::error::Elapsed> for ActorError<T> {
     fn from(_: tokio::time::error::Elapsed) -> Self {
         ActorError::Timeout
@@ -62,7 +62,7 @@ impl From<()> for ActorError<()> {
     }
 }
 
-#[cfg(feature = "tokio")]
+#[cfg(any(feature = "tokio", test))]
 impl<T: Debug> From<tokio::task::JoinError> for ActorError<T> {
     fn from(_: tokio::task::JoinError) -> Self {
         ActorError::Busy(ActorErrorBusy::SpawnBlocking)

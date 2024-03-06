@@ -9,7 +9,7 @@ use futures::{
 
 use super::{ActorMessage, ActorResult, HandlerClosureResponse, HandlerResult, Task};
 
-pub trait HandlerClosure<'a, TState, TMsg: ActorMessage> {
+pub trait AsyncHandlerClosure<'a, TState, TMsg: ActorMessage> {
     type Fut: Future<Output = Self::Result> + 'a + Send;
     type Result: HandlerResult<TMsg>;
     type FinalFut: Future<Output = HandlerClosureResponse> + 'a + Send;
@@ -28,7 +28,7 @@ pub struct HandlerClosureContext<TMsg: ActorMessage> {
     pub(super) response_channel: oneshot::Sender<ActorResult<TMsg>>,
 }
 
-impl<'a, TState, TMsg, THandlerResult, TFut, TFn> HandlerClosure<'a, TState, TMsg> for TFn
+impl<'a, TState, TMsg, THandlerResult, TFut, TFn> AsyncHandlerClosure<'a, TState, TMsg> for TFn
 where
     TState: 'a,
     TMsg: ActorMessage,
@@ -63,7 +63,7 @@ impl<TFn> WithAbort<TFn> {
     }
 }
 
-impl<'a, TState, TMsg, THandlerResult, TFut, TFn> HandlerClosure<'a, TState, TMsg>
+impl<'a, TState, TMsg, THandlerResult, TFut, TFn> AsyncHandlerClosure<'a, TState, TMsg>
     for WithAbort<TFn>
 where
     TState: 'static,
