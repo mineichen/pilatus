@@ -64,7 +64,7 @@ async fn device(ctx: DeviceContext, params: Params, actor_system: ActorSystem) -
                 .register(id)
                 .add_handler(DeviceState::subscribe::<Heartbeat>)
                 .add_handler(DeviceState::update_params)
-                .execute(&mut DeviceState {
+                .execute(DeviceState {
                     topic_subscribe: tx,
                     params,
                 })

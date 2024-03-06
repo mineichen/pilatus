@@ -424,19 +424,19 @@ impl<TState: 'static + Send + Sync> ActorDevice<TState> {
         self.add_handler(WithAbort::new(blocking::<TState, TMsg>))
     }
 
-    pub async fn execute(self, state: &mut TState) {
+    pub async fn execute(self, state: TState) -> TState {
         self.execute_with_strategy(state, AlwaysHandleStrategy)
             .await
     }
 
     pub async fn execute_with_strategy(
         mut self,
-        state: &mut TState,
+        mut state: TState,
         strategy: impl ActorExecutionStrategy<TState>,
-    ) {
+    ) -> TState {
         while let Some((typeid, untyped_message)) = self.receiver.next().await {
             if let Some(available_handler) = self.post.handlers.get(&typeid) {
-                let fut = strategy.execute(available_handler.as_ref(), state, untyped_message);
+                let fut = strategy.execute(available_handler.as_ref(), &mut state, untyped_message);
                 pin_mut!(fut);
 
                 let mut infinite_pending =
@@ -456,6 +456,7 @@ impl<TState: 'static + Send + Sync> ActorDevice<TState> {
         }
 
         while self.pending_tasks.next().await.is_some() {}
+        state
     }
 }
 
@@ -501,11 +502,11 @@ mod tests {
             Ok(*state as i64)
         }
         let id = DeviceId::new_v4();
-        let mut state = 42;
         let system = system
             .register(id)
             .add_handler(WithAbort::new(handler))
-            .execute(&mut state);
+            .execute(42)
+            .map(|_| ());
 
         assert_eq!(
             tokio::time::timeout(
@@ -545,12 +546,8 @@ mod tests {
                 ) -> Result<i64, ActorError<String>> {
                     Ok(*state as i64)
                 }
-                let mut state = 1;
-                system
-                    .register(id)
-                    .add_handler(handler)
-                    .execute(&mut state)
-                    .await
+
+                system.register(id).add_handler(handler).execute(1).await;
             }
             .boxed()
         }))
@@ -568,8 +565,7 @@ mod tests {
         async fn handler(state: &mut i32, _msg: I32Message) -> Result<i64, ActorError<String>> {
             Ok(*state as i64)
         }
-        let mut state = 1;
-        let runner = system.register(id).add_handler(handler).execute(&mut state);
+        let runner = system.register(id).add_handler(handler).execute(1);
         assert_eq!(
             system
                 .list_devices_for_message_type::<I32Message>()
@@ -594,8 +590,7 @@ mod tests {
         async fn handler(state: &mut i32, _msg: I32Message) -> Result<i64, ActorError<String>> {
             Ok(*state as i64)
         }
-        let mut state = 1;
-        drop(system.register(id).add_handler(handler).execute(&mut state));
+        drop(system.register(id).add_handler(handler).execute(1));
 
         assert_eq!(
             system.get_untyped_sender(id).unwrap_err(),
@@ -618,14 +613,16 @@ mod tests {
 
         struct State(i32);
 
-        let mut state = State(0);
-        tokio::select! {
-        _ = system.register(id).add_handler(handler).execute(&mut state) => { panic!("Should not terminate"); },
-        _ = async {
-            tokio::time::sleep(Duration::from_micros(10)).await;
-            let result = system.ask(id, I32Message(42)).await;
-            assert_eq!(42i64, result.unwrap());
-        } => {}};
+        let (state, _) = futures::future::join(
+            system.register(id).add_handler(handler).execute(State(0)),
+            async move {
+                tokio::time::sleep(Duration::from_micros(10)).await;
+                let result = system.ask(id, I32Message(42)).await;
+                assert_eq!(42i64, result.unwrap());
+                system.forget_senders();
+            },
+        )
+        .await;
         assert_eq!(state.0, 42);
     }
 
@@ -642,14 +639,19 @@ mod tests {
 
         struct State(i32);
 
-        let mut state = State(0);
-        tokio::select! {
-        _ = system.register(id).add_handler(handler).execute(&mut state) => { panic!("Should not terminate"); },
-        _ = async {
-            tokio::time::sleep(Duration::from_micros(10)).await;
-            let result = system.ask(id, I32Message(42)).await;
-            assert_eq!(ActorError::Custom(ERROR_MSG.to_string()), result.unwrap_err());
-        } => {}};
+        futures::future::join(
+            system.register(id).add_handler(handler).execute(State(0)),
+            async move {
+                tokio::time::sleep(Duration::from_micros(10)).await;
+                let result = system.ask(id, I32Message(42)).await;
+                assert_eq!(
+                    ActorError::Custom(ERROR_MSG.to_string()),
+                    result.unwrap_err()
+                );
+                system.forget_senders();
+            },
+        )
+        .await;
     }
 
     #[tokio::test]
@@ -685,25 +687,22 @@ mod tests {
         let actor_b_id = DeviceId::new_v4();
         let actor_ab_id = DeviceId::new_v4();
         let system = ActorSystem::new();
-        let mut state_a = 1;
         let _actor_a = system
             .register(actor_a_id)
             .add_handler(handler::<MsgA>)
-            .execute(&mut state_a);
+            .execute(1);
 
-        let mut state_b = 1;
         let _actor_b = system
             .register(actor_b_id)
             .add_handler(handler::<MsgB>)
-            .execute(&mut state_b);
+            .execute(1);
 
-        let mut state_ab = 1;
         {
             let _actor_ab = system
                 .register(actor_ab_id)
                 .add_handler(handler::<MsgA>)
                 .add_handler(handler::<MsgB>)
-                .execute(&mut state_ab);
+                .execute(1);
             assert_eq!(
                 [actor_a_id, actor_ab_id]
                     .into_iter()
@@ -735,9 +734,8 @@ mod tests {
     async fn handle_unknown_message() {
         let system = ActorSystem::new();
         let id = DeviceId::new_v4();
-        let mut state = 42;
         tokio::select! {
-        _ = system.register(id).execute(&mut state) => { panic!("Should not terminate"); },
+        _ = system.register(id).execute(42) => { panic!("Should not terminate"); },
         _ = async {
             let result = system.ask(id, I32Message(42)).await;
             if let Err(ActorError::UnknownMessageType(x)) = result {

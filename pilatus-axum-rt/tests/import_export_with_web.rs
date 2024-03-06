@@ -42,10 +42,10 @@ fn upload_zip() -> anyhow::Result<()> {
     extern "C" fn register_test_services(c: &mut ServiceCollection) {
         async fn device(
             ctx: DeviceContext,
-            mut params: i32,
+            params: i32,
             actor_system: ActorSystem,
         ) -> DeviceResult {
-            actor_system.register(ctx.id).execute(&mut params).await;
+            actor_system.register(ctx.id).execute(params).await;
             Ok(())
         }
         async fn validator(
