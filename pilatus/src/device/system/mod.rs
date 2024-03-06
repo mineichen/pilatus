@@ -294,6 +294,7 @@ where
         async move {
             let r = h_cloned
                 .call(&mut state, msg, HandlerClosureContext { response_channel })
+                //.boxed()
                 .await;
             (state, r)
         }
