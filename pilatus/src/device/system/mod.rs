@@ -260,11 +260,15 @@ pub trait MessageHandler<TState>: Send + Sync {
     );
 }
 
-struct TypedMessageHandler<TFn: Send + Sync, TState, TMsg>(TFn, PhantomData<(TState, Mutex<TMsg>)>);
+struct TypedMessageHandler<THandlerClosure: Send + Sync, TState, TMsg>(
+    THandlerClosure,
+    PhantomData<(TState, Mutex<TMsg>)>,
+);
 
-impl<TFn, TState, TMsg> MessageHandler<TState> for TypedMessageHandler<TFn, TState, TMsg>
+impl<THandlerClosure, TState, TMsg> MessageHandler<TState>
+    for TypedMessageHandler<THandlerClosure, TState, TMsg>
 where
-    TFn: for<'a> HandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
+    THandlerClosure: for<'a> HandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
     TState: Send + Sync + 'static,
     TMsg: ActorMessage,
 {
@@ -274,7 +278,7 @@ where
         boxed_msg: BoxMessage,
     ) -> BoxFuture<'static, (TState, HandlerClosureResponse)> {
         let h_cloned = self.0.clone();
-        let h_cloned: TFn = h_cloned;
+        let h_cloned: THandlerClosure = h_cloned;
         let MessageWithResponse {
             msg,
             response_channel,

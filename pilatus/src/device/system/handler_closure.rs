@@ -10,13 +10,14 @@ use super::{ActorMessage, ActorResult, HandlerClosureResponse, HandlerResult};
 pub trait HandlerClosure<'a, TState, TMsg: ActorMessage> {
     type Fut: Future<Output = Self::Result> + 'a + Send;
     type Result: HandlerResult<TMsg>;
+    type FinalFut: Future<Output = HandlerClosureResponse> + 'a + Send;
 
     fn call(
         &self,
         state: &'a mut TState,
         msg: TMsg,
         c: HandlerClosureContext<TMsg>,
-    ) -> BoxFuture<'a, HandlerClosureResponse>;
+    ) -> Self::FinalFut;
 }
 
 pub struct HandlerClosureContext<TMsg: ActorMessage> {
@@ -33,6 +34,7 @@ where
 {
     type Fut = TFut;
     type Result = THandlerResult;
+    type FinalFut = BoxFuture<'a, HandlerClosureResponse>;
 
     fn call(
         &self,
@@ -64,6 +66,7 @@ where
 {
     type Fut = TFut;
     type Result = THandlerResult;
+    type FinalFut = BoxFuture<'a, HandlerClosureResponse>;
 
     fn call(
         &self,
