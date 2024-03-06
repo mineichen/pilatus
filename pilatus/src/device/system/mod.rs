@@ -14,7 +14,7 @@ use futures::{
     future::{BoxFuture, Either},
     pin_mut,
     stream::{AbortRegistration, Abortable, FuturesUnordered},
-    StreamExt,
+    FutureExt, StreamExt,
 };
 use minfac::{Registered, ServiceCollection};
 use tracing::trace;
@@ -247,11 +247,11 @@ impl<TMsg: ActorMessage> MessageWithResponse<TMsg> {
 }
 
 pub trait MessageHandler<TState>: Send + Sync {
-    fn handle<'a>(
+    fn handle(
         &self,
-        state: &'a mut TState,
+        state: TState,
         boxed_msg: BoxMessage,
-    ) -> BoxFuture<'a, HandlerClosureResponse>;
+    ) -> BoxFuture<'static, (TState, HandlerClosureResponse)>;
     fn respond_with_unknown_device(
         &self,
         state: &mut TState,
@@ -265,14 +265,14 @@ struct TypedMessageHandler<TFn: Send + Sync, TState, TMsg>(TFn, PhantomData<(TSt
 impl<TFn, TState, TMsg> MessageHandler<TState> for TypedMessageHandler<TFn, TState, TMsg>
 where
     TFn: for<'a> HandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
-    TState: Send + Sync,
+    TState: Send + Sync + 'static,
     TMsg: ActorMessage,
 {
-    fn handle<'a>(
+    fn handle(
         &self,
-        state: &'a mut TState,
+        mut state: TState,
         boxed_msg: BoxMessage,
-    ) -> BoxFuture<'a, HandlerClosureResponse> {
+    ) -> BoxFuture<'static, (TState, HandlerClosureResponse)> {
         let h_cloned = self.0.clone();
         let h_cloned: TFn = h_cloned;
         let MessageWithResponse {
@@ -287,7 +287,13 @@ where
             "Received Message of type '{:?}'",
             std::any::type_name::<TMsg>()
         );
-        h_cloned.call(state, msg, HandlerClosureContext { response_channel })
+        async move {
+            let r = h_cloned
+                .call(&mut state, msg, HandlerClosureContext { response_channel })
+                .await;
+            (state, r)
+        }
+        .boxed()
     }
 
     fn respond_with_unknown_device(
@@ -360,9 +366,9 @@ pub trait ActorExecutionStrategy<TState> {
     fn execute<'a>(
         &'a self,
         handler: &'a dyn MessageHandler<TState>,
-        state: &'a mut TState,
+        state: TState,
         untyped_message: BoxMessage,
-    ) -> BoxFuture<'a, HandlerClosureResponse>;
+    ) -> BoxFuture<'a, (TState, HandlerClosureResponse)>;
 }
 
 struct AlwaysHandleStrategy;
@@ -370,9 +376,9 @@ impl<TState> ActorExecutionStrategy<TState> for AlwaysHandleStrategy {
     fn execute<'a>(
         &'a self,
         handler: &'a dyn MessageHandler<TState>,
-        state: &'a mut TState,
+        state: TState,
         untyped_message: BoxMessage,
-    ) -> BoxFuture<'a, HandlerClosureResponse> {
+    ) -> BoxFuture<'a, (TState, HandlerClosureResponse)> {
         handler.handle(state, untyped_message)
     }
 }
@@ -451,20 +457,20 @@ impl<TState: 'static + Send + Sync> ActorDevice<TState> {
     ) -> TState {
         while let Some((typeid, untyped_message)) = self.receiver.next().await {
             if let Some(available_handler) = self.post.handlers.get(&typeid) {
-                let fut = strategy.execute(available_handler.as_ref(), &mut state, untyped_message);
+                let fut = strategy.execute(available_handler.as_ref(), state, untyped_message);
                 pin_mut!(fut);
 
                 let mut infinite_pending =
                     (&mut self.pending_tasks).chain(futures::stream::pending());
 
-                loop {
-                    if let Either::Left((maybe_task, _)) =
+                state = loop {
+                    if let Either::Left(((state, maybe_task), _)) =
                         futures::future::select(&mut fut, infinite_pending.next()).await
                     {
                         if let Some(task) = maybe_task {
                             self.pending_tasks.push(task);
                         }
-                        break;
+                        break state;
                     }
                 }
             }
