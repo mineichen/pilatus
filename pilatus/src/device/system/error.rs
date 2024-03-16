@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Debug};
+use std::{borrow::Cow, collections::HashSet, fmt::Debug};
 
 use futures::{channel::oneshot, stream::Aborted};
 
@@ -124,10 +124,17 @@ impl<T, TErr: Debug> ActorErrorResultExtensions<T, TErr> for Result<T, ActorErro
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
-#[error("Unknown device with id '{device_id}'. Reason: {detail}")]
-pub struct ActorErrorUnknownDevice {
-    pub device_id: DeviceId,
-    pub detail: Cow<'static, str>,
+pub enum ActorErrorUnknownDevice {
+    #[error("Unknown device with id '{device_id}': {details}")]
+    UnknownDeviceId {
+        device_id: DeviceId,
+        details: Cow<'static, str>,
+    },
+    #[error("Couldn't find unique handler for '{msg_type}': {possibilities:?}")]
+    AmbiguousHandler {
+        msg_type: &'static str,
+        possibilities: HashSet<DeviceId>,
+    },
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

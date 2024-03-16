@@ -12,7 +12,7 @@ use super::{
 };
 use crate::{
     DeviceConfig, NotAppliedError, ParameterUpdate, RecipeId, RecipeServiceTrait,
-    UntypedDeviceParamsWithVariables, UpdateParamsMessageError,
+    UnknownDeviceError, UntypedDeviceParamsWithVariables, UpdateParamsMessageError,
 };
 
 #[derive(thiserror::Error, Debug)]
@@ -28,7 +28,7 @@ pub enum UpdateDeviceError {
     Validate(#[from] UpdateParamsMessageError),
 
     #[error("{0}")]
-    UnknownDevice(#[from] ActorErrorUnknownDevice),
+    UnknownDevice(#[from] UnknownDeviceError),
 
     #[error("{0}")]
     Other(#[from] anyhow::Error),
@@ -37,7 +37,10 @@ pub enum UpdateDeviceError {
 impl From<ActorError<NotAppliedError>> for UpdateDeviceError {
     fn from(x: ActorError<NotAppliedError>) -> Self {
         match x {
-            ActorError::UnknownDevice(x) => x.into(),
+            ActorError::UnknownDevice(ActorErrorUnknownDevice::UnknownDeviceId {
+                device_id,
+                ..
+            }) => UpdateDeviceError::UnknownDevice(UnknownDeviceError(device_id)),
             ActorError::Custom(x) => UpdateDeviceError::Other(x.0),
             x => UpdateDeviceError::Other(x.into()),
         }
@@ -47,7 +50,10 @@ impl From<ActorError<NotAppliedError>> for UpdateDeviceError {
 impl From<ActorError<UpdateParamsMessageError>> for UpdateDeviceError {
     fn from(actor_error: ActorError<UpdateParamsMessageError>) -> Self {
         match actor_error {
-            ActorError::UnknownDevice(e) => e.into(),
+            ActorError::UnknownDevice(ActorErrorUnknownDevice::UnknownDeviceId {
+                device_id,
+                ..
+            }) => UpdateDeviceError::UnknownDevice(UnknownDeviceError(device_id)),
             ActorError::Custom(e) => e.into(),
             e => anyhow::Error::from(e).into(),
         }

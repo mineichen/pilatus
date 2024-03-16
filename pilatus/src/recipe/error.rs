@@ -2,8 +2,7 @@ use std::fmt::Debug;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::device::ActorErrorUnknownDevice;
-use crate::{RecipeId, UpdateParamsMessageError};
+use crate::{RecipeId, UnknownDeviceError, UpdateParamsMessageError};
 use sealedstruct::ValidationErrors;
 
 #[derive(thiserror::Error, Debug)]
@@ -15,7 +14,7 @@ pub enum TransactionError {
     UnknownRecipeId(RecipeId),
 
     #[error("{0}")]
-    UnknownDevice(#[from] ActorErrorUnknownDevice),
+    UnknownDevice(#[from] UnknownDeviceError),
 
     #[error("File Path {0} not found")]
     UnknownFilePath(PathBuf),

@@ -15,7 +15,7 @@ pub use device_config::DeviceConfig;
 pub use duplicate_recipe::*;
 pub use error::*;
 pub use file::*;
-pub use recipe::{Recipe, RecipeMetadata};
+pub use recipe::*;
 pub use recipes::*;
 use serde::{Deserialize, Serialize};
 pub use service::*;

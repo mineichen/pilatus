@@ -1,7 +1,4 @@
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-};
+use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use sealedstruct::{Seal, ValidationResultExtensions, Validator};
@@ -10,10 +7,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     device_config::DeviceConfig, duplicate_recipe::DuplicateRecipe, ord_hash_map::OrdHashMap,
 };
-use crate::{
-    device::{ActorErrorUnknownDevice, DeviceId},
-    Name, RecipeId, UntypedDeviceParamsWithVariables,
-};
+use crate::{device::DeviceId, Name, RecipeId, UntypedDeviceParamsWithVariables};
 
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Seal)]
 #[serde(deny_unknown_fields)]
@@ -25,6 +19,10 @@ pub struct RecipeMetadataRaw {
 #[derive(Debug, thiserror::Error)]
 #[error("Device with {0} exists already")]
 pub struct DeviceWithSameIdExists(DeviceId);
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[error("No device with id {0}")]
+pub struct UnknownDeviceError(pub DeviceId);
 
 impl Validator for RecipeMetadataRaw {
     fn check(&self) -> sealedstruct::Result<()> {
@@ -84,25 +82,19 @@ impl Recipe {
         self.devices.contains_key(id)
     }
 
-    pub fn device_by_id(&self, id: DeviceId) -> Result<&DeviceConfig, ActorErrorUnknownDevice> {
-        self.devices.get(&id).ok_or(ActorErrorUnknownDevice {
-            device_id: id,
-            detail: Cow::Owned(format!("Recipe doesn't contain a device with id {id}")),
-        })
+    pub fn device_by_id(&self, id: DeviceId) -> Result<&DeviceConfig, UnknownDeviceError> {
+        self.devices.get(&id).ok_or(UnknownDeviceError(id))
     }
 
     pub fn count_devices(&self) -> usize {
         self.devices.len()
     }
 
-    pub fn get_device_by_id(
+    pub fn device_by_id_mut(
         &mut self,
         id: DeviceId,
-    ) -> Result<&mut DeviceConfig, ActorErrorUnknownDevice> {
-        self.devices.get_mut(&id).ok_or(ActorErrorUnknownDevice {
-            device_id: id,
-            detail: Cow::Owned(format!("Recipe doesn't contain a device with id {id}")),
-        })
+    ) -> Result<&mut DeviceConfig, UnknownDeviceError> {
+        self.devices.get_mut(&id).ok_or(UnknownDeviceError(id))
     }
 
     pub fn add_device(&mut self, device: DeviceConfig) -> DeviceId {
@@ -128,8 +120,8 @@ impl Recipe {
         &mut self,
         id: DeviceId,
         params: UntypedDeviceParamsWithVariables,
-    ) -> Result<(), ActorErrorUnknownDevice> {
-        self.get_mut_device(id)?.update_params_committed(params);
+    ) -> Result<(), UnknownDeviceError> {
+        self.device_by_id_mut(id)?.update_params_committed(params);
         Ok(())
     }
 
@@ -137,21 +129,9 @@ impl Recipe {
         &mut self,
         id: DeviceId,
         params: UntypedDeviceParamsWithVariables,
-    ) -> Result<(), ActorErrorUnknownDevice> {
-        self.get_mut_device(id)?.update_params_uncommitted(params);
+    ) -> Result<(), UnknownDeviceError> {
+        self.device_by_id_mut(id)?.update_params_uncommitted(params);
         Ok(())
-    }
-
-    fn get_mut_device(
-        &mut self,
-        device_id: DeviceId,
-    ) -> Result<&mut DeviceConfig, ActorErrorUnknownDevice> {
-        self.devices
-            .get_mut(&device_id)
-            .ok_or(ActorErrorUnknownDevice {
-                device_id,
-                detail: Cow::Borrowed("No device with this ID in any recipe"),
-            })
     }
 }
 
@@ -171,17 +151,11 @@ mod tests {
         let mut recipe = Recipe::default();
         let id = recipe.add_device(device.clone());
 
-        let d = recipe.get_device_by_id(id).unwrap();
+        let d = recipe.device_by_id(id).unwrap();
         assert_eq!(device, d.to_owned());
         let eid = DeviceId::new_v4();
 
-        assert_eq!(
-            Err(ActorErrorUnknownDevice {
-                device_id: eid,
-                detail: Cow::Owned(format!("Recipe doesn't contain a device with id {eid}")),
-            }),
-            recipe.get_device_by_id(eid)
-        );
+        assert_eq!(Err(UnknownDeviceError(eid)), recipe.device_by_id(eid));
     }
 
     #[test]

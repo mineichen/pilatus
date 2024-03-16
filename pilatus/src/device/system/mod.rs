@@ -129,14 +129,12 @@ impl ActorSystem {
         let mpsc_sender = {
             let lock = self.state.read().expect("Should never be poisoned");
 
-            Arc::downgrade(
-                lock.devices
-                    .get(&device_id)
-                    .ok_or(ActorErrorUnknownDevice {
-                        device_id,
-                        detail: Cow::Borrowed("No message queue for this device"),
-                    })?,
-            )
+            Arc::downgrade(lock.devices.get(&device_id).ok_or(
+                ActorErrorUnknownDevice::UnknownDeviceId {
+                    device_id,
+                    details: "Unknown Id".into(),
+                },
+            )?)
         };
         Ok(WeakUntypedActorMessageSender::new(device_id, mpsc_sender))
     }
@@ -175,25 +173,18 @@ impl ActorSystem {
                 let ids = self.list_devices_for_message_type::<TMsg>();
                 let mut ids_iter = ids.iter();
                 let Some(id) = ids_iter.next() else {
-                    return Err(ActorErrorUnknownDevice {
-                        device_id: DeviceId::nil(),
-                        detail: Cow::Owned(format!(
-                            "No device can handle '{:?}'",
-                            std::any::type_name::<TMsg>()
-                        )),
+                    return Err(ActorErrorUnknownDevice::AmbiguousHandler {
+                        msg_type: std::any::type_name::<TMsg>(),
+                        possibilities: Default::default(),
                     });
                 };
 
                 if ids_iter.next().is_none() {
                     self.get_sender(*id)
                 } else {
-                    Err(ActorErrorUnknownDevice {
-                        device_id: DeviceId::nil(),
-                        detail: Cow::Owned(format!(
-                            "More than one device ({}) can handle '{:?}' messages : '{ids:?}'",
-                            ids.len(),
-                            std::any::type_name::<TMsg>()
-                        )),
+                    Err(ActorErrorUnknownDevice::AmbiguousHandler {
+                        msg_type: std::any::type_name::<TMsg>(),
+                        possibilities: ids,
                     })
                 }
             }
@@ -210,8 +201,6 @@ impl ActorSystem {
 }
 
 mod sealed {
-    use std::borrow::Cow;
-
     use futures::channel::mpsc;
 
     use super::{ActorErrorUnknownDevice, ActorSystemState, UntypedActorMessageSender};
@@ -236,9 +225,9 @@ mod sealed {
                 .devices
                 .get(&self)
                 .map(|x| mpsc::Sender::clone(&x))
-                .ok_or(ActorErrorUnknownDevice {
+                .ok_or(ActorErrorUnknownDevice::UnknownDeviceId {
                     device_id: self,
-                    detail: Cow::Borrowed("No message queue for this device"),
+                    details: "No message queue for this device".into(),
                 })?;
             Ok(UntypedActorMessageSender::new(self, mpsc_sender))
         }
@@ -341,10 +330,10 @@ where
     }
 }
 
-struct AsyncMessageHandler<THandlerClosure: Send + Sync, TState, TMsg>(
-    THandlerClosure,
-    PhantomData<(TState, Mutex<TMsg>)>,
-);
+struct AsyncMessageHandler<THandlerClosure: Send + Sync, TState, TMsg> {
+    closure: THandlerClosure,
+    phantom: PhantomData<(TState, Mutex<TMsg>)>,
+}
 
 impl<THandlerClosure, TState, TMsg> MessageHandler<TState>
     for AsyncMessageHandler<THandlerClosure, TState, TMsg>
@@ -358,7 +347,7 @@ where
         mut state: TState,
         boxed_msg: BoxMessage,
     ) -> BoxFuture<'static, (TState, HandlerClosureResponse)> {
-        let h_cloned = self.0.clone();
+        let h_cloned = self.closure.clone();
         let h_cloned: THandlerClosure = h_cloned;
         let MessageWithResponse {
             msg,
@@ -393,7 +382,7 @@ where
 
 fn respond_with_unknown_device<TMsg: ActorMessage>(
     boxed_msg: BoxMessage,
-    detail: Cow<'static, str>,
+    details: Cow<'static, str>,
 ) {
     let MessageWithResponse {
         response_channel, ..
@@ -401,11 +390,12 @@ fn respond_with_unknown_device<TMsg: ActorMessage>(
         .0
         .downcast::<MessageWithResponse<TMsg>>()
         .expect("Must be castable. This is most likely an internal bug of the ActorSystem");
-    let _ignore_not_consumed = response_channel.send(Err(ActorErrorUnknownDevice {
-        device_id: DeviceId::nil(),
-        detail,
-    }
-    .into()));
+    let _ignore_not_consumed =
+        response_channel.send(Err(ActorErrorUnknownDevice::UnknownDeviceId {
+            device_id: DeviceId::nil(),
+            details,
+        }
+        .into()));
 }
 
 mod releaser {
@@ -507,12 +497,16 @@ impl<TState> ActorDevice<TState> {
 impl<TState: 'static + Send + Sync> ActorDevice<TState> {
     pub fn add_handler<TMsg: ActorMessage>(
         mut self,
-        h: impl for<'a> AsyncHandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
+        closure: impl for<'a> AsyncHandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
     ) -> Self {
         let typeid = TypeId::of::<TMsg>();
-        self.post
-            .handlers
-            .insert(typeid, Box::new(AsyncMessageHandler(h, PhantomData)));
+        self.post.handlers.insert(
+            typeid,
+            Box::new(AsyncMessageHandler {
+                closure,
+                phantom: PhantomData,
+            }),
+        );
         self.post.manager.publish_message(typeid);
         self
     }
@@ -714,17 +708,17 @@ mod tests {
     #[tokio::test]
     async fn remove_device_after_drop() {
         let system = ActorSystem::new();
-        let id = DeviceId::new_v4();
+        let device_id = DeviceId::new_v4();
         async fn handler(state: &mut i32, _msg: I32Message) -> Result<i64, ActorError<String>> {
             Ok(*state as i64)
         }
-        drop(system.register(id).add_handler(handler).execute(1));
+        drop(system.register(device_id).add_handler(handler).execute(1));
 
         assert_eq!(
-            system.get_untyped_sender(id).unwrap_err(),
-            ActorErrorUnknownDevice {
-                device_id: id,
-                detail: Cow::Borrowed("No message queue for this device")
+            system.get_untyped_sender(device_id).unwrap_err(),
+            ActorErrorUnknownDevice::UnknownDeviceId {
+                device_id,
+                details: "No message queue for this device".into()
             }
         );
     }
@@ -816,10 +810,12 @@ mod tests {
         let device_id = DeviceId::new_v4();
         assert_eq!(
             system.ask(device_id, I32Message(42)).await,
-            Err(ActorError::UnknownDevice(ActorErrorUnknownDevice {
-                device_id,
-                detail: Cow::Borrowed("No message queue for this device")
-            }))
+            Err(ActorError::UnknownDevice(
+                ActorErrorUnknownDevice::UnknownDeviceId {
+                    device_id,
+                    details: "No message queue for this device".into()
+                }
+            ))
         );
     }
 

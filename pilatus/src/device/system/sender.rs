@@ -94,10 +94,12 @@ impl WeakUntypedActorMessageSender {
         if let Ok(mut x) = self.build_strong::<TMsg>() {
             x.tell(msg).map_err(Into::into)
         } else {
-            Err(ActorWeakTellError::UnknownDevice(ActorErrorUnknownDevice {
-                device_id: self.device_id,
-                detail: "Device existed but is no longer available".into(),
-            }))
+            Err(ActorWeakTellError::UnknownDevice(
+                ActorErrorUnknownDevice::UnknownDeviceId {
+                    device_id: self.device_id,
+                    details: "Device existed but is no longer available".into(),
+                },
+            ))
         }
     }
 
@@ -111,9 +113,9 @@ impl WeakUntypedActorMessageSender {
         let mpsc_sender = InternalSender::clone(
             self.mpsc_sender
                 .upgrade()
-                .ok_or(ActorErrorUnknownDevice {
+                .ok_or(ActorErrorUnknownDevice::UnknownDeviceId {
                     device_id: self.device_id,
-                    detail: Cow::Borrowed(
+                    details: Cow::Borrowed(
                         "Channel from WeakUntypedActorMessageSender was dropped already",
                     ),
                 })?

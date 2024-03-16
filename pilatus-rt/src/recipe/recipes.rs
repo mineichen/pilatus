@@ -1,8 +1,6 @@
-use std::borrow::Cow;
-
 use pilatus::{
-    device::{ActorErrorUnknownDevice, DeviceContext, DeviceId, InfallibleParamApplier},
-    DeviceConfig, Recipe, RecipeId, Recipes, TransactionError, Variables,
+    device::{DeviceContext, DeviceId, InfallibleParamApplier},
+    DeviceConfig, Recipe, RecipeId, Recipes, TransactionError, UnknownDeviceError, Variables,
 };
 
 use super::actions::DeviceActions;
@@ -38,15 +36,12 @@ pub(super) async fn recipes_try_add_new_with_id(
     recipes.try_add(id, new_recipe)?;
     Ok(())
 }
-const NO_RECIPE_WITH_DEVICE_ID: Cow<str> = Cow::Borrowed("There is not such device in any recipe");
 
 pub(super) trait RecipesExt {
     fn get_with_id_or_error(&self, id: &RecipeId) -> Result<&Recipe, TransactionError>;
     fn get_with_id_or_error_mut(&mut self, id: &RecipeId) -> Result<&mut Recipe, TransactionError>;
-    fn get_device_or_error(
-        &self,
-        device_id: DeviceId,
-    ) -> Result<&DeviceConfig, ActorErrorUnknownDevice>;
+    fn get_device_or_error(&self, device_id: DeviceId)
+        -> Result<&DeviceConfig, UnknownDeviceError>;
 }
 
 impl RecipesExt for Recipes {
@@ -61,10 +56,8 @@ impl RecipesExt for Recipes {
     fn get_device_or_error(
         &self,
         device_id: DeviceId,
-    ) -> Result<&DeviceConfig, ActorErrorUnknownDevice> {
-        self.get_device(device_id).ok_or(ActorErrorUnknownDevice {
-            device_id,
-            detail: NO_RECIPE_WITH_DEVICE_ID,
-        })
+    ) -> Result<&DeviceConfig, UnknownDeviceError> {
+        self.get_device(device_id)
+            .ok_or(UnknownDeviceError(device_id))
     }
 }

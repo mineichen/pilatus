@@ -11,13 +11,13 @@ use serde::Deserialize;
 
 use uuid::Uuid;
 
-use crate::device::{ActiveState, ActorErrorUnknownDevice, DeviceId};
+use crate::device::{ActiveState, DeviceId};
 use crate::{
     EntryReader, EntryWriter, Name, ParameterUpdate, RecipeId, RecipeMetadata, TransactionError,
     UntypedDeviceParamsWithVariables, VariableConflict,
 };
 
-use super::recipe::Recipe;
+use super::recipe::{Recipe, UnknownDeviceError};
 
 pub type RecipeExporter = Arc<dyn RecipeExporterTrait + Send + Sync>;
 #[async_trait]
@@ -223,7 +223,7 @@ impl TransactionOptions {
         recipe: &mut Recipe,
         device_id: DeviceId,
         new_params: UntypedDeviceParamsWithVariables,
-    ) -> Result<(), ActorErrorUnknownDevice> {
+    ) -> Result<(), UnknownDeviceError> {
         if self.committed {
             recipe.update_device_params_committed(device_id, new_params)
         } else {

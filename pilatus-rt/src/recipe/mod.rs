@@ -10,14 +10,14 @@ use anyhow::anyhow;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use minfac::{AllRegistered, Registered, ServiceCollection};
-use pilatus::device::{ActiveState, ActorErrorUnknownDevice, DeviceContext};
-use pilatus::UncommittedChangesError;
+use pilatus::device::{ActiveState, DeviceContext};
 use pilatus::{
     clone_directory_deep, device::DeviceId, visit_directory_files, DeviceConfig, GenericConfig,
     InitRecipeListener, Name, ParameterUpdate, Recipe, RecipeId, RecipeMetadata, Recipes,
     TransactionError, TransactionOptions, UntypedDeviceParamsWithVariables, VariableError,
     Variables, VariablesPatch,
 };
+use pilatus::{UncommittedChangesError, UnknownDeviceError};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
@@ -200,10 +200,7 @@ impl<'a, T: DerefMut<Target = Recipes>> RecipeDataService<'a, T> {
     ) -> Result<(), TransactionError> {
         let recipe = self.recipes.get_with_id_or_error_mut(&recipe_id)?;
         if recipe.devices.remove(&device_id).is_none() {
-            Err(ActorErrorUnknownDevice {
-                device_id,
-                detail: "Not found in recipe".into(),
-            })?
+            Err(UnknownDeviceError(device_id))?
         } else {
             tokio::fs::remove_dir_all(self.device_dir(&device_id))
                 .await
@@ -347,7 +344,7 @@ impl<'a, T: DerefMut<Target = Recipes>> RecipeDataService<'a, T> {
         let restored = self
             .recipes
             .get_with_id_or_error_mut(&recipe_id)?
-            .get_device_by_id(device_id)?
+            .device_by_id_mut(device_id)?
             .restore_committed()?
             // Even if we get an immutable ref in restore_committed(), recipes is still borrowed mut (Current compiler 'bug')
             .clone();
@@ -428,7 +425,7 @@ impl<'a, T: DerefMut<Target = Recipes>> RecipeDataService<'a, T> {
     ) -> Result<(), TransactionError> {
         self.recipes
             .get_with_id_or_error_mut(&recipe_id)?
-            .get_device_by_id(device_id)?
+            .device_by_id_mut(device_id)?
             .device_name = name;
 
         Ok(())
