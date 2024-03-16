@@ -20,6 +20,8 @@ use futures::{
 use minfac::{Registered, ServiceCollection};
 use tracing::trace;
 
+use self::sealed::ActorSystemIdentifier;
+
 use super::DeviceId;
 
 mod error;
@@ -141,25 +143,15 @@ impl ActorSystem {
 
     pub fn get_untyped_sender(
         &self,
-        device_id: DeviceId,
+        device_id: impl ActorSystemIdentifier,
     ) -> Result<UntypedActorMessageSender, ActorErrorUnknownDevice> {
-        let mpsc_sender =
-            {
-                let lock = self.state.read().expect("Should never be poisoned");
-
-                mpsc::Sender::clone(lock.devices.get(&device_id).ok_or(
-                    ActorErrorUnknownDevice {
-                        device_id,
-                        detail: Cow::Borrowed("No message queue for this device"),
-                    },
-                )?)
-            };
-        Ok(UntypedActorMessageSender::new(device_id, mpsc_sender))
+        let lock = self.state.read().expect("Should never be poisoned");
+        device_id.get_untyped_sender(sealed::SealedActorSystemState(&lock))
     }
 
     pub fn get_sender<T: ActorMessage>(
         &self,
-        device_id: DeviceId,
+        device_id: impl sealed::ActorSystemIdentifier,
     ) -> Result<ActorMessageSender<T>, ActorErrorUnknownDevice> {
         self.get_untyped_sender(device_id)
             .map(ActorMessageSender::new)
@@ -216,6 +208,43 @@ impl ActorSystem {
         self.get_untyped_sender(device_id)?.ask(msg).await
     }
 }
+
+mod sealed {
+    use std::borrow::Cow;
+
+    use futures::channel::mpsc;
+
+    use super::{ActorErrorUnknownDevice, ActorSystemState, UntypedActorMessageSender};
+    use crate::device::DeviceId;
+
+    pub struct SealedActorSystemState<'a>(pub(super) &'a ActorSystemState);
+
+    pub trait ActorSystemIdentifier {
+        fn get_untyped_sender(
+            self,
+            actor_system: SealedActorSystemState,
+        ) -> Result<UntypedActorMessageSender, ActorErrorUnknownDevice>;
+    }
+
+    impl ActorSystemIdentifier for DeviceId {
+        fn get_untyped_sender(
+            self,
+            state: SealedActorSystemState,
+        ) -> Result<UntypedActorMessageSender, ActorErrorUnknownDevice> {
+            let mpsc_sender = state
+                .0
+                .devices
+                .get(&self)
+                .map(|x| mpsc::Sender::clone(&x))
+                .ok_or(ActorErrorUnknownDevice {
+                    device_id: self,
+                    detail: Cow::Borrowed("No message queue for this device"),
+                })?;
+            Ok(UntypedActorMessageSender::new(self, mpsc_sender))
+        }
+    }
+}
+
 impl Default for ActorSystem {
     fn default() -> Self {
         Self::new()
