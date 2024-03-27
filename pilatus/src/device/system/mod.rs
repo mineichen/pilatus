@@ -14,7 +14,7 @@ use futures::{
     channel::{mpsc, oneshot},
     future::{BoxFuture, Either},
     pin_mut,
-    stream::{AbortRegistration, Abortable, FuturesUnordered},
+    stream::FuturesUnordered,
     FutureExt, StreamExt,
 };
 use minfac::{Registered, ServiceCollection};
@@ -530,9 +530,9 @@ impl<TState: 'static + Send + Sync> ActorDevice<TState> {
         async fn blocking<TState, TMsg: ActorMessage>(
             _state: &mut TState,
             _msg: TMsg,
-            r: AbortRegistration,
+            r: futures::stream::AbortRegistration,
         ) -> ActorResult<TMsg> {
-            Abortable::new(poll_fn::<(), _>(|_| Poll::Pending), r)
+            futures::stream::Abortable::new(poll_fn::<(), _>(|_| Poll::Pending), r)
                 .await
                 .ok();
             Err(ActorError::Aborted)

@@ -2,7 +2,7 @@ use std::{borrow::Cow, collections::HashSet, fmt::Debug};
 
 use futures::{channel::oneshot, stream::Aborted};
 
-use crate::device::DeviceId;
+use crate::{device::DeviceId, Name};
 
 use super::ActorMessage;
 
@@ -134,6 +134,11 @@ pub enum ActorErrorUnknownDevice {
     AmbiguousHandler {
         msg_type: &'static str,
         possibilities: HashSet<DeviceId>,
+    },
+    #[error("Unknown device with name '{name}': {details}")]
+    UnknownDeviceName {
+        name: Name,
+        details: Cow<'static, str>,
     },
 }
 

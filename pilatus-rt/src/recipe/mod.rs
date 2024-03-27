@@ -29,7 +29,6 @@ use tokio::{
 use tracing::{debug, error, trace};
 use uuid::Uuid;
 
-use self::actions::DeviceActions;
 use self::recipes::RecipesExt;
 
 mod actions;
