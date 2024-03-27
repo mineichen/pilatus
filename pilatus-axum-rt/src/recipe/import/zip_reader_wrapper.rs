@@ -19,7 +19,7 @@ enum ZipStates<'a, T> {
     Ready(ZipFileReader<async_zip::base::read::stream::Ready<T>>),
     Reading(
         ZipFileReader<
-            async_zip::base::read::stream::Reading<'a, futures::io::Take<T>, WithEntry<'a>>,
+            async_zip::base::read::stream::Reading<'a, futures_lite::io::Take<T>, WithEntry<'a>>,
         >,
     ),
     Finished,

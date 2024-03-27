@@ -77,32 +77,34 @@ async fn axum_service(
         .extract_unchecked()
         .send(listener.local_addr()?)
         .expect("Receiver is stored within DI-Container");
-    axum::serve(
-        listener,
-        axum::Router::new()
-            .nest(
-                "/api",
-                provider
-                    .get_all::<MinfacRouter>()
-                    .fold(axum::Router::new(), |acc, n| {
-                        acc.merge(n.extract_unchecked())
-                    }),
-            )
-            .fallback_service(get_service(ServeDir::new(web_config.frontend)))
-            .layer(super::inject::InjectLayer(provider))
-            .layer(
-                CorsLayer::new()
-                    .allow_origin(tower_http::cors::Any)
-                    .allow_methods(tower_http::cors::Any)
-                    .allow_headers(tower_http::cors::Any),
-            )
-            .layer(axum::extract::DefaultBodyLimit::max(web_config.body_limit))
-            .layer(tower_http::trace::TraceLayer::new_for_http())
-            .into_make_service(),
-    )
-    .with_graceful_shutdown(shutdown)
-    .await
-    .map_err(Into::into)
+
+    let router = axum::Router::new()
+        .nest(
+            "/api",
+            provider
+                .get_all::<MinfacRouter>()
+                .fold(axum::Router::new(), |acc, n| {
+                    acc.merge(n.extract_unchecked())
+                }),
+        )
+        .fallback_service(get_service(ServeDir::new(web_config.frontend)))
+        .layer(super::inject::InjectLayer(provider))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(tower_http::cors::Any)
+                .allow_methods(tower_http::cors::Any)
+                .allow_headers(tower_http::cors::Any),
+        )
+        .layer(axum::extract::DefaultBodyLimit::max(web_config.body_limit))
+        .layer(tower_http::trace::TraceLayer::new_for_http())
+        .into_make_service();
+    axum::serve(listener, router)
+        .with_graceful_shutdown(async move {
+            shutdown.await;
+            info!("Shutdown is triggered. If HostedServices still hangs, it might be related to https://github.com/hyperium/hyper-util/pull/101");
+        })
+        .await?;
+    Ok(())
 }
 
 #[cfg(test)]
