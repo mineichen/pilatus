@@ -4,8 +4,8 @@ use crate::Recipes;
 pub struct ActiveState {
     /// Should contain information like DeviceState (Device will be mapped)
     #[serde(flatten)]
-    recipes: Recipes,
-    has_uncommitted_changes: bool,
+    pub recipes: Recipes,
+    pub has_uncommitted_changes: bool,
 }
 
 impl ActiveState {
