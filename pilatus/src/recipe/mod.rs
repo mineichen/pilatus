@@ -35,7 +35,7 @@ impl std::default::Default for RecipeId {
 pub struct UntypedDeviceParamsWithVariables(serde_json::Value);
 pub use UntypedDeviceParamsWithoutVariables;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ParameterUpdate {
     pub parameters: UntypedDeviceParamsWithVariables,
     pub variables: VariablesPatch,
