@@ -1,6 +1,6 @@
 use crate::Recipes;
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct ActiveState {
     /// Should contain information like DeviceState (Device will be mapped)
     #[serde(flatten)]
