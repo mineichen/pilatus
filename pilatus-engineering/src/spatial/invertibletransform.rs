@@ -45,7 +45,7 @@ impl InvertibleTransform {
 
 impl InvertibleTransformRaw {
     // Other parts cancel out with the last row being (0,0,1)
-    fn determinant(&self) -> f64 {
+    pub fn determinant(&self) -> f64 {
         self.m11 * self.m22 - self.m21 * self.m12
     }
 }

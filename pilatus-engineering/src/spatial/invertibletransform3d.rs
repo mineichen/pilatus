@@ -63,7 +63,7 @@ impl InvertibleTransform3d {
 }
 
 impl InvertibleTransform3dRaw {
-    fn determinant(&self) -> f64 {
+    pub fn determinant(&self) -> f64 {
         self.m11 * self.m22 * self.m33
             - self.m11 * self.m32 * self.m23
             - self.m21 * self.m12 * self.m33
