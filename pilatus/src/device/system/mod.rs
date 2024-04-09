@@ -787,10 +787,10 @@ mod tests {
             Err(ActorError::Custom(ERROR_MSG.to_string()))
         }
 
-        struct State(i32);
+        struct State;
 
         futures::future::join(
-            system.register(id).add_handler(handler).execute(State(0)),
+            system.register(id).add_handler(handler).execute(State),
             async move {
                 tokio::time::sleep(Duration::from_micros(10)).await;
                 let result = system.ask(id, I32Message(42)).await;

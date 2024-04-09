@@ -46,8 +46,10 @@ async fn import_recipes_upgraded(
 ) -> Result<(), axum::Error> {
     let mut result = service
         .import(
-            &mut ZipReaderWrapper::new(tokio_util::compat::TokioAsyncReadCompatExt::compat(
-                AsyncWebsocketReader::new(&mut socket),
+            &mut ZipReaderWrapper::new(futures_lite::io::BufReader::new(
+                tokio_util::compat::TokioAsyncReadCompatExt::compat(AsyncWebsocketReader::new(
+                    &mut socket,
+                )),
             )),
             Default::default(),
         )

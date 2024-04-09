@@ -1,14 +1,14 @@
 use async_zip::base::read::stream::ZipFileReader;
 use async_zip::base::read::WithEntry;
-use futures::io::AsyncRead;
+use futures::io::AsyncBufRead;
 use futures::{future::BoxFuture, FutureExt};
 use pilatus::{EntryItem, EntryReader};
 
 use super::zip_to_io_error;
 
-pub(super) struct ZipReaderWrapper<'a, T: AsyncRead + Unpin + Send + 'a>(ZipStates<'a, T>);
+pub(super) struct ZipReaderWrapper<'a, T: AsyncBufRead + Unpin + Send + 'a>(ZipStates<'a, T>);
 
-impl<'a, T: AsyncRead + Unpin + Send + 'a> ZipReaderWrapper<'a, T> {
+impl<'a, T: AsyncBufRead + Unpin + Send + 'a> ZipReaderWrapper<'a, T> {
     pub fn new(raw: T) -> Self {
         Self(ZipStates::Ready(ZipFileReader::new(raw)))
     }
@@ -17,15 +17,11 @@ impl<'a, T: AsyncRead + Unpin + Send + 'a> ZipReaderWrapper<'a, T> {
 #[allow(clippy::large_enum_variant)]
 enum ZipStates<'a, T> {
     Ready(ZipFileReader<async_zip::base::read::stream::Ready<T>>),
-    Reading(
-        ZipFileReader<
-            async_zip::base::read::stream::Reading<'a, futures_lite::io::Take<T>, WithEntry<'a>>,
-        >,
-    ),
+    Reading(ZipFileReader<async_zip::base::read::stream::Reading<'a, T, WithEntry<'a>>>),
     Finished,
 }
 
-impl<'a, T: AsyncRead + Unpin + Send> EntryReader for ZipReaderWrapper<'a, T> {
+impl<'a, T: AsyncBufRead + Unpin + Send> EntryReader for ZipReaderWrapper<'a, T> {
     fn next(&mut self) -> BoxFuture<'_, Option<std::io::Result<EntryItem>>> {
         let mut current = ZipStates::Finished;
         std::mem::swap(&mut self.0, &mut current);
