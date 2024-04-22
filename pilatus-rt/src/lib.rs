@@ -12,6 +12,7 @@ pub use logo::create_default_logo_service;
 pub use recipe::TokioFileService;
 #[cfg(feature = "unstable")]
 pub use recipe::*;
+pub use tracing::TracingState;
 
 pub use runtime::Runtime;
 
