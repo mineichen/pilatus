@@ -112,19 +112,6 @@ impl<TDep: Resolvable, TFut, TParam> Clone for DepDeviceHandler<TDep, TFut, TPar
     }
 }
 
-trait BoxFnWrapperTrait<'a, TParam, TFut: Future> {
-    fn call(&self, param: &'a TParam) -> BoxFuture<'a, TFut::Output>;
-}
-struct BoxFnWrapper<'a, TParam, TFut>(fn(&'a TParam) -> TFut);
-
-impl<'a, TParam, TFut: Future + Send + 'a> BoxFnWrapperTrait<'a, TParam, TFut>
-    for BoxFnWrapper<'a, TParam, TFut>
-{
-    fn call(&self, param: &'a TParam) -> BoxFuture<'a, TFut::Output> {
-        (self.0)(param).boxed()
-    }
-}
-
 impl<T, TDep, TFut, TParam> DepDeviceHandler<TDep, TFut, TParam>
 where
     TDep: Resolvable,

@@ -41,8 +41,8 @@ uuid = { version = "1", features = ["serde", "v4"] }
 pilatus = { path = "../pilatus", features = ["unstable"] }
 pilatus-rt = { path = "../pilatus-rt", features = ["unstable"] }
 tempfile = "3"
-tokio-tungstenite = "0.21"
-reqwest = "0.12"
+tokio-tungstenite = "0.23"
+reqwest = "0.12.5"
 
 [features]
 engineering = ["dep:pilatus-engineering", "pilatus-axum/engineering", "image"]

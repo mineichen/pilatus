@@ -41,7 +41,6 @@ mod recipes;
 mod service_builder;
 
 pub use actions::*;
-pub use export::*;
 pub use fassade::*;
 pub use file::TokioFileService;
 pub use import::*;
@@ -556,8 +555,6 @@ pub(crate) mod unstable {
         }
     }
 }
-#[cfg(any(test, feature = "unstable"))]
-pub use unstable::*;
 
 async fn is_content_equal(a: impl AsyncRead, b: impl AsyncRead) -> std::io::Result<bool> {
     let mut a = std::pin::pin!(a);

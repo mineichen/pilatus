@@ -65,6 +65,7 @@ impl<S: Send + Sync> FromRequestParts<S> for WebSocketUpgrade {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct Dropper(Arc<InnerDropper>);
 
 impl Dropper {

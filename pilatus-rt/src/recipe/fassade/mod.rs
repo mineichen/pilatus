@@ -295,5 +295,3 @@ pub(crate) mod unstable {
         }
     }
 }
-#[cfg(any(test, feature = "unstable"))]
-pub use unstable::*;
