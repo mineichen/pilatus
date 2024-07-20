@@ -181,7 +181,7 @@ mod tests {
         let id = DeviceId::new_v4();
         let runner = runner_actor_system.register(id);
         let mut runner = Box::pin(async move {
-            let mut state = ActorState {
+            let state = ActorState {
                 create_image_counter: runner_counter,
                 broadcast: BroadcastState::new(
                     runner_actor_system.get_weak_untyped_sender(id).unwrap(),
@@ -197,7 +197,7 @@ mod tests {
                     |_| debug!("Unsubscribe from Simulation-Camera"),
                 ),
             };
-            runner.add_broadcast_handlers().execute(&mut state).await;
+            runner.add_broadcast_handlers().execute(state).await;
         });
         tokio::select! {
             _ = &mut runner => {

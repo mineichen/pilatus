@@ -6,7 +6,6 @@ use std::{
 
 use minfac::{Registered, ServiceCollection};
 use pilatus::{LogoQuery, LogoService};
-use resvg::usvg::TreeParsing;
 use tracing::warn;
 
 use super::GenericImage;
@@ -119,8 +118,9 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
 
             GenericImage::<4>::new(rgba.into_vec(), iwidth, iheight)
         } else if let Ok(svg) = resvg::usvg::Tree::from_data(&logo.0, &Default::default()) {
-            let x = resvg::Tree::from_usvg(&svg);
-            let (svg_width, svg_height) = (x.size.width(), x.size.height());
+            let x = resvg::usvg::Tree::from(svg);
+            let size = x.size();
+            let (svg_width, svg_height) = (size.width(), size.height());
             let query_ratio = query.width.get() as f32 / query.height.get() as f32;
             let svg_ratio = svg_width / svg_height;
             let (pixmap_width, pixmap_height, scale): (NonZeroU32, NonZeroU32, f32) =
@@ -145,7 +145,8 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
             let mut pixmap = resvg::tiny_skia::Pixmap::new(pixmap_width.get(), pixmap_height.get())
                 .expect("Query width/height are bellow the limit i32/4");
 
-            x.render(
+            resvg::render(
+                &x,
                 resvg::tiny_skia::Transform::from_scale(scale, scale),
                 &mut pixmap.as_mut(),
             );

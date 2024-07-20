@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Image viewer</title>
+</head>
+
+<body>
+    <h1>Image stream</h1>
+    <select id="device-select">
+    </select>
+    <br />
+    <img id="image" height="600" />
+    <div id="meta"></div>
+
+
+    <script>
+        let host_with_port = location.host;
+        if (location.port) {
+            host_with_port += ":" + location.port;
+        }
+
+        async function decode(blob) {
+            if (blob.size < 4) {
+                throw "Blob is too small to contain an image: " + blob.size;
+            }
+            const meta_len = new Uint32Array(await blob.slice(0, 4).arrayBuffer())[0];
+
+            if (meta_len + 4 > blob.size) {
+                throw "Blob with size " + blob.size + " can't extract enough text " + meta_len;
+            }
+            const text = await blob.slice(4, meta_len + 4).text();
+            const meta = (meta_len > 0) ? (JSON.parse(text)) : null;
+            console.log(meta);
+            if (meta === undefined) {
+                throw "couldn't parse json: " + text;
+            }
+
+            let reader = new FileReader();
+            let imageBlob = blob.slice(4 + meta_len);
+            reader.readAsDataURL(imageBlob);
+            return new Promise((res) => {
+                reader.onloadend = function () {
+                    const base64data = reader.result;
+                    res([base64data, meta])
+                }
+            })
+            console.log(text);
+        }
+
+        let socket = null;
+        async function init() {
+            let data = await (await fetch("/api/image/list/stream")).json();
+            let selector = document.getElementById("device-select");
+            selector.addEventListener("change", (e) => {
+                stream_image(e.target.value);
+            })
+            if (data[0]) {
+                stream_image(data[0]);
+            } else {
+                let el = document.createElement("option");
+                el.text = "No sources found";
+                selector.appendChild(el);
+            }
+
+            for (var item of data) {
+                let el = document.createElement("option");
+                el.innerHTML = item;
+                el.setAttribute("value", item);
+                selector.appendChild(el);
+            }
+
+        }
+
+        async function stream_image(id) {
+            if (socket) {
+                await socket.close();
+            }
+
+            socket = new WebSocket("ws://" + host_with_port + "/api/image/stream?device_id=" + id);
+            socket.addEventListener("message", async data => {
+                console.log("data arrive?", data);
+                let decoded = await decode(data.data);
+                console.log(decoded);
+                document.getElementById("image").src = decoded[0];
+                document.getElementById("meta").src = decoded[1];
+            });
+        }
+
+        init();
+
+    </script>
+</body>
+
+</html>

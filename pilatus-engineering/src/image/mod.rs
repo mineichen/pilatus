@@ -209,7 +209,7 @@ impl<'a> From<&'a GenericImage<1>> for PackedGenericImage {
 
 #[repr(C)]
 pub struct GenericImage<const CHANNELS: usize> {
-    buf: *mut u8,
+    buf: *const u8,
     width: NonZeroU32,
     height: NonZeroU32,
 
@@ -245,7 +245,7 @@ extern "C" fn clear_vec<const CHANNELS: usize>(
 ) {
     unsafe {
         Vec::from_raw_parts(
-            image.buf,
+            image.buf as *mut u8,
             (image.width.get() * image.height.get()) as usize,
             generic_field,
         )
@@ -261,9 +261,9 @@ impl<'a> From<&'a LumaImage> for (&'a [u8], NonZeroU32, NonZeroU32) {
 }
 
 impl<const CHANNELS: usize> GenericImage<CHANNELS> {
-    pub fn new(mut input: Vec<u8>, width: NonZeroU32, height: NonZeroU32) -> Self {
+    pub fn new(input: Vec<u8>, width: NonZeroU32, height: NonZeroU32) -> Self {
         let cap = input.capacity();
-        let buf = input.as_mut_ptr();
+        let buf = input.as_ptr();
         assert_eq!(
             input.len() as u32,
             width.get() * height.get() * CHANNELS as u32,
@@ -282,10 +282,6 @@ impl<const CHANNELS: usize> GenericImage<CHANNELS> {
         unsafe { std::slice::from_raw_parts(self.buf, self.buffer_size()) }
     }
 
-    pub fn buffer_mut(&mut self) -> &mut [u8] {
-        unsafe { std::slice::from_raw_parts_mut(self.buf, self.buffer_size()) }
-    }
-
     /// # Safety
     ///
     /// The buffer must point to allocated memory of size width*height*CHANNELS.
@@ -293,7 +289,7 @@ impl<const CHANNELS: usize> GenericImage<CHANNELS> {
     /// generic_field can be used to store e.g. pointers to CPP-Objects which
     /// should be freed in the clear_proc
     pub unsafe fn new_with_cleanup(
-        buf: *mut u8,
+        buf: *const u8,
         width: NonZeroU32,
         height: NonZeroU32,
         clear_proc: extern "C" fn(&mut Self, usize),
@@ -313,7 +309,7 @@ impl<const CHANNELS: usize> GenericImage<CHANNELS> {
     pub fn to_vec(self) -> Vec<u8> {
         if self.clear_proc as usize == clear_vec::<CHANNELS> as usize {
             let size = self.buffer_size();
-            let result = unsafe { Vec::from_raw_parts(self.buf, size, self.generic_field) };
+            let result = unsafe { Vec::from_raw_parts(self.buf as *mut _, size, self.generic_field) };
             std::mem::forget(self);
             result
         } else {

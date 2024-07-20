@@ -9,7 +9,7 @@ use pilatus_axum::{
     extract::{ws::WebSocketUpgrade, InjectRegistered, Json, Path},
     http::StatusCode,
     image::{DefaultImageStreamer, LocalizableImageStreamer},
-    sse::Sse,
+    sse::Sse, Html,
     AppendHeaders, IntoResponse, ServiceCollectionExtensions,
 };
 use pilatus_engineering::image::{
@@ -24,6 +24,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
         .http("/list/stream/localizable", |m| m.get(list_localizable_stream_devices))
         .http("/stream", |m| m.get(stream_image_handler))
         .http("/stream/localizable", |m| m.get(stream_localizable_image_handler))
+        .http("/viewer", |m| m.get(image_viewer))
         .http("/:device_id/single", |m| m.get(single_image_handler))
         .http("/:device_id/frame_intervals", |m| m.get(stream_frame_interval))
     );
@@ -70,7 +71,7 @@ async fn single_image_handler(
             img.buffer(),
             dims.0.get(),
             dims.1.get(),
-            image::ColorType::L8,
+            image::ExtendedColorType::L8,
         )?;
         let name = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S");
         ImageResult::Ok((
@@ -83,6 +84,23 @@ async fn single_image_handler(
     })
     .await
     .map_err(|_| StatusCode::BAD_REQUEST)
+}
+
+#[cfg(debug_assertions)]
+async fn image_viewer() -> Result<Html<String>, StatusCode> {
+    tokio::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("image_viewer.html"),
+    )
+    .await
+    .map(Into::into)
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+#[cfg(not(debug_assertions))]
+async fn image_viewer() -> Html<&'static str> {
+    include_str!("../resources/image_viewer.html").into()
 }
 
 async fn list_stream_devices(
