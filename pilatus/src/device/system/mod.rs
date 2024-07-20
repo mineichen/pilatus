@@ -18,7 +18,7 @@ use futures::{
     FutureExt, StreamExt,
 };
 use minfac::{Registered, ServiceCollection};
-use tracing::trace;
+use tracing::{trace, warn};
 
 use self::sealed::ActorSystemIdentifier;
 
@@ -478,6 +478,14 @@ pub struct ActorDevicePostExecute<TState> {
     handlers: HashMap<TypeId, Box<dyn MessageHandler<TState>>>,
 }
 
+impl<TState> ActorDevicePostExecute<TState> {
+    fn add_handler(&mut self, key: TypeId, handler: Box<dyn MessageHandler<TState>>) {
+        if self.handlers.insert(key, handler).is_some() {
+            warn!("Registering multiple handlers for {key:?}");
+        }
+    }
+}
+
 impl<TState> ActorDevice<TState> {
     fn new(
         receiver: mpsc::Receiver<(TypeId, BoxMessage)>,
@@ -500,7 +508,8 @@ impl<TState: 'static + Send + Sync> ActorDevice<TState> {
         closure: impl for<'a> AsyncHandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
     ) -> Self {
         let typeid = TypeId::of::<TMsg>();
-        self.post.handlers.insert(
+
+        self.post.add_handler(
             typeid,
             Box::new(AsyncMessageHandler {
                 closure,
@@ -517,7 +526,7 @@ impl<TState: 'static + Send + Sync> ActorDevice<TState> {
         h: fn(&mut TState, TMsg) -> ActorResult<TMsg>,
     ) -> Self {
         let typeid = TypeId::of::<TMsg>();
-        self.post.handlers.insert(
+        self.post.add_handler(
             typeid,
             Box::new(SyncMessageHandler::<TState, TMsg>(h, PhantomData)),
         );
