@@ -19,7 +19,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 type Age = u64;
 
 pub trait ImageLogoServiceTrait {
-    fn get_logo(&self, query: LogoQuery) -> Arc<GenericImage<4>>;
+    fn get_logo(&self, query: LogoQuery) -> Arc<GenericImage<u8, 4>>;
 }
 
 #[derive(Clone)]
@@ -40,7 +40,7 @@ impl std::ops::Deref for ImageLogoService {
 }
 
 struct ImageLogoServiceImpl {
-    cache: RwLock<HashMap<LogoQuery, (Age, Arc<GenericImage<4>>)>>,
+    cache: RwLock<HashMap<LogoQuery, (Age, Arc<GenericImage<u8, 4>>)>>,
     logo_service: LogoService,
 }
 
@@ -57,7 +57,7 @@ const CACHE_CAPACITY: usize = 10;
 
 impl ImageLogoServiceTrait for ImageLogoServiceImpl {
     /// Panics: GenericImage<4> with packed pixels (rgbargbargbargba, not rrrrggggbbbbaaaa)
-    fn get_logo(&self, query: LogoQuery) -> Arc<GenericImage<4>> {
+    fn get_logo(&self, query: LogoQuery) -> Arc<GenericImage<u8, 4>> {
         let lock = self.cache.read().unwrap();
         if let Some((_, cached)) = lock.get(&query) {
             return cached.clone();
@@ -116,7 +116,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 isize.1.try_into().expect("Input image has height=0"),
             );
 
-            GenericImage::<4>::new(rgba.into_vec(), iwidth, iheight)
+            GenericImage::<u8, 4>::new(rgba.into_vec(), iwidth, iheight)
         } else if let Ok(svg) = resvg::usvg::Tree::from_data(&logo.0, &Default::default()) {
             let x = resvg::usvg::Tree::from(svg);
             let size = x.size();
@@ -160,7 +160,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 .try_into()
                 .expect("Generated Image has height=0");
 
-            GenericImage::<4>::new(pixmap.take(), out_width, out_height)
+            GenericImage::<u8, 4>::new(pixmap.take(), out_width, out_height)
         } else {
             let width = query.width.get();
             let height = query.height.get();
@@ -252,7 +252,7 @@ mod tests {
         );
     }
 
-    fn get_logo(s: LogoService) -> Arc<GenericImage<4>> {
+    fn get_logo(s: LogoService) -> Arc<GenericImage<u8, 4>> {
         let service = ImageLogoServiceImpl::new(s);
         let query = LogoQuery {
             width: 200.try_into().unwrap(),

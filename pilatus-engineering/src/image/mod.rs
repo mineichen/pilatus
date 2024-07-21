@@ -54,7 +54,7 @@ pub trait PointProjector {
 
 pub type DynamicPointProjector = Arc<dyn PointProjector + 'static + Send + Sync>;
 
-pub type LumaImage = GenericImage<1>;
+pub type LumaImage = GenericImage<u8, 1>;
 
 pub trait RgbImage: Debug {
     fn is_packed(&self) -> bool;
@@ -78,9 +78,9 @@ pub trait UnpackedRgbImage {
 }
 
 #[derive(Debug)]
-pub struct PackedGenericImage(GenericImage<3>);
+pub struct PackedGenericImage(GenericImage<u8, 3>);
 impl Deref for PackedGenericImage {
-    type Target = GenericImage<3>;
+    type Target = GenericImage<u8, 3>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -88,7 +88,7 @@ impl Deref for PackedGenericImage {
 }
 
 impl PackedGenericImage {
-    pub fn new(i: GenericImage<3>) -> Self {
+    pub fn new(i: GenericImage<u8, 3>) -> Self {
         Self(i)
     }
     pub fn from_unpacked([r, g, b]: [&[u8]; 3], (width, height): (NonZeroU32, NonZeroU32)) -> Self {
@@ -108,7 +108,7 @@ impl PackedGenericImage {
             }
             next_write += 3;
         }
-        PackedGenericImage(GenericImage::<3>::new(write_buf, width, height))
+        PackedGenericImage(GenericImage::<u8, 3>::new(write_buf, width, height))
     }
 }
 
@@ -144,16 +144,16 @@ impl PackedRgbImage for PackedGenericImage {
 }
 
 #[derive(Debug)]
-pub struct UnpackedGenericImage(GenericImage<3>);
+pub struct UnpackedGenericImage(GenericImage<u8, 3>);
 
 impl UnpackedGenericImage {
-    pub fn new(i: GenericImage<3>) -> Self {
+    pub fn new(i: GenericImage<u8, 3>) -> Self {
         Self(i)
     }
 }
 
 impl Deref for UnpackedGenericImage {
-    type Target = GenericImage<3>;
+    type Target = GenericImage<u8, 3>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -199,26 +199,26 @@ impl UnpackedRgbImage for UnpackedGenericImage {
     }
 }
 
-impl<'a> From<&'a GenericImage<1>> for PackedGenericImage {
-    fn from(input: &GenericImage<1>) -> Self {
+impl<'a> From<&'a GenericImage<u8, 1>> for PackedGenericImage {
+    fn from(input: &GenericImage<u8, 1>) -> Self {
         let data = input.buffer().iter().flat_map(|&i| [i, i, i]).collect();
-        let inner = GenericImage::<3>::new(data, input.width, input.height);
+        let inner = GenericImage::<u8, 3>::new(data, input.width, input.height);
         PackedGenericImage(inner)
     }
 }
 
 #[repr(C)]
-pub struct GenericImage<const CHANNELS: usize> {
-    buf: *const u8,
+pub struct GenericImage<T, const CHANNELS: usize> {
+    buf: *const T,
     width: NonZeroU32,
     height: NonZeroU32,
 
-    clear_proc: extern "C" fn(&mut GenericImage<CHANNELS>, usize),
+    clear_proc: extern "C" fn(&mut GenericImage<T, CHANNELS>, usize),
     // Has to be cleaned up by clear proc too
     generic_field: usize,
 }
 
-impl<const CHANNELS: usize> Debug for GenericImage<CHANNELS> {
+impl<const CHANNELS: usize> Debug for GenericImage<u8, CHANNELS> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("GenericImage")
             .field("width", &self.width)
@@ -228,7 +228,7 @@ impl<const CHANNELS: usize> Debug for GenericImage<CHANNELS> {
     }
 }
 
-impl<const CHANNELS: usize> Clone for GenericImage<CHANNELS> {
+impl<const CHANNELS: usize> Clone for GenericImage<u8, CHANNELS> {
     fn clone(&self) -> Self {
         let (width, height) = self.dimensions();
         let buf = self.buffer().to_vec();
@@ -236,11 +236,11 @@ impl<const CHANNELS: usize> Clone for GenericImage<CHANNELS> {
     }
 }
 
-unsafe impl<const T: usize> Send for GenericImage<T> {}
-unsafe impl<const T: usize> Sync for GenericImage<T> {}
+unsafe impl<const T: usize> Send for GenericImage<u8, T> {}
+unsafe impl<const T: usize> Sync for GenericImage<u8, T> {}
 
 extern "C" fn clear_vec<const CHANNELS: usize>(
-    image: &mut GenericImage<CHANNELS>,
+    image: &mut GenericImage<u8, CHANNELS>,
     generic_field: usize,
 ) {
     unsafe {
@@ -260,7 +260,7 @@ impl<'a> From<&'a LumaImage> for (&'a [u8], NonZeroU32, NonZeroU32) {
     }
 }
 
-impl<const CHANNELS: usize> GenericImage<CHANNELS> {
+impl<const CHANNELS: usize> GenericImage<u8, CHANNELS> {
     pub fn new(input: Vec<u8>, width: NonZeroU32, height: NonZeroU32) -> Self {
         let cap = input.capacity();
         let buf = input.as_ptr();
@@ -309,7 +309,8 @@ impl<const CHANNELS: usize> GenericImage<CHANNELS> {
     pub fn to_vec(self) -> Vec<u8> {
         if self.clear_proc as usize == clear_vec::<CHANNELS> as usize {
             let size = self.buffer_size();
-            let result = unsafe { Vec::from_raw_parts(self.buf as *mut _, size, self.generic_field) };
+            let result =
+                unsafe { Vec::from_raw_parts(self.buf as *mut _, size, self.generic_field) };
             std::mem::forget(self);
             result
         } else {
@@ -321,7 +322,7 @@ impl<const CHANNELS: usize> GenericImage<CHANNELS> {
     }
 }
 
-impl<const CHANNELS: usize> Drop for GenericImage<CHANNELS> {
+impl<T, const CHANNELS: usize> Drop for GenericImage<T, CHANNELS> {
     fn drop(&mut self) {
         if self.buf as usize != 0 {
             let generic_field = self.generic_field;
@@ -369,7 +370,7 @@ mod tests {
         std::mem::forget(input);
         let size = 2.try_into().unwrap();
         let image = Arc::new(UnpackedGenericImage(unsafe {
-            GenericImage::<3>::new_with_cleanup(pointer, size, size, clear_vec::<3>, cap)
+            GenericImage::<u8, 3>::new_with_cleanup(pointer, size, size, clear_vec::<3>, cap)
         }));
         let packed = image.into_packed().into_vec();
         assert_eq!(packed.to_vec(), vec!(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3));
