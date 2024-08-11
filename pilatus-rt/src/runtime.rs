@@ -113,21 +113,18 @@ impl ConfiguredRuntime {
                 match flattened {
                     Ok(_) => {
                         let mut remaining_tasks = tasks.iter();
-
-                        if let Some(x) = remaining_tasks.next() {
-                            if remaining_tasks.next().is_none() {
-                                let remaining_name = x.get_meta();
-                                info!(
-                                    "HostedService '{remaining_name}' stopped. Just service '{remaining_name}' is remaining"
-                                );
-                                continue;
-                            }
+                        if let (Some(x), None) = (remaining_tasks.next(),remaining_tasks.next()) {
+                           let remaining_name = x.get_meta();
+                            info!(
+                                "HostedService '{name}' stopped. Just service '{remaining_name}' is remaining"
+                            );
+                        } else {
+                            let count = tasks.len();
+                            info!("HostedService '{name}' stopped. '{count}' remaining");    
                         }
-                        let count = tasks.len();
-                        info!("HostedService '{name}' stopped. '{count}' remaining");
                     }
                     Err(e) => {
-                        error!("Handled on hosted service '{name}': {e:?}");
+                        error!("Hosted service '{name}' failed: {e:?}");
                     }
                 }
             }

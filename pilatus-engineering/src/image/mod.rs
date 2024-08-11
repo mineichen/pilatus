@@ -19,6 +19,7 @@
 //! Color images are shared via Arc<dyn RgbImage>,
 use std::{
     fmt::{self, Debug, Formatter},
+    mem::ManuallyDrop,
     num::NonZeroU32,
     ops::Deref,
     sync::Arc,
@@ -108,7 +109,11 @@ impl PackedGenericImage {
             }
             next_write += 3;
         }
-        PackedGenericImage(GenericImage::<u8, 3>::new(write_buf, width, height))
+        PackedGenericImage(GenericImage::<u8, 3>::new_arc(
+            write_buf.into(),
+            width,
+            height,
+        ))
     }
 }
 
@@ -191,9 +196,9 @@ impl UnpackedRgbImage for UnpackedGenericImage {
 
         unsafe {
             [
-                std::slice::from_raw_parts(self.buf, offset as usize),
-                std::slice::from_raw_parts(self.buf.offset(offset), offset as usize),
-                std::slice::from_raw_parts(self.buf.offset(offset * 2), offset as usize),
+                std::slice::from_raw_parts(self.ptr, offset as usize),
+                std::slice::from_raw_parts(self.ptr.offset(offset), offset as usize),
+                std::slice::from_raw_parts(self.ptr.offset(offset * 2), offset as usize),
             ]
         }
     }
@@ -202,55 +207,97 @@ impl UnpackedRgbImage for UnpackedGenericImage {
 impl<'a> From<&'a GenericImage<u8, 1>> for PackedGenericImage {
     fn from(input: &GenericImage<u8, 1>) -> Self {
         let data = input.buffer().iter().flat_map(|&i| [i, i, i]).collect();
-        let inner = GenericImage::<u8, 3>::new(data, input.width, input.height);
+        let inner = GenericImage::<u8, 3>::new_arc(data, input.width, input.height);
         PackedGenericImage(inner)
     }
 }
 
+#[non_exhaustive]
+#[derive(Debug)]
+pub enum DynamicImage {
+    Luma8(LumaImage),
+    Luma16(GenericImage<u16, 1>),
+}
+
 #[repr(C)]
 pub struct GenericImage<T, const CHANNELS: usize> {
-    buf: *const T,
+    ptr: *const T,
     width: NonZeroU32,
     height: NonZeroU32,
 
-    clear_proc: extern "C" fn(&mut GenericImage<T, CHANNELS>, usize),
+    // Todo: Replace with &'static Vtable, once new_with_cleanup is removed
+    vtable: Vtable<T, CHANNELS>,
+
     // Has to be cleaned up by clear proc too
-    generic_field: usize,
+    data: usize,
 }
 
-impl<const CHANNELS: usize> Debug for GenericImage<u8, CHANNELS> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("GenericImage")
-            .field("width", &self.width)
-            .field("height", &self.height)
-            .field("dept", &CHANNELS)
-            .finish()
-    }
-}
-
-impl<const CHANNELS: usize> Clone for GenericImage<u8, CHANNELS> {
+impl<T, const CHANNELS: usize> Clone for GenericImage<T, CHANNELS> {
     fn clone(&self) -> Self {
-        let (width, height) = self.dimensions();
-        let buf = self.buffer().to_vec();
-        GenericImage::new(buf, width, height)
+        unsafe { (self.vtable.clone)(self) }
     }
 }
 
-unsafe impl<const T: usize> Send for GenericImage<u8, T> {}
-unsafe impl<const T: usize> Sync for GenericImage<u8, T> {}
+#[repr(C)]
+pub struct Vtable<T, const CHANNELS: usize> {
+    clone: unsafe extern "C" fn(&GenericImage<T, CHANNELS>) -> GenericImage<T, CHANNELS>,
+    make_mut: unsafe extern "C" fn(&mut GenericImage<T, CHANNELS>, out_len: &mut usize) -> *mut T,
+    drop: unsafe extern "C" fn(&mut GenericImage<T, CHANNELS>, usize),
+}
 
-extern "C" fn clear_vec<const CHANNELS: usize>(
-    image: &mut GenericImage<u8, CHANNELS>,
+impl<T: Copy, const CHANNELS: usize> Vtable<T, CHANNELS> {
+    // Copies the data and changes the underlying storage of this object
+    fn from_cleanup(drop: extern "C" fn(&mut GenericImage<T, CHANNELS>, usize)) -> Self {
+        unsafe extern "C" fn make_mut<T: Copy, const CHANNELS: usize>(
+            image: &mut GenericImage<T, CHANNELS>,
+            out_len: &mut usize,
+        ) -> *mut T {
+            let mut arc = Arc::<[T]>::from(image.buffer());
+            let ptr = Arc::get_mut(&mut arc).expect("Just created").as_mut_ptr();
+            *out_len = arc.len();
+            *image = GenericImage::new_arc(arc, image.width, image.height);
+            ptr
+        }
+
+        Self {
+            drop,
+            make_mut,
+            clone: clone_slice,
+        }
+    }
+}
+
+extern "C" fn clear_vec<T, const CHANNELS: usize>(
+    image: &mut GenericImage<T, CHANNELS>,
     generic_field: usize,
 ) {
     unsafe {
         Vec::from_raw_parts(
-            image.buf as *mut u8,
-            (image.width.get() * image.height.get()) as usize,
+            image.ptr as *mut u8,
+            (image.width.get() * image.height.get()) as usize * CHANNELS,
             generic_field,
         )
     };
 }
+extern "C" fn clone_slice<T: Copy, const CHANNELS: usize>(
+    image: &GenericImage<T, CHANNELS>,
+) -> GenericImage<T, CHANNELS> {
+    GenericImage::new_arc(Arc::from(image.buffer()), image.width, image.height)
+}
+
+impl<TP: std::any::Any, const CHANNELS: usize> Debug for GenericImage<TP, CHANNELS> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GenericImage")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("channels", &CHANNELS)
+            .field("pixel", &std::any::type_name::<TP>())
+            .finish()
+    }
+}
+
+unsafe impl<TP: Send, const T: usize> Send for GenericImage<TP, T> {}
+unsafe impl<TP: Sync, const T: usize> Sync for GenericImage<TP, T> {}
 
 impl<'a> From<&'a LumaImage> for (&'a [u8], NonZeroU32, NonZeroU32) {
     fn from(that: &'a LumaImage) -> Self {
@@ -260,8 +307,13 @@ impl<'a> From<&'a LumaImage> for (&'a [u8], NonZeroU32, NonZeroU32) {
     }
 }
 
-impl<const CHANNELS: usize> GenericImage<u8, CHANNELS> {
-    pub fn new(input: Vec<u8>, width: NonZeroU32, height: NonZeroU32) -> Self {
+impl<const CHANNELS: usize, T: Copy> GenericImage<T, CHANNELS> {
+    #[deprecated = "Use eigher new_vec or new_arc"]
+    pub fn new(input: Vec<T>, width: NonZeroU32, height: NonZeroU32) -> Self {
+        Self::new_vec(input, width, height)
+    }
+
+    pub fn new_vec(input: Vec<T>, width: NonZeroU32, height: NonZeroU32) -> Self {
         let cap = input.capacity();
         let buf = input.as_ptr();
         assert_eq!(
@@ -271,15 +323,98 @@ impl<const CHANNELS: usize> GenericImage<u8, CHANNELS> {
         );
 
         std::mem::forget(input);
-        unsafe { Self::new_with_cleanup(buf, width, height, clear_vec::<CHANNELS>, cap) }
+
+        unsafe extern "C" fn make_mut<T: Copy, const CHANNELS: usize>(
+            image: &mut GenericImage<T, CHANNELS>,
+            out_len: &mut usize,
+        ) -> *mut T {
+            *out_len = image.buffer_size();
+            image.ptr as *mut T
+        }
+
+        let vtable = Vtable {
+            drop: clear_vec,
+            clone: clone_slice,
+            make_mut,
+        };
+
+        unsafe { Self::new_with_vtable(buf, width, height, vtable, cap) }
     }
 
-    fn buffer_size(&self) -> usize {
+    pub fn new_arc(input: Arc<[T]>, width: NonZeroU32, height: NonZeroU32) -> Self {
+        assert_eq!(
+            input.len() as u32,
+            width.get() * height.get() * CHANNELS as u32,
+            "Incompatible Buffer-Size"
+        );
+
+        unsafe extern "C" fn make_mut<T: Copy + Clone, const CHANNELS: usize>(
+            image: &mut GenericImage<T, CHANNELS>,
+            out_len: &mut usize,
+        ) -> *mut T {
+            let mut arc = ManuallyDrop::new(unsafe {
+                let ptr = std::ptr::slice_from_raw_parts(image.ptr, image.data);
+                Arc::<[T]>::from_raw(ptr)
+            });
+
+            let ptr;
+            (ptr, *out_len) = if let Some(ptr) = Arc::get_mut(&mut arc) {
+                (ptr.as_mut_ptr(), ptr.len())
+            } else {
+                let mut new_data = Arc::<[T]>::from(&arc[..]);
+                ManuallyDrop::into_inner(arc);
+
+                let ptr = Arc::get_mut(&mut new_data).expect("Just created, must be unique");
+                let r = (ptr.as_mut_ptr(), ptr.len());
+                image.ptr = Arc::into_raw(new_data).cast::<T>();
+                r
+            };
+            ptr
+        }
+        extern "C" fn clear_arc<T: Copy, const CHANNELS: usize>(
+            image: &mut GenericImage<T, CHANNELS>,
+            _generic_field: usize,
+        ) {
+            unsafe {
+                let ptr = std::ptr::slice_from_raw_parts(image.ptr, image.data);
+                Arc::<[T]>::from_raw(ptr);
+            }
+        }
+
+        extern "C" fn clone_arc<T: Copy, const CHANNELS: usize>(
+            image: &GenericImage<T, CHANNELS>,
+        ) -> GenericImage<T, CHANNELS> {
+            let arc = ManuallyDrop::new(unsafe {
+                let ptr = std::ptr::slice_from_raw_parts(image.ptr, image.data);
+                Arc::<[T]>::from_raw(ptr)
+            });
+            GenericImage::new_arc((*arc).clone(), image.width, image.height)
+        }
+
+        let vtable = Vtable {
+            drop: clear_arc,
+            clone: clone_arc,
+            make_mut,
+        };
+        let len = input.len();
+        let input = Arc::into_raw(input);
+        unsafe { Self::new_with_vtable(input.cast::<T>(), width, height, vtable, len) }
+    }
+
+    const fn buffer_size(&self) -> usize {
         self.width.get() as usize * self.height.get() as usize * CHANNELS
     }
 
-    pub fn buffer(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.buf, self.buffer_size()) }
+    pub const fn buffer(&self) -> &[T] {
+        unsafe { std::slice::from_raw_parts(self.ptr, self.buffer_size()) }
+    }
+
+    pub fn make_mut(&mut self) -> &mut [T] {
+        unsafe {
+            let mut len = 0;
+            let ptr = (self.vtable.make_mut)(self, &mut len);
+            std::slice::from_raw_parts_mut(ptr, len)
+        }
     }
 
     /// # Safety
@@ -288,29 +423,46 @@ impl<const CHANNELS: usize> GenericImage<u8, CHANNELS> {
     /// Ownership of this buffer should logically be transferred to this image.
     /// generic_field can be used to store e.g. pointers to CPP-Objects which
     /// should be freed in the clear_proc
+    ///
+    #[deprecated = "Use new with VTable instead. This method will be removed soon"]
     pub unsafe fn new_with_cleanup(
-        buf: *const u8,
+        buf: *const T,
         width: NonZeroU32,
         height: NonZeroU32,
         clear_proc: extern "C" fn(&mut Self, usize),
         generic_field: usize,
     ) -> Self {
-        assert!(matches!(CHANNELS, 1 | 3 | 4));
-
-        Self {
+        Self::new_with_vtable(
             buf,
             width,
             height,
-            clear_proc,
+            Vtable::from_cleanup(clear_proc),
             generic_field,
+        )
+    }
+
+    pub unsafe fn new_with_vtable(
+        buf: *const T,
+        width: NonZeroU32,
+        height: NonZeroU32,
+        vtable: Vtable<T, CHANNELS>,
+        generic_field: usize,
+    ) -> Self {
+        assert!(matches!(CHANNELS, 1 | 3 | 4));
+
+        Self {
+            ptr: buf,
+            width,
+            height,
+            vtable,
+            data: generic_field,
         }
     }
 
-    pub fn to_vec(self) -> Vec<u8> {
-        if self.clear_proc as usize == clear_vec::<CHANNELS> as usize {
+    pub fn to_vec(self) -> Vec<T> {
+        if self.vtable.drop as usize == clear_vec::<T, CHANNELS> as usize {
             let size = self.buffer_size();
-            let result =
-                unsafe { Vec::from_raw_parts(self.buf as *mut _, size, self.generic_field) };
+            let result = unsafe { Vec::from_raw_parts(self.ptr as *mut _, size, self.data) };
             std::mem::forget(self);
             result
         } else {
@@ -324,9 +476,9 @@ impl<const CHANNELS: usize> GenericImage<u8, CHANNELS> {
 
 impl<T, const CHANNELS: usize> Drop for GenericImage<T, CHANNELS> {
     fn drop(&mut self) {
-        if self.buf as usize != 0 {
-            let generic_field = self.generic_field;
-            (self.clear_proc)(self, generic_field);
+        if self.ptr as usize != 0 {
+            let generic_field = self.data;
+            unsafe { (self.vtable.drop)(self, generic_field) };
         }
     }
 }
@@ -338,7 +490,7 @@ mod tests {
     #[test]
     fn miri_create_and_clear_vec_image() {
         let size = 2.try_into().unwrap();
-        let image = LumaImage::new(vec![0u8, 64u8, 128u8, 192u8], size, size);
+        let image = LumaImage::new_vec(vec![0u8, 64u8, 128u8, 192u8], size, size);
         assert_eq!(image.buffer(), &[0u8, 64u8, 128u8, 192u8]);
     }
     #[test]
@@ -346,11 +498,12 @@ mod tests {
         let raw = vec![0u8, 64u8, 128u8, 192u8];
         let pointer = raw[..].as_ptr();
         let size = 2.try_into().unwrap();
-        let image = LumaImage::new(raw, size, size);
+        let image = LumaImage::new_vec(raw, size, size);
         let to_vec = image.to_vec();
 
         // Miri seems to generate clear_vec::<const u8> for each call
         // It works on native x86. Because it's only an optimization, this is good enough
+        // VTable is not possible, as GenericImage is ABI-Stable and multiple dylibs use their own allocator for Vecs
         if !cfg!(miri) {
             assert_eq!(
                 to_vec[..].as_ptr(),
@@ -361,17 +514,75 @@ mod tests {
     }
 
     #[test]
-    fn miri_test_into_packed() {
-        let raw = vec![1u8, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3];
-
-        let mut input = raw;
-        let cap = input.capacity();
-        let pointer = input[..].as_mut_ptr();
-        std::mem::forget(input);
+    fn miri_make_mut_reuses_arc_pointer() {
+        let raw = Arc::<[u8]>::from([0u8, 64u8, 128u8, 192u8].as_slice());
+        let pointer = raw[..].as_ptr();
         let size = 2.try_into().unwrap();
-        let image = Arc::new(UnpackedGenericImage(unsafe {
-            GenericImage::<u8, 3>::new_with_cleanup(pointer, size, size, clear_vec::<3>, cap)
-        }));
+        let mut image = LumaImage::new_arc(raw, size, size);
+        let ptr_mut = image.make_mut();
+
+        assert_eq!(
+            ptr_mut[..].as_ptr(),
+            pointer,
+            "Should reuse the buffer if it was created by vec"
+        );
+    }
+
+    #[test]
+    fn miri_make_mut_doesnt_reuse_arc_pointer_if_not_unique() {
+        let raw = Arc::<[u8]>::from([0u8, 64u8, 128u8, 192u8].as_slice());
+        let _raw2 = raw.clone();
+        let pointer = raw[..].as_ptr();
+        let size = 2.try_into().unwrap();
+        let mut image = LumaImage::new_arc(raw, size, size);
+        let ptr_mut = image.make_mut();
+
+        assert_ne!(
+            ptr_mut[..].as_ptr(),
+            pointer,
+            "Should reuse the buffer if it was created by vec"
+        );
+    }
+
+    #[test]
+    fn miri_clone_arc_backed_shares_memory() {
+        let raw = Arc::<[u8]>::from([0u8, 64u8, 128u8, 192u8].as_slice());
+        let pointer = raw[..].as_ptr();
+        let size = 2.try_into().unwrap();
+        let image = LumaImage::new_arc(raw, size, size);
+        let image2 = image.clone();
+
+        assert_eq!(
+            image2.buffer().as_ptr(),
+            pointer,
+            "Should reuse the buffer if it was created by vec"
+        );
+    }
+
+    #[test]
+    fn miri_clone_from_box() {
+        let raw = vec![0u8, 64u8, 128u8, 192u8];
+        let size = 2.try_into().unwrap();
+        let image = LumaImage::new_vec(raw, size, size);
+        let image2 = image.clone();
+        let to_vec = image.to_vec();
+        let to_vec2 = image2.to_vec();
+
+        assert_ne!(
+            to_vec[..].as_ptr(),
+            to_vec2[..].as_ptr(),
+            "Should reuse the buffer if it was created by vec"
+        );
+    }
+
+    #[test]
+    fn miri_test_into_packed() {
+        let size = 2.try_into().unwrap();
+        let image = Arc::new(UnpackedGenericImage(GenericImage::<u8, 3>::new_vec(
+            vec![1u8, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3],
+            size,
+            size,
+        )));
         let packed = image.into_packed().into_vec();
         assert_eq!(packed.to_vec(), vec!(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3));
     }

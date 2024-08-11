@@ -9,8 +9,8 @@ use pilatus_axum::{
     extract::{ws::WebSocketUpgrade, InjectRegistered, Json, Path},
     http::StatusCode,
     image::{DefaultImageStreamer, LocalizableImageStreamer},
-    sse::Sse, Html,
-    AppendHeaders, IntoResponse, ServiceCollectionExtensions,
+    sse::Sse,
+    AppendHeaders, Html, IntoResponse, ServiceCollectionExtensions,
 };
 use pilatus_engineering::image::{
     GetImageMessage, LumaImage, SubscribeImageMessage, SubscribeLocalizableImageMessage,

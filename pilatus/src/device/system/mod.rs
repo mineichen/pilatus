@@ -265,7 +265,7 @@ impl<TMsg: ActorMessage> MessageWithResponse<TMsg> {
     }
 }
 
-pub trait MessageHandler<TState>: Send + Sync {
+pub trait MessageHandler<TState>: Send {
     fn handle(
         &self,
         state: TState,
@@ -288,7 +288,7 @@ struct SyncMessageHandler<TState, TMsg: ActorMessage>(
 #[cfg(any(feature = "tokio", feature = "rayon", test))]
 impl<TState, TMsg> MessageHandler<TState> for SyncMessageHandler<TState, TMsg>
 where
-    TState: Send + Sync + 'static,
+    TState: Send + 'static,
     TMsg: ActorMessage,
 {
     fn handle(
@@ -330,7 +330,7 @@ where
     }
 }
 
-struct AsyncMessageHandler<THandlerClosure: Send + Sync, TState, TMsg> {
+struct AsyncMessageHandler<THandlerClosure: Send, TState, TMsg> {
     closure: THandlerClosure,
     phantom: PhantomData<(TState, Mutex<TMsg>)>,
 }
@@ -338,8 +338,8 @@ struct AsyncMessageHandler<THandlerClosure: Send + Sync, TState, TMsg> {
 impl<THandlerClosure, TState, TMsg> MessageHandler<TState>
     for AsyncMessageHandler<THandlerClosure, TState, TMsg>
 where
-    THandlerClosure: for<'a> AsyncHandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
-    TState: Send + Sync + 'static,
+    THandlerClosure: for<'a> AsyncHandlerClosure<'a, TState, TMsg> + 'static + Send + Clone,
+    TState: Send + 'static,
     TMsg: ActorMessage,
 {
     fn handle(
@@ -502,7 +502,7 @@ impl<TState> ActorDevice<TState> {
     }
 }
 
-impl<TState: 'static + Send + Sync> ActorDevice<TState> {
+impl<TState: 'static + Send> ActorDevice<TState> {
     pub fn add_handler<TMsg: ActorMessage>(
         mut self,
         closure: impl for<'a> AsyncHandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
