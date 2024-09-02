@@ -106,7 +106,7 @@ pub struct ChangeParamsStrategy {
     type_id: std::any::TypeId,
     modifier: Box<dyn Any + Send + Sync>,
 }
-
+#[cfg(test)]
 impl ChangeParamsStrategy {
     pub fn new<T: Any + Send + Sync>(
         device_type: &'static str,

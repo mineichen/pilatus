@@ -11,6 +11,8 @@ mod recipe;
 mod relative;
 mod settings;
 mod shutdown;
+#[cfg(feature = "subscribe")]
+mod subscribe;
 mod sync;
 mod tracing;
 mod uuid_wrapper;
@@ -28,6 +30,8 @@ pub use recipe::*;
 pub use relative::*;
 pub use settings::Settings;
 pub use shutdown::*;
+#[cfg(feature = "subscribe")]
+pub use subscribe::*;
 pub use sync::*;
 
 #[cfg(feature = "tokio")]

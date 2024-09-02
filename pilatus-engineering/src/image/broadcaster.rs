@@ -52,7 +52,7 @@ impl<
                         if broadcaster
                             .send(BroadcastImage {
                                 image: Arc::new(output.image),
-                                hash: output.hash,
+                                hash: output.meta.hash,
                             })
                             .is_ok()
                         {

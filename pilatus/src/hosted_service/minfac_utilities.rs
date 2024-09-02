@@ -1,6 +1,6 @@
+use std::future::Future;
 use std::io;
 
-use futures::Future;
 use minfac::{Resolvable, ServiceCollection, WeakServiceProvider};
 use tokio::task::JoinHandle;
 

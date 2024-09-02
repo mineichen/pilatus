@@ -1,23 +1,77 @@
-use std::sync::Arc;
+use std::{convert::Infallible, fmt::Debug, sync::Arc};
 
 use futures::stream::BoxStream;
-use pilatus::device::{ActorMessage, DeviceId};
+use pilatus::{
+    device::{ActorError, ActorMessage, DeviceId},
+    MissedItemsError, SubscribeMessage,
+};
+use serde::{Deserialize, Serialize};
 
-use super::{DynamicPointProjector, LumaImage, StableHash};
+use super::{DynamicImage, DynamicPointProjector, LumaImage, StableHash};
 
 #[derive(Default)]
 #[non_exhaustive]
 pub struct GetImageMessage {}
 
+#[derive(Clone, Debug, thiserror::Error)]
+pub enum StreamImageError<TImage> {
+    #[error("{0:?}")]
+    MissedItems(#[from] MissedItemsError),
+    #[error("Processing Error: {error:?}")]
+    ProcessingError {
+        image: TImage,
+        error: Arc<anyhow::Error>,
+    },
+    #[error("ActorError: {0:?}")]
+    ActorError(Arc<ActorError<Infallible>>),
+}
+
+impl<T: Debug> From<ActorError<(T, anyhow::Error)>> for StreamImageError<T> {
+    fn from(value: ActorError<(T, anyhow::Error)>) -> Self {
+        match value {
+            ActorError::Custom((image, error)) => Self::ProcessingError {
+                error: Arc::new(error),
+                image,
+            },
+            e => Self::ActorError(Arc::new(e.map_custom(|_| unreachable!()))),
+        }
+    }
+}
+
 #[non_exhaustive]
-pub struct GetImageOk {
-    pub image: LumaImage,
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ImageWithMeta<T> {
+    pub image: T,
+    pub meta: ImageMeta,
+}
+
+impl<T> std::ops::Deref for ImageWithMeta<T> {
+    type Target = ImageMeta;
+
+    fn deref(&self) -> &Self::Target {
+        &self.meta
+    }
+}
+
+impl<T> std::ops::DerefMut for ImageWithMeta<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.meta
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ImageMeta {
     pub hash: Option<StableHash>,
 }
 
-impl GetImageOk {
-    pub fn with_hash(image: LumaImage, hash: Option<StableHash>) -> Self {
-        Self { image, hash }
+pub type GetImageOk = ImageWithMeta<LumaImage>;
+
+impl<T> ImageWithMeta<T> {
+    pub fn with_hash(image: T, hash: Option<StableHash>) -> Self {
+        Self {
+            image,
+            meta: ImageMeta { hash },
+        }
     }
 }
 
@@ -34,9 +88,19 @@ impl ActorMessage for GetImageMessage {
 
 pub type SubscribeImageOk = BoxStream<'static, BroadcastImage>;
 
+#[derive(Default, Debug, Clone)]
+#[non_exhaustive]
+pub struct SubscribeImageQuery {}
+
 #[derive(Default)]
 #[non_exhaustive]
 pub struct SubscribeImageMessage {}
+
+pub type SubscribeDynamicImageMessage = SubscribeMessage<
+    SubscribeImageQuery,
+    Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
+    (),
+>;
 
 impl ActorMessage for SubscribeImageMessage {
     type Output = SubscribeImageOk;
@@ -65,7 +129,7 @@ impl From<GetImageOk> for BroadcastImage {
     fn from(o: GetImageOk) -> Self {
         Self {
             image: Arc::new(o.image),
-            hash: o.hash,
+            hash: o.meta.hash,
         }
     }
 }
@@ -147,7 +211,7 @@ impl From<(Option<DynamicPointProjector>, GetImageOk)> for GetLocalizableImageOk
     fn from((projector, image): (Option<DynamicPointProjector>, GetImageOk)) -> Self {
         Self {
             image: image.image,
-            hash: image.hash,
+            hash: image.meta.hash,
             projector,
         }
     }

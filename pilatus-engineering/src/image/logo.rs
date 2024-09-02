@@ -116,7 +116,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 isize.1.try_into().expect("Input image has height=0"),
             );
 
-            GenericImage::<u8, 4>::new(rgba.into_vec(), iwidth, iheight)
+            GenericImage::<u8, 4>::new_arc(rgba.into_vec().into(), iwidth, iheight)
         } else if let Ok(svg) = resvg::usvg::Tree::from_data(&logo.0, &Default::default()) {
             let x = resvg::usvg::Tree::from(svg);
             let size = x.size();
@@ -160,7 +160,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 .try_into()
                 .expect("Generated Image has height=0");
 
-            GenericImage::<u8, 4>::new(pixmap.take(), out_width, out_height)
+            GenericImage::<u8, 4>::new_arc(pixmap.take().into(), out_width, out_height)
         } else {
             let width = query.width.get();
             let height = query.height.get();

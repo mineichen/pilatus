@@ -3,9 +3,11 @@ use sealedstruct::Sealable;
 use serde::{de::DeserializeOwned, Serialize};
 use tracing::warn;
 
-use crate::{MaybeVar, RawVariable, UntypedDeviceParamsWithVariables, Variables};
+use crate::{
+    MaybeVar, RawVariable, UntypedDeviceParamsWithVariables, UpdateParamsMessageError, Variables,
+};
 
-use super::{DeviceContext, DeviceId, UpdateParamsMessageError, WithInfallibleParamUpdate};
+use super::{DeviceContext, DeviceId, WithInfallibleParamUpdate};
 
 #[non_exhaustive]
 pub struct DeviceValidationContext<'a> {

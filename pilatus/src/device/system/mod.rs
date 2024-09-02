@@ -2,12 +2,9 @@ use std::{
     any::{Any, TypeId},
     borrow::Cow,
     collections::{HashMap, HashSet},
-    convert::Infallible,
     fmt::Debug,
-    future::poll_fn,
     marker::PhantomData,
     sync::{Arc, Mutex, RwLock},
-    task::Poll,
 };
 
 use futures::{
@@ -15,7 +12,7 @@ use futures::{
     future::{BoxFuture, Either},
     pin_mut,
     stream::FuturesUnordered,
-    FutureExt, StreamExt,
+    FutureExt, Stream, StreamExt,
 };
 use minfac::{Registered, ServiceCollection};
 use tracing::{trace, warn};
@@ -100,6 +97,23 @@ impl ActorSystem {
             None => HashSet::new(),
         }
     }
+
+    pub fn list_grouped_devices_for_message_types(
+        &self,
+        types: impl IntoIterator<Item = TypeId>,
+    ) -> Vec<(TypeId, HashSet<DeviceId>)> {
+        let lock = self.state.read().expect("Not poisoned");
+        types
+            .into_iter()
+            .map(|type_id| {
+                (
+                    type_id,
+                    lock.messages.get(&type_id).cloned().unwrap_or_default(),
+                )
+            })
+            .collect()
+    }
+
     pub fn list_devices_for_message_types(
         &self,
         types: impl IntoIterator<Item = TypeId>,
@@ -189,6 +203,18 @@ impl ActorSystem {
                 }
             }
         }
+    }
+
+    pub async fn broadcast<TMsg: ActorMessage + Clone>(
+        &self,
+        msg: TMsg,
+    ) -> impl Stream<Item = (DeviceId, ActorResult<TMsg>)> {
+        self.get_senders::<TMsg>()
+            .map(|(id, mut sender)| {
+                let msg = msg.clone();
+                async move { (id, sender.ask(msg).await) }
+            })
+            .collect::<FuturesUnordered<_>>()
     }
 
     pub async fn ask<TMsg: ActorMessage>(
@@ -307,10 +333,12 @@ where
 
         async move {
             let (r, state) =
-                crate::sync::process_blocking::<_, ActorError<Infallible>>(move || {
-                    let r = (func)(&mut state, msg);
-                    Ok((r, state))
-                })
+                crate::sync::process_blocking::<_, ActorError<std::convert::Infallible>>(
+                    move || {
+                        let r = (func)(&mut state, msg);
+                        Ok((r, state))
+                    },
+                )
                 .await
                 .expect("Can't fail here, otherwise state is gone");
             response_channel.send(r).ok();
@@ -541,9 +569,12 @@ impl<TState: 'static + Send> ActorDevice<TState> {
             _msg: TMsg,
             r: futures::stream::AbortRegistration,
         ) -> ActorResult<TMsg> {
-            futures::stream::Abortable::new(poll_fn::<(), _>(|_| Poll::Pending), r)
-                .await
-                .ok();
+            futures::stream::Abortable::new(
+                std::future::poll_fn::<(), _>(|_| std::task::Poll::Pending),
+                r,
+            )
+            .await
+            .ok();
             Err(ActorError::Aborted)
         }
         self.add_handler(WithAbort::new(blocking::<TState, TMsg>))

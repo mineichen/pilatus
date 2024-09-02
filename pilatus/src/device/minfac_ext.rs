@@ -1,6 +1,6 @@
+use std::future::Future;
 use std::{any::Any, sync::Arc};
 
-use futures::Future;
 use minfac::{Resolvable, ServiceBuilder};
 
 use super::{DeviceContext, DeviceHandler, DeviceResult, ValidatorClosure};

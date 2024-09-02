@@ -16,41 +16,45 @@
 
     <script>
         let host_with_port = location.host;
+        const HEADER_LENGTH = 5;
         if (location.port) {
             host_with_port += ":" + location.port;
         }
 
         async function decode(blob) {
-            if (blob.size < 4) {
+            if (blob.size < HEADER_LENGTH) {
                 throw "Blob is too small to contain an image: " + blob.size;
             }
-            const meta_len = new Uint32Array(await blob.slice(0, 4).arrayBuffer())[0];
+            const meta_len = new Uint32Array(await blob.slice(1, 5).arrayBuffer())[0];
 
-            if (meta_len + 4 > blob.size) {
+            if (meta_len + HEADER_LENGTH > blob.size) {
                 throw "Blob with size " + blob.size + " can't extract enough text " + meta_len;
             }
-            const text = await blob.slice(4, meta_len + 4).text();
+            const text = await blob.slice(HEADER_LENGTH, meta_len + HEADER_LENGTH).text();
             const meta = (meta_len > 0) ? (JSON.parse(text)) : null;
-            console.log(meta);
             if (meta === undefined) {
                 throw "couldn't parse json: " + text;
             }
+            let error_code = new Uint8Array(await blob.slice(0, 1).arrayBuffer())[0];
+
+            if (error_code !== 0) {
+                return new Promise((_, rej) => rej(error_code));
+            }
 
             let reader = new FileReader();
-            let imageBlob = blob.slice(4 + meta_len);
+            let imageBlob = blob.slice(HEADER_LENGTH + meta_len);
             reader.readAsDataURL(imageBlob);
-            return new Promise((res) => {
+            return new Promise((res, rej) => {
                 reader.onloadend = function () {
                     const base64data = reader.result;
                     res([base64data, meta])
                 }
             })
-            console.log(text);
         }
 
         let socket = null;
         async function init() {
-            let data = await (await fetch("/api/image/list/stream")).json();
+            let data = await (await fetch("/api/image/list/subscribe")).json();
             let selector = document.getElementById("device-select");
             selector.addEventListener("change", (e) => {
                 stream_image(e.target.value);
@@ -77,13 +81,16 @@
                 await socket.close();
             }
 
-            socket = new WebSocket("ws://" + host_with_port + "/api/image/stream?device_id=" + id);
+            socket = new WebSocket("ws://" + host_with_port + "/api/image/subscribe?device_id=" + id);
             socket.addEventListener("message", async data => {
                 console.log("data arrive?", data);
-                let decoded = await decode(data.data);
-                console.log(decoded);
-                document.getElementById("image").src = decoded[0];
-                document.getElementById("meta").src = decoded[1];
+                try {
+                    let decoded = await decode(data.data);
+                    document.getElementById("image").src = decoded[0];
+                    document.getElementById("meta").src = decoded[1];
+                } catch (e) {
+                    console.error("Error", e);
+                }
             });
         }
 

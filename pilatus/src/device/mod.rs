@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use futures::{channel::oneshot, future::BoxFuture};
 use minfac::ServiceCollection;
 
-use crate::{RecipeId, UntypedDeviceParamsWithVariables, UpdateParamsMessageError, Variables};
+use crate::{RecipeId, UntypedDeviceParamsWithVariables, Variables};
 
 mod active_state;
 #[cfg(feature = "tokio")]
@@ -65,6 +65,7 @@ where
 }
 
 #[non_exhaustive]
+#[allow(dead_code)]
 pub struct DeviceContext {
     pub id: DeviceId,
     // Must stay private to forbid access to variables in device
