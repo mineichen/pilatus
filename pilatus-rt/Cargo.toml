@@ -33,7 +33,7 @@ bytes = "1"
 
 
 # tracing
-console-subscriber = { version = "0.3", optional = true }
+console-subscriber = { version = "0.4", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 tracing-appender = { version = "0.2", optional = true }
 
