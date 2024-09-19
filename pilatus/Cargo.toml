@@ -7,40 +7,41 @@ version = "0.1.0"
 
 [dependencies]
 # Stable
-anyhow = "1"
-bytes = "1"
+anyhow = { workspace = true }
+bytes = { workspace = true }
 rayon = { version = "1", optional = true }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-thiserror = "1"
-tokio = { version = "1", features = [
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = [
   "fs",
   "rt",
   "sync",
   "time",
   "tracing",
 ], optional = true }
-uuid = { version = "1", features = ["serde", "v4"] }
+uuid = { workspace = true, features = ["serde", "v4"] }
 smallvec = "1"
 
 # Unstable public
 approx = "0.5"
 async-trait = "0.1"
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { workspace = true, features = ["serde"] }
 config = { version = "0.14", features = ["json"], default-features = false }
-futures = "0.3"
-minfac = "0.0.1"
+futures = { workspace = true }
+minfac = { workspace = true }
 sealedstruct = { git = "https://github.com/mineichen/sealedstruct.git", branch = "main", features = [
   "serde",
 ] }
-tracing = "0.1"
+tracing = { workspace = true }
 
 # Unstable private
-stream-broadcast = { version = "0.3", optional = true }
 glob = "0.3"
+stream-broadcast = { version = "0.3", optional = true }
 
 [dev-dependencies]
-tokio = { version = "1", features = [
+tempfile = { version = "3" }
+tokio = { workspace = true, features = [
   "fs",
   "macros",
   "rt",
@@ -48,7 +49,6 @@ tokio = { version = "1", features = [
   "time",
   "tracing",
 ] }
-tempfile = { version = "3" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }

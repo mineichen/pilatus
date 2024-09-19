@@ -29,10 +29,10 @@ pub mod extract {
     pub struct Inject<T: minfac::Resolvable>(pub T::ItemPreChecked);
     pub struct InjectRegistered<T: std::any::Any>(pub T);
     pub use super::abort::Abort;
-    pub struct InjectAll<T: std::any::Any>(pub ServiceIterator<Registered<T>>);
+    pub struct InjectAll<T: std::any::Any>(pub ServiceIterator<T>);
     pub use axum::body::Body;
     pub use axum::extract::{FromRequestParts, Json, Path, Query};
-    use minfac::{Registered, ServiceIterator};
+    use minfac::ServiceIterator;
 
     pub mod ws {
         pub use super::super::ws::{Dropper, WebSocketDropperService, WebSocketUpgrade};

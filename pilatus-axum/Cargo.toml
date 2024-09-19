@@ -6,21 +6,21 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0"
+anyhow = { workspace = true }
 async-stream = "0.3"
 async-trait = "0.1"
-axum = {version = "0.7", features = ["ws"]}
-bytes = "1"
-futures = "0.3"
-jpeg-encoder = {version = "0.6", features = ["simd"], optional = true}
-minfac = "0.0.1"
-pilatus = {path = "../pilatus", features = ["tokio"]}
-pilatus-engineering = {path = "../pilatus-engineering", optional = true}
+axum = { version = "0.7", features = ["ws"] }
+bytes = { workspace = true }
+futures = { workspace = true }
+jpeg-encoder = { version = "0.6", features = ["simd"], optional = true}
+minfac = { workspace = true }
+pilatus = { path = "../pilatus", features = ["tokio"]}
+pilatus-engineering = { path = "../pilatus-engineering", optional = true }
 piper = "0.2.0"
-serde = {version = "1", features = ["derive"]}
-serde_json = "1"
-tracing = "0.1"
-uuid = {version = "1", features = ["serde", "v4"]}
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["serde", "v4"] }
 
 [features]
 engineering = ["pilatus-engineering", "jpeg-encoder"]
