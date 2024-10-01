@@ -7,7 +7,8 @@ members = [
   "pilatus-axum-rt",
   "pilatus-engineering",
   "pilatus-rt",
-  "examples/stream"
+  "examples/stream",
+  "pilatus-engineering-camera-rt"
 ]
 
 [workspace.dependencies]
@@ -15,6 +16,9 @@ anyhow = "1"
 bytes = "1"
 chrono = "0.4"
 futures = "0.3"
+image = { version = "0.25", default-features = false, features = [
+  "png",
+]}
 minfac = "0.1"
 serde = "1"
 serde_json = "1"

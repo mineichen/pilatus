@@ -64,6 +64,7 @@ impl StreamableImage for Result<ImageWithMeta<DynamicImage>, StreamImageError<Dy
                     encode_dynamic_image(PROCESSING_CODE, image, error.to_string())
                 }
                 StreamImageError::ActorError(_) => encode_meta(vec![ACTOR_ERROR_CODE], |_| Ok(())),
+                _ => unimplemented!("Unknown error: {e:?}"),
             },
         }
     }

@@ -18,9 +18,10 @@
 //! Gray images can easily be shared as Arc<GenericImage<1>>, as there is no confusion how the pixels are aligned
 //! Color images are shared via Arc<dyn RgbImage>,
 use std::{
+    borrow::Cow,
     fmt::{self, Debug, Formatter},
     mem::ManuallyDrop,
-    num::{NonZero, NonZeroU32},
+    num::{NonZero, NonZeroU32, TryFromIntError},
     ops::Deref,
     sync::Arc,
 };
@@ -36,6 +37,7 @@ mod stable_hash;
 
 #[cfg(feature = "tokio")]
 pub use broadcaster::*;
+use image::GenericImageView;
 #[cfg(feature = "image-algorithm")]
 pub use logo::*;
 pub use message::*;
@@ -224,6 +226,61 @@ impl DynamicImage {
         match self {
             DynamicImage::Luma8(x) => x.dimensions(),
             DynamicImage::Luma16(x) => x.dimensions(),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ImageConversionError {
+    #[error("Dimensions mustn't be 0")]
+    InvalidSize(#[from] TryFromIntError),
+
+    #[error("Unsupported format {0}")]
+    Unsupported(Cow<'static, str>),
+}
+
+impl TryFrom<image::DynamicImage> for DynamicImage {
+    type Error = ImageConversionError;
+
+    fn try_from(value: image::DynamicImage) -> Result<Self, Self::Error> {
+        let (width, height) = value.dimensions();
+        let (width, height) = (width.try_into()?, height.try_into().map_err(|e| e)?);
+        match value {
+            image::DynamicImage::ImageLuma8(x) => Ok(DynamicImage::Luma8(GenericImage::new_vec(
+                x.to_vec(),
+                width,
+                height,
+            ))),
+            image::DynamicImage::ImageLuma16(x) => Ok(DynamicImage::Luma16(GenericImage::new_vec(
+                x.to_vec(),
+                width,
+                height,
+            ))),
+            image::DynamicImage::ImageLumaA8(_) => Err(ImageConversionError::Unsupported(
+                Cow::Borrowed("ImageLumaA8"),
+            )),
+            image::DynamicImage::ImageRgb8(_) => Err(ImageConversionError::Unsupported(
+                Cow::Borrowed("ImageRgb8"),
+            )),
+            image::DynamicImage::ImageRgba8(_) => Err(ImageConversionError::Unsupported(
+                Cow::Borrowed("ImageRgba8"),
+            )),
+            image::DynamicImage::ImageLumaA16(_) => Err(ImageConversionError::Unsupported(
+                Cow::Borrowed("ImageLumaA16"),
+            )),
+            image::DynamicImage::ImageRgb16(_) => Err(ImageConversionError::Unsupported(
+                Cow::Borrowed("ImageRgb16"),
+            )),
+            image::DynamicImage::ImageRgba16(_) => Err(ImageConversionError::Unsupported(
+                Cow::Borrowed("ImageRgba16"),
+            )),
+            image::DynamicImage::ImageRgb32F(_) => Err(ImageConversionError::Unsupported(
+                Cow::Borrowed("ImageRgb32F"),
+            )),
+            image::DynamicImage::ImageRgba32F(_) => Err(ImageConversionError::Unsupported(
+                Cow::Borrowed("ImageRgba32F"),
+            )),
+            _ => Err(ImageConversionError::Unsupported(Cow::Borrowed("Unknown"))),
         }
     }
 }

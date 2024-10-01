@@ -18,9 +18,7 @@ chrono = { workspace = true, features = ["serde"] }
 futures = { workspace = true }
 futures-lite = "2"
 hyper = { version = "1.1", features = ["client"] }
-image = { version = "0.25", default-features = false, features = [
-  "png",
-], optional = true }
+image = { workspace = true, optional = true }
 minfac = { workspace = true }
 pilatus = { path = "../pilatus", features = ["tokio"] }
 pilatus-axum = { path = "../pilatus-axum" }

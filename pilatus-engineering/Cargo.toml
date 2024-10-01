@@ -9,7 +9,7 @@ version = "0.1.0"
 anyhow = { workspace = true }
 approx = "0.5"
 futures = { workspace = true }
-image = { version = "0.25", optional = true }
+image = { workspace = true, optional = true }
 minfac = { workspace = true, optional = true }
 nalgebra = { version = "0.33", optional = true }
 pilatus = { path = "../pilatus", features = ["subscribe"] }

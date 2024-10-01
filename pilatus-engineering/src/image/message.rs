@@ -14,6 +14,7 @@ use super::{DynamicImage, DynamicPointProjector, LumaImage, StableHash};
 pub struct GetImageMessage {}
 
 #[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum StreamImageError<TImage> {
     #[error("{0:?}")]
     MissedItems(#[from] MissedItemsError),

@@ -1,0 +1,20 @@
+[package]
+name = "pilatus-engineering-camera-rt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+futures = { workspace = true }
+image = { workspace = true }
+minfac = { workspace = true }
+pilatus = { path = "../pilatus" }
+pilatus-engineering = { path = "../pilatus-engineering" }
+serde = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tokio-stream = { version = "0.1", features = ["fs", "sync"] }
+tracing = { workspace = true }
+
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["sync", "macros"]}
