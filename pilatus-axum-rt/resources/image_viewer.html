@@ -17,9 +17,6 @@
     <script>
         let host_with_port = location.host;
         const HEADER_LENGTH = 5;
-        if (location.port) {
-            host_with_port += ":" + location.port;
-        }
 
         async function decode(blob) {
             if (blob.size < HEADER_LENGTH) {
