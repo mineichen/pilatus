@@ -40,7 +40,7 @@ impl<T: Debug> From<ActorError<(T, anyhow::Error)>> for StreamImageError<T> {
 }
 
 #[non_exhaustive]
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ImageWithMeta<T> {
     pub image: T,
     pub meta: ImageMeta,
@@ -60,7 +60,7 @@ impl<T> std::ops::DerefMut for ImageWithMeta<T> {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ImageMeta {
     pub hash: Option<StableHash>,
 }
@@ -68,6 +68,10 @@ pub struct ImageMeta {
 pub type GetImageOk = ImageWithMeta<LumaImage>;
 
 impl<T> ImageWithMeta<T> {
+    pub fn with_meta(image: T, meta: ImageMeta) -> Self {
+        Self { image, meta }
+    }
+
     pub fn with_hash(image: T, hash: Option<StableHash>) -> Self {
         Self {
             image,

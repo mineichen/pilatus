@@ -65,11 +65,11 @@ impl MissedItemsError {
     }
 }
 
-pub struct SubscribeState<T> {
+pub struct SubscribeState<TResult> {
     params: SubscribeParams,
     actor_system: ActorSystem,
     self_sender: WeakUntypedActorMessageSender,
-    pipeline: Box<dyn Fn() -> Option<BoxStream<'static, T>> + Send>,
+    pipeline: Box<dyn Fn() -> Option<BoxStream<'static, TResult>> + Send>,
 }
 
 impl<T> SubscribeState<T> {
@@ -92,13 +92,31 @@ impl<T> SubscribeState<T> {
 impl<TOutput: Send + 'static, EOutput: Send + Debug + 'static>
     SubscribeState<Result<TOutput, EOutput>>
 {
-    pub async fn subscribe<Q: Send + 'static, T: ActorMessage<Output = TOutput> + From<TOutput>>(
+    pub async fn subscribe<
+        Q: Send + 'static,
+        TProcessMsg: ActorMessage<Output = TOutput> + From<TOutput>,
+    >(
         as_ref_state: &mut impl AsMut<SubscribeState<Result<TOutput, EOutput>>>,
-        msg: SubscribeMessage<Q, Result<T::Output, EOutput>, EOutput>,
-    ) -> ActorResult<SubscribeMessage<Q, Result<T::Output, EOutput>, EOutput>>
+        msg: SubscribeMessage<Q, Result<TProcessMsg::Output, EOutput>, ()>,
+    ) -> ActorResult<SubscribeMessage<Q, Result<TProcessMsg::Output, EOutput>, ()>>
     where
         TOutput: Clone,
-        EOutput: Clone + From<ActorError<T::Error>> + From<MissedItemsError>,
+        EOutput: Clone + From<ActorError<TProcessMsg::Error>> + From<MissedItemsError>,
+    {
+        Self::subscribe_with_input::<Q, TProcessMsg, TOutput>(as_ref_state, msg).await
+    }
+
+    pub async fn subscribe_with_input<
+        Q: Send + 'static,
+        TProcessMsg: ActorMessage<Output = TOutput> + From<TInput>,
+        TInput: Send + 'static,
+    >(
+        as_ref_state: &mut impl AsMut<SubscribeState<Result<TOutput, EOutput>>>,
+        msg: SubscribeMessage<Q, Result<TProcessMsg::Output, EOutput>, ()>,
+    ) -> ActorResult<SubscribeMessage<Q, Result<TProcessMsg::Output, EOutput>, ()>>
+    where
+        TOutput: Clone,
+        EOutput: Clone + From<ActorError<TProcessMsg::Error>> + From<MissedItemsError>,
     {
         let this = as_ref_state.as_mut();
         if let Some(x) = (this.pipeline)() {
@@ -110,7 +128,7 @@ impl<TOutput: Send + 'static, EOutput: Send + Debug + 'static>
             .actor_system
             .ask(
                 provider,
-                SubscribeMessage::<Q, Result<T::Output, EOutput>, EOutput>::from(msg.query),
+                SubscribeMessage::<Q, Result<TInput, EOutput>, ()>::from(msg.query),
             )
             .await?
             .then(move |r| {
@@ -120,7 +138,7 @@ impl<TOutput: Send + 'static, EOutput: Send + Debug + 'static>
                         Ok(data) => {
                             let time = std::time::Instant::now();
 
-                            match actor_system.ask(T::from(data)).await {
+                            match actor_system.ask(TProcessMsg::from(data)).await {
                                 Ok(x) => {
                                     trace!("Processed Pointcloud in {:?}", time.elapsed());
                                     Ok(x)
