@@ -14,7 +14,7 @@ minfac = { workspace = true, optional = true }
 nalgebra = { version = "0.33", optional = true }
 pilatus = { path = "../pilatus", features = ["subscribe"] }
 pilatus-rt = { path = "../pilatus-rt", optional = true }                       # Must remain an internal dependency
-resvg = { version = "0.43.0", optional = true }
+resvg = { version = "0.44.0", optional = true }
 seahash = "4.1"
 sealedstruct = { git = "https://github.com/mineichen/sealedstruct.git", branch = "main", features = [
   "serde",
