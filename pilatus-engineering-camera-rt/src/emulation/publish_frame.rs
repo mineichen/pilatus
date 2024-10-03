@@ -85,10 +85,7 @@ impl PublisherState {
         let first = iter.next();
         let current = match (
             first,
-            files
-                .iter()
-                .skip(state.counter.saturating_sub(1) as usize)
-                .next(),
+            files.iter().nth(state.counter.saturating_sub(1) as usize),
         ) {
             (_, Some(x)) => x,
             (Some(x), _) => {
@@ -126,6 +123,6 @@ impl PartialOrd for ExistingDirEntry {
 
 impl Ord for ExistingDirEntry {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.file_name().cmp(&other.0.file_name())
+        self.0.file_name().cmp(other.0.file_name())
     }
 }

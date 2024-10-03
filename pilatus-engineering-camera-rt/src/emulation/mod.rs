@@ -1,23 +1,15 @@
-use std::marker::PhantomData;
-use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Weak};
-use std::time::Duration;
+use std::sync::Arc;
 
-use futures::channel::mpsc::Receiver;
-use futures::{channel::mpsc, future::Either, stream::FusedStream, SinkExt, StreamExt};
 use minfac::{Registered, ServiceCollection};
-use pilatus::device::{HandlerResult, Step2, WeakUntypedActorMessageSender};
+use pilatus::device::{HandlerResult, Step2};
 use pilatus::{
-    device::{
-        ActorError, ActorMessage, ActorResult, ActorSystem, DeviceContext, DeviceResult,
-        DeviceValidationContext,
-    },
+    device::{ActorSystem, DeviceContext, DeviceResult, DeviceValidationContext},
     prelude::*,
     UpdateParamsMessage, UpdateParamsMessageError,
 };
 use pilatus::{FileService, FileServiceBuilder};
 use pilatus_engineering::image::{DynamicImage, ImageWithMeta, StreamImageError};
-use publish_frame::{PublishImageMessage, PublisherState};
+use publish_frame::PublisherState;
 use serde::{Deserialize, Serialize};
 
 mod publish_frame;
