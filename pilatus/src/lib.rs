@@ -3,7 +3,7 @@ pub mod device;
 mod entry_io;
 #[cfg(feature = "tokio")]
 mod file;
-#[cfg(feature = "tokio")]
+#[cfg(all(feature = "tokio", feature = "minfac"))]
 mod hosted_service;
 mod logo;
 mod name;
@@ -22,7 +22,7 @@ pub use crate::tracing::*;
 pub use entry_io::*;
 #[cfg(feature = "tokio")]
 pub use file::*;
-#[cfg(feature = "tokio")]
+#[cfg(all(feature = "tokio", feature = "minfac"))]
 pub use hosted_service::HostedService;
 pub use logo::*;
 pub use name::*;
@@ -34,7 +34,7 @@ pub use shutdown::*;
 pub use subscribe::*;
 pub use sync::*;
 
-#[cfg(feature = "tokio")]
+#[cfg(all(feature = "tokio", feature = "minfac"))]
 pub mod prelude {
     pub use crate::device::ActorErrorResultExtensions;
     pub use crate::device::ServiceBuilderExtensions as DeviceServiceBuilderExtensions;
@@ -42,6 +42,7 @@ pub mod prelude {
     pub use crate::hosted_service::ServiceCollectionExtensions as HostedServiceServiceCollectionExtensions;
 }
 
+#[cfg(feature = "minfac")]
 pub extern "C" fn register(collection: &mut minfac::ServiceCollection) {
     crate::device::register_services(collection);
 }

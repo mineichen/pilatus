@@ -8,7 +8,7 @@ use tracing::error;
 
 use super::{
     ActorError, ActorErrorUnknownDevice, ActorSystem, DeviceContext, DeviceId, DeviceResult,
-    DeviceValidationContext,
+    DeviceValidationContext, WithInfallibleParamUpdate,
 };
 use crate::{
     DeviceConfig, NotAppliedError, ParameterUpdate, RecipeId, RecipeServiceTrait,
@@ -135,17 +135,6 @@ pub trait ValidatorClosure<'a, TParams> {
         &self,
         state: DeviceValidationContext<'a>,
     ) -> BoxFuture<'a, Result<WithInfallibleParamUpdate<TParams>, UpdateParamsMessageError>>;
-}
-
-/// To get to the inner data, the change has to be applied with something that implements InfallibleParamApplier
-#[must_use]
-pub struct WithInfallibleParamUpdate<T> {
-    pub(crate) data: T,
-    /// Doesn't use `ParameterUpdate` on purpose to ensure conflict-free migration. But this should be allowed in the future (this is why update must stay private)
-    /// Idea: Rename variables with conflicts, so a conflict-free migration is possible
-    /// -> device-restart is not needed, as the configuration would result in same result
-    /// -> Have a wizzard to resolve conflicts (reunite previously linked variables)
-    pub(crate) update: Option<UntypedDeviceParamsWithVariables>,
 }
 
 impl<T> WithInfallibleParamUpdate<T> {

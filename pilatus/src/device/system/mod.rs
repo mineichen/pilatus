@@ -14,7 +14,6 @@ use futures::{
     stream::FuturesUnordered,
     FutureExt, Stream, StreamExt,
 };
-use minfac::{Registered, ServiceCollection};
 use tracing::{trace, warn};
 
 use self::sealed::ActorSystemIdentifier;
@@ -31,9 +30,10 @@ pub use handler_closure::*;
 pub use handler_result::*;
 pub use sender::*;
 
-pub(super) fn register_services(c: &mut ServiceCollection) {
+#[cfg(feature = "minfac")]
+pub(super) fn register_services(c: &mut minfac::ServiceCollection) {
     c.register_shared::<RwLock<ActorSystemState>>(Default::default);
-    c.with::<Registered<Arc<RwLock<ActorSystemState>>>>()
+    c.with::<minfac::Registered<Arc<RwLock<ActorSystemState>>>>()
         .register(|state| ActorSystem { state });
 }
 
