@@ -1,4 +1,4 @@
-use std::{convert::Infallible, fmt::Debug, sync::Arc};
+use std::{collections::HashMap, convert::Infallible, fmt::Debug, sync::Arc};
 
 use futures::stream::BoxStream;
 use pilatus::{
@@ -7,7 +7,9 @@ use pilatus::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{DynamicImage, DynamicPointProjector, LumaImage, StableHash};
+use super::{
+    DynamicImage, DynamicPointProjector, ImageCollection, ImageKey, LumaImage, StableHash,
+};
 
 #[derive(Default)]
 #[non_exhaustive]
@@ -44,6 +46,7 @@ impl<T: Debug> From<ActorError<(T, anyhow::Error)>> for StreamImageError<T> {
 pub struct ImageWithMeta<T> {
     pub image: T,
     pub meta: ImageMeta,
+    pub other: ImageCollection<T>,
 }
 
 impl<T> std::ops::Deref for ImageWithMeta<T> {
@@ -69,14 +72,46 @@ pub type GetImageOk = ImageWithMeta<LumaImage>;
 
 impl<T> ImageWithMeta<T> {
     pub fn with_meta(image: T, meta: ImageMeta) -> Self {
-        Self { image, meta }
+        Self {
+            image,
+            meta,
+            other: Default::default(),
+        }
     }
 
     pub fn with_hash(image: T, hash: Option<StableHash>) -> Self {
         Self {
             image,
             meta: ImageMeta { hash },
+            other: Default::default(),
         }
+    }
+
+    pub fn with_meta_and_others(image: T, meta: ImageMeta, other: ImageCollection<T>) -> Self {
+        Self { image, meta, other }
+    }
+
+    /// ```
+    /// use pilatus_engineering::image::{ImageWithMeta, ImageKey};
+    ///
+    /// let mut image = ImageWithMeta::with_hash((2,2), None);
+    /// let bar_key: ImageKey = "bar".try_into().unwrap();
+    /// image.insert(bar_key.clone(), (4,4));
+    /// assert_eq!(Some(&(2,2)), image.by_name(&ImageKey::unspecified()));
+    /// assert_eq!(Some(&(4,4)), image.by_name(&bar_key));
+    ///
+    /// image.image = (5, 5);
+    /// assert_eq!(Some(&(5,5)), image.by_name(&ImageKey::unspecified()));
+    /// assert_eq!(Some((5,5)), image.insert(ImageKey::unspecified(), (6,6)));
+    /// assert_eq!(Some(&(6,6)), image.by_name(&ImageKey::unspecified()));
+    /// ```
+    pub fn by_name(&self, name: &ImageKey) -> Option<&T> {
+        name.by_name_or(&self.other, &self.image)
+    }
+
+    // Returns The old value
+    pub fn insert(&mut self, key: ImageKey, value: T) -> Option<T> {
+        key.insert_or(value, &mut self.other, &mut self.image)
     }
 }
 
