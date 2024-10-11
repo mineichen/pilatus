@@ -1,0 +1,4 @@
+PUT http://localhost/api/engineering/emulation/52ab9067-b6aa-4ac4-bd3e-41af201bf03f/record/foobar
+Content-Type: application/json
+
+{"source_id": "52209067-b6aa-4ac4-bd3e-41af201bf03f","max_size_mb": 30}

@@ -13,11 +13,13 @@ use publish_frame::PublisherState;
 use serde::{Deserialize, Serialize};
 
 mod publish_frame;
+mod record;
 mod subscribe;
 
 pub const DEVICE_TYPE: &str = "engineering-emulation-camera";
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
+    record::register_services(c);
     c.with::<(Registered<ActorSystem>, Registered<FileServiceBuilder>)>()
         .register_device(DEVICE_TYPE, validator, device);
 }
@@ -29,6 +31,7 @@ struct DeviceState {
     >,
     file_service: FileService<()>,
     publisher: Arc<PublisherState>,
+    actor_system: ActorSystem,
 }
 
 async fn validator(ctx: DeviceValidationContext<'_>) -> Result<Params, UpdateParamsMessageError> {
@@ -44,6 +47,7 @@ async fn device(
 
     actor_system
         .register(id)
+        .add_handler(DeviceState::record)
         .add_handler(DeviceState::subscribe)
         .add_handler(DeviceState::publish_frame)
         .add_handler(DeviceState::update_params)
@@ -58,6 +62,7 @@ async fn device(
             file_service: file_service_builder.build(ctx.id),
             stream: tokio::sync::broadcast::channel(1).0,
             counter: 0,
+            actor_system: actor_system.clone(),
         })
         .await;
 

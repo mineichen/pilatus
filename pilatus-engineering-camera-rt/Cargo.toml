@@ -10,6 +10,7 @@ image = { workspace = true }
 minfac = { workspace = true }
 pilatus = { path = "../pilatus" }
 pilatus-engineering = { path = "../pilatus-engineering" }
+pilatus-axum = { path = "../pilatus-axum" }
 serde = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 tokio-stream = { version = "0.1", features = ["fs", "sync"] }
