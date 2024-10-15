@@ -4,7 +4,7 @@ use bytes::Bytes;
 use crate::{
     device::{ActorDevice, ActorError, ActorMessage},
     recipe::file::RelativeFilePath,
-    FileService, FileServiceExt, RelativeDirPath, TransactionError,
+    FileService, FileServiceExt, RelativeDirectoryPathBuf, TransactionError,
 };
 
 #[derive(Debug, Clone)]
@@ -37,7 +37,7 @@ impl ActorMessage for AddFileMessage {
 
 #[derive(Debug, Clone)]
 pub struct ListFilesMessage {
-    pub path: RelativeDirPath,
+    pub path: RelativeDirectoryPathBuf,
 }
 impl ActorMessage for ListFilesMessage {
     type Output = Vec<RelativeFilePath>;

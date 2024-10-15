@@ -232,7 +232,7 @@ impl RecipeServiceFassade {
                     let mut path = root.join(device_id);
                     let relative = RelativeFilePath::new(filename_iter.collect::<PathBuf>())
                         .map_err(|e| InvalidFormat(e.into()))?;
-                    path.push(relative.as_path());
+                    path.push(&*relative);
 
                     trace!("Create dir all {path:?}");
                     create_dir_all(&path.parent().expect("Must exist")).await?;

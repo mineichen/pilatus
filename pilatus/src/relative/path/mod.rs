@@ -6,7 +6,9 @@ use std::{
     path::{Component, Path},
 };
 
-pub use relative_dir_path::{RelativeDirPath, RelativeDirPathError};
+pub use relative_dir_path::{
+    RelativeDirPathError, RelativeDirectoryPath, RelativeDirectoryPathBuf,
+};
 pub use relative_file_path::{RelativeFilePath, RelativeFilePathError};
 
 trait RelativePathError {

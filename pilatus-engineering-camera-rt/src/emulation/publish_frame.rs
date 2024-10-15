@@ -3,7 +3,7 @@ use std::{collections::BinaryHeap, sync::Weak, time::Duration};
 use futures::StreamExt;
 use pilatus::{
     device::{ActorMessage, HandlerResult, Step2, WeakUntypedActorMessageSender},
-    RelativeDirPath, RelativeFilePath,
+    RelativeDirectoryPath, RelativeFilePath,
 };
 use pilatus_engineering::image::{DynamicImage as PilatusDynamicImage, ImageWithMeta};
 use tracing::warn;
@@ -72,7 +72,7 @@ impl PublisherState {
     ) -> anyhow::Result<PilatusDynamicImage> {
         let files = state
             .file_service
-            .stream_files(&RelativeDirPath::root())
+            .stream_files(RelativeDirectoryPath::root())
             .filter_map(|x| async {
                 let entry = x.ok()?;
 

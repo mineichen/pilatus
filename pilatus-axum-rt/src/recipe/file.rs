@@ -2,7 +2,7 @@ use bytes::Bytes;
 use minfac::ServiceCollection;
 use pilatus::{
     device::{ActorSystem, DeviceId},
-    AddFileMessage, DeleteFileMessage, GetFileMessage, ListFilesMessage, RelativeDirPath,
+    AddFileMessage, DeleteFileMessage, GetFileMessage, ListFilesMessage, RelativeDirectoryPathBuf,
     RelativeFilePath,
 };
 use pilatus_axum::{
@@ -60,11 +60,11 @@ async fn list_files_root(
     Path(device_id): Path<DeviceId>,
     inj: InjectRegistered<ActorSystem>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    list_files(Path((device_id, RelativeDirPath::root())), inj).await
+    list_files(Path((device_id, RelativeDirectoryPathBuf::root())), inj).await
 }
 
 async fn list_files(
-    Path((device_id, path)): Path<(DeviceId, RelativeDirPath)>,
+    Path((device_id, path)): Path<(DeviceId, RelativeDirectoryPathBuf)>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let files = actor_system

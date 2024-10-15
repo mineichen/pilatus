@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert::Infallible, fmt::Debug, sync::Arc};
+use std::{convert::Infallible, fmt::Debug, sync::Arc};
 
 use futures::stream::BoxStream;
 use pilatus::{

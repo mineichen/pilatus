@@ -5,10 +5,10 @@ use image::{ImageFormat, Luma};
 use minfac::ServiceCollection;
 use pilatus::{
     device::{ActorErrorResultExtensions, ActorMessage, ActorResult, ActorSystem, DeviceId},
-    Name, RelativeDirPath, RelativeFilePath,
+    Name, RelativeDirectoryPathBuf, RelativeFilePath,
 };
 use pilatus_axum::{
-    extract::{InjectRegistered, Json, Path, Query},
+    extract::{InjectRegistered, Json, Path},
     http::StatusCode,
     ServiceCollectionExtensions,
 };
@@ -105,7 +105,7 @@ impl DeviceState {
             msg.max_size_mb.map(NonZeroU32::get).unwrap_or(100) as u64 * 1_000_000;
 
         let relative_dir =
-            RelativeDirPath::new(msg.collection_name.as_str()).expect("Is always valid");
+            RelativeDirectoryPathBuf::new(msg.collection_name.as_str()).expect("Is always valid");
         while let Some(x) = encoded_stream.next().await {
             let (time, encoded) = x?;
             let Some(remainer) = size_budget.checked_sub(encoded.len() as u64) else {

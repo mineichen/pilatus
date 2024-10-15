@@ -7,7 +7,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::RelativePathError;
+use super::{relative_dir_path::RelativeDirectoryPath, RelativePathError};
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum RelativeFilePathError {
@@ -46,7 +46,7 @@ impl RelativePathError for RelativeFilePathError {
 pub struct RelativeFilePath(PathBuf);
 
 impl Deref for RelativeFilePath {
-    type Target = PathBuf;
+    type Target = Path;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -68,6 +68,13 @@ impl RelativeFilePath {
         Ok(RelativeFilePath(buf))
     }
 
+    pub fn relative_dir(&self) -> &RelativeDirectoryPath {
+        self.0
+            .parent()
+            .map(|x| RelativeDirectoryPath::new_unchecked(x))
+            .unwrap_or(RelativeDirectoryPath::root())
+    }
+
     pub fn levels(&self) -> usize {
         self.components().count() - 1
     }
@@ -79,7 +86,7 @@ impl RelativeFilePath {
             .to_str()
             .expect("type is not constructable without valid utf8")
     }
-    pub fn get_path(&self) -> &PathBuf {
+    pub fn get_path(&self) -> &Path {
         &self.0
     }
 }

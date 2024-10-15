@@ -9,7 +9,7 @@ use futures::{
 };
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
-    FileServiceBuilder, FileServiceTrait, RelativeDirPath, RelativeFilePath, TransactionError,
+    FileServiceBuilder, FileServiceTrait, RelativeDirectoryPath, RelativeFilePath, TransactionError,
 };
 use tokio::{fs, io::AsyncReadExt};
 use tracing::trace;
@@ -47,15 +47,15 @@ impl FileServiceTrait for TokioFileService {
         data: &[u8],
     ) -> Result<(), anyhow::Error> {
         trace!(filename = ?file_path, "Create file unchecked");
-        let p = self.get_filepath(file_path);
-        fs::create_dir_all(
-            p.parent()
-                .expect("RelativeFilePath always have a parent folder"),
-        )
-        .await?;
-
-        fs::write(&p, data).await?;
+        self.get_or_create_dir(file_path.relative_dir()).await?;
+        fs::write(self.get_filepath(file_path), data).await?;
         Ok(())
+    }
+
+    async fn get_or_create_dir(&self, path: &RelativeDirectoryPath) -> anyhow::Result<PathBuf> {
+        let p = self.get_dir_path(path);
+        fs::create_dir_all(&p).await?;
+        Ok(p)
     }
 
     async fn remove_file(&self, filename: &RelativeFilePath) -> Result<(), TransactionError> {
@@ -96,14 +96,14 @@ impl FileServiceTrait for TokioFileService {
 
     fn stream_files(
         &self,
-        path: &RelativeDirPath,
+        path: &RelativeDirectoryPath,
     ) -> BoxStream<'static, Result<RelativeFilePath, TransactionError>> {
         self.stream_files_internal(path).boxed()
     }
 
     async fn list_files(
         &self,
-        path: &RelativeDirPath,
+        path: &RelativeDirectoryPath,
     ) -> Result<Vec<RelativeFilePath>, TransactionError> {
         self.stream_files_internal(path)
             .try_collect::<Vec<RelativeFilePath>>()
@@ -114,6 +114,9 @@ impl FileServiceTrait for TokioFileService {
     // The returned PathBuf can be used to e.g. open a file with std::fs::File::open().
     fn get_filepath(&self, file_path: &RelativeFilePath) -> PathBuf {
         self.root.join(file_path.get_path())
+    }
+    fn get_dir_path(&self, dir_path: &RelativeDirectoryPath) -> PathBuf {
+        self.root.join(&dir_path)
     }
 
     fn get_root(&self) -> &Path {
@@ -138,10 +141,10 @@ impl TokioFileService {
 
     fn stream_files_internal(
         &self,
-        path: &RelativeDirPath,
+        path: &RelativeDirectoryPath,
     ) -> impl Stream<Item = Result<RelativeFilePath, TransactionError>> + 'static {
         let device_dir: Arc<Path> = self.root.to_owned().into();
-        let dir_path: Arc<Path> = device_dir.join(path.as_path()).into();
+        let dir_path: Arc<Path> = device_dir.join(path).into();
 
         stream::once(fs::read_dir(dir_path.clone())).flat_map(move |x| {
             let dir = match x {
@@ -195,7 +198,7 @@ mod tests {
     use pilatus::{device::DeviceId, FileServiceExt, Validator};
 
     use super::*;
-    use pilatus::{FileService, RelativeDirPath, RelativeFilePath};
+    use pilatus::{FileService, RelativeDirectoryPathBuf, RelativeFilePath};
 
     #[tokio::test]
     async fn add_valid() -> anyhow::Result<()> {
@@ -275,10 +278,13 @@ mod tests {
 
         for (dir, file) in [
             (
-                RelativeDirPath::new("sub")?,
+                RelativeDirectoryPathBuf::new("sub")?,
                 RelativeFilePath::new("sub/image.jpg")?,
             ),
-            (RelativeDirPath::root(), RelativeFilePath::new("image.jpg")?),
+            (
+                RelativeDirectoryPathBuf::root(),
+                RelativeFilePath::new("image.jpg")?,
+            ),
         ] {
             assert!(
                 svc.list_files(&dir).await?.is_empty(),
