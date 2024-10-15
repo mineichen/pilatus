@@ -18,7 +18,7 @@ use serde::Deserialize;
 use super::DeviceState;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
-    c.register_web("engineering/emulation", |r| {
+    c.register_web("engineering/emulation-camera", |r| {
         r.http("/:device_id/record/:collection_name", |f| f.put(record_web))
     })
 }
