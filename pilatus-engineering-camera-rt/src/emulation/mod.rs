@@ -12,6 +12,7 @@ use pilatus_engineering::image::{DynamicImage, ImageWithMeta, StreamImageError};
 use publish_frame::PublisherState;
 use serde::{Deserialize, Serialize};
 
+mod list_collections;
 mod publish_frame;
 mod record;
 mod subscribe;
@@ -51,6 +52,7 @@ async fn device(
         .add_handler(DeviceState::subscribe)
         .add_handler(DeviceState::publish_frame)
         .add_handler(DeviceState::update_params)
+        .add_handler(DeviceState::list_collections)
         .execute(DeviceState {
             publisher: Arc::new(PublisherState {
                 self_sender: actor_system

@@ -1,4 +1,5 @@
 use std::{
+    fs::FileType,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -9,7 +10,8 @@ use futures::{
 };
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
-    FileServiceBuilder, FileServiceTrait, RelativeDirectoryPath, RelativeFilePath, TransactionError,
+    FileServiceBuilder, FileServiceTrait, RelativeDirectoryPath, RelativeDirectoryPathBuf,
+    RelativeFilePath, TransactionError,
 };
 use tokio::{fs, io::AsyncReadExt};
 use tracing::trace;
@@ -47,13 +49,17 @@ impl FileServiceTrait for TokioFileService {
         data: &[u8],
     ) -> Result<(), anyhow::Error> {
         trace!(filename = ?file_path, "Create file unchecked");
-        self.get_or_create_dir(file_path.relative_dir()).await?;
+        self.get_or_create_directory(file_path.relative_dir())
+            .await?;
         fs::write(self.get_filepath(file_path), data).await?;
         Ok(())
     }
 
-    async fn get_or_create_dir(&self, path: &RelativeDirectoryPath) -> anyhow::Result<PathBuf> {
-        let p = self.get_dir_path(path);
+    async fn get_or_create_directory(
+        &self,
+        path: &RelativeDirectoryPath,
+    ) -> anyhow::Result<PathBuf> {
+        let p = self.get_directory_path(path);
         fs::create_dir_all(&p).await?;
         Ok(p)
     }
@@ -98,16 +104,40 @@ impl FileServiceTrait for TokioFileService {
         &self,
         path: &RelativeDirectoryPath,
     ) -> BoxStream<'static, Result<RelativeFilePath, TransactionError>> {
-        self.stream_files_internal(path).boxed()
+        self.stream_files_internal(path, |file_type, path| {
+            if !file_type.is_file() {
+                return None;
+            }
+            Some(RelativeFilePath::new(path).map_err(|e| anyhow::Error::from(e).into()))
+        })
+        .boxed()
+    }
+
+    fn stream_directories(
+        &self,
+        path: &RelativeDirectoryPath,
+    ) -> BoxStream<'static, Result<RelativeDirectoryPathBuf, TransactionError>> {
+        self.stream_files_internal(path, |file_type, path| {
+            if !file_type.is_dir() {
+                return None;
+            }
+            Some(RelativeDirectoryPathBuf::new(path).map_err(|e| anyhow::Error::from(e).into()))
+        })
+        .boxed()
     }
 
     async fn list_files(
         &self,
         path: &RelativeDirectoryPath,
     ) -> Result<Vec<RelativeFilePath>, TransactionError> {
-        self.stream_files_internal(path)
-            .try_collect::<Vec<RelativeFilePath>>()
-            .await
+        self.stream_files_internal(path, |file_type, path| {
+            if !file_type.is_file() {
+                return None;
+            }
+            Some(RelativeFilePath::new(path).map_err(|e| anyhow::Error::from(e).into()))
+        })
+        .try_collect::<Vec<RelativeFilePath>>()
+        .await
     }
 
     // RelativeFilePath is expected to be relative to the device-folder
@@ -115,7 +145,7 @@ impl FileServiceTrait for TokioFileService {
     fn get_filepath(&self, file_path: &RelativeFilePath) -> PathBuf {
         self.root.join(file_path.get_path())
     }
-    fn get_dir_path(&self, dir_path: &RelativeDirectoryPath) -> PathBuf {
+    fn get_directory_path(&self, dir_path: &RelativeDirectoryPath) -> PathBuf {
         self.root.join(&dir_path)
     }
 
@@ -139,10 +169,11 @@ impl TokioFileService {
         }
     }
 
-    fn stream_files_internal(
+    fn stream_files_internal<T: Send + 'static>(
         &self,
         path: &RelativeDirectoryPath,
-    ) -> impl Stream<Item = Result<RelativeFilePath, TransactionError>> + 'static {
+        filter_map: fn(FileType, &Path) -> Option<Result<T, TransactionError>>,
+    ) -> impl Stream<Item = Result<T, TransactionError>> + 'static {
         let device_dir: Arc<Path> = self.root.to_owned().into();
         let dir_path: Arc<Path> = device_dir.join(path).into();
 
@@ -159,7 +190,6 @@ impl TokioFileService {
             };
             let dir_path = dir_path.clone();
             let device_dir = device_dir.clone();
-
             tokio_stream::wrappers::ReadDirStream::new(dir)
                 .filter_map(move |entry| {
                     let dir_path = dir_path.clone();
@@ -174,16 +204,11 @@ impl TokioFileService {
                             Ok(x) => x,
                             Err(e) => return Some(Err((io_err_converter)(e))),
                         };
-                        if !file_type.is_file() {
-                            return None;
-                        }
-
                         let p = entry.path();
                         let p = p
                             .strip_prefix(device_dir)
                             .expect("ReadDirStream returns relative entries");
-
-                        Some(RelativeFilePath::new(p).map_err(|e| anyhow::Error::from(e).into()))
+                        filter_map(file_type, &p)
                     }
                 })
                 .boxed()

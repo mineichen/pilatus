@@ -3,12 +3,18 @@
 
 <head>
     <title>Image viewer</title>
+    <style>
+        #current-device-id {
+            font-size: 0.5em;
+        }
+    </style>
 </head>
 
 <body>
-    <h1>Image stream</h1>
+    <h1>Image stream <span id="current-device-id"></span></h1>
     <select id="device-select">
     </select>
+    <a id="capture-link" target="_blank">Capture PNG</a>
     <br />
     <img id="image" height="600" />
     <div id="meta"></div>
@@ -52,6 +58,7 @@
         let socket = null;
         async function init() {
             let data = await (await fetch("/api/image/list/subscribe")).json();
+
             let selector = document.getElementById("device-select");
             selector.addEventListener("change", (e) => {
                 stream_image(e.target.value);
@@ -77,6 +84,10 @@
             if (socket) {
                 await socket.close();
             }
+
+            document.getElementById("current-device-id").innerText = id;
+            document.getElementById("capture-link").setAttribute("href", "/api/image?device_id=" + id);
+
 
             socket = new WebSocket("ws://" + host_with_port + "/api/image/subscribe?device_id=" + id);
             socket.addEventListener("message", async data => {

@@ -34,6 +34,8 @@ mod collection;
 #[cfg(feature = "image-algorithm")]
 mod logo;
 mod message;
+#[cfg(feature = "image-algorithm")]
+mod png;
 mod stable_hash;
 
 #[cfg(feature = "tokio")]
@@ -42,7 +44,10 @@ pub use collection::*;
 use image::GenericImageView;
 #[cfg(feature = "image-algorithm")]
 pub use logo::*;
+
 pub use message::*;
+#[cfg(feature = "image-algorithm")]
+pub use png::*;
 pub use stable_hash::*;
 
 #[cfg(feature = "image-algorithm")]

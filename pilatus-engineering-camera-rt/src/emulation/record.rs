@@ -1,4 +1,8 @@
-use std::{io::Cursor, num::NonZeroU32, time::SystemTime};
+use std::{
+    io::Cursor,
+    num::NonZeroU32,
+    time::{Duration, SystemTime},
+};
 
 use futures::StreamExt;
 use image::{ImageFormat, Luma};
@@ -12,7 +16,7 @@ use pilatus_axum::{
     http::StatusCode,
     ServiceCollectionExtensions,
 };
-use pilatus_engineering::image::{DynamicImage, StreamImageError, SubscribeDynamicImageMessage};
+use pilatus_engineering::image::{StreamImageError, SubscribeDynamicImageMessage};
 use serde::Deserialize;
 
 use super::DeviceState;
@@ -68,33 +72,7 @@ impl DeviceState {
                     anyhow::Ok((
                         // todo: Take from metadata when it is available
                         std::time::SystemTime::now(),
-                        match data.image {
-                            DynamicImage::Luma8(i) => {
-                                let (width, height) = i.dimensions();
-                                let img = image::ImageBuffer::<Luma<_>, _>::from_raw(
-                                    width.get(),
-                                    height.get(),
-                                    i.buffer(),
-                                )
-                                .expect("Buffer always matches");
-                                let mut buf = Vec::with_capacity(100_000);
-                                img.write_to(&mut Cursor::new(&mut buf), ImageFormat::Png)?;
-                                buf
-                            }
-                            DynamicImage::Luma16(i) => {
-                                let (width, height) = i.dimensions();
-                                let img = image::ImageBuffer::<Luma<_>, _>::from_raw(
-                                    width.get(),
-                                    height.get(),
-                                    i.buffer(),
-                                )
-                                .expect("u16 Buffer always matches");
-                                let mut buf = Vec::with_capacity(100_000);
-                                img.write_to(&mut Cursor::new(&mut buf), ImageFormat::Png)?;
-                                buf
-                            }
-                            i => Err(anyhow::anyhow!("Unsupported image: {i:?}"))?,
-                        },
+                        data.image.encode_png()?,
                     ))
                 })
                 .await?
@@ -106,7 +84,9 @@ impl DeviceState {
 
         let relative_dir =
             RelativeDirectoryPathBuf::new(msg.collection_name.as_str()).expect("Is always valid");
-        while let Some(x) = encoded_stream.next().await {
+        while let Some(x) =
+            tokio::time::timeout(Duration::from_secs(5), encoded_stream.next()).await?
+        {
             let (time, encoded) = x?;
             let Some(remainer) = size_budget.checked_sub(encoded.len() as u64) else {
                 break;

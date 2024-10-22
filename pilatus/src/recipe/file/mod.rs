@@ -12,7 +12,10 @@ pub use device::*;
 use futures::{future::BoxFuture, stream::BoxStream, FutureExt};
 use tracing::trace;
 
-use crate::{device::DeviceId, RelativeDirectoryPath, RelativeFilePath, TransactionError};
+use crate::{
+    device::DeviceId, RelativeDirectoryPath, RelativeDirectoryPathBuf, RelativeFilePath,
+    TransactionError,
+};
 
 mod device;
 
@@ -111,13 +114,20 @@ pub trait FileServiceTrait {
         &self,
         path: &RelativeDirectoryPath,
     ) -> Result<Vec<RelativeFilePath>, TransactionError>;
-    async fn get_or_create_dir(&self, dir_path: &RelativeDirectoryPath) -> anyhow::Result<PathBuf>;
+    async fn get_or_create_directory(
+        &self,
+        dir_path: &RelativeDirectoryPath,
+    ) -> anyhow::Result<PathBuf>;
     fn stream_files(
         &self,
         path: &RelativeDirectoryPath,
     ) -> BoxStream<'static, Result<RelativeFilePath, TransactionError>>;
+    fn stream_directories(
+        &self,
+        path: &RelativeDirectoryPath,
+    ) -> BoxStream<'static, Result<RelativeDirectoryPathBuf, TransactionError>>;
     fn get_filepath(&self, file_path: &RelativeFilePath) -> PathBuf;
-    fn get_dir_path(&self, file_path: &RelativeDirectoryPath) -> PathBuf;
+    fn get_directory_path(&self, file_path: &RelativeDirectoryPath) -> PathBuf;
     fn get_root(&self) -> &Path;
 }
 

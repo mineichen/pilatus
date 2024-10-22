@@ -9,7 +9,7 @@ futures = { workspace = true }
 image = { workspace = true }
 minfac = { workspace = true }
 pilatus = { path = "../pilatus" }
-pilatus-engineering = { path = "../pilatus-engineering" }
+pilatus-engineering = { path = "../pilatus-engineering", features = ["image-algorithm"] }
 pilatus-axum = { path = "../pilatus-axum" }
 serde = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }

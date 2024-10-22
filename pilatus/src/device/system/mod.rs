@@ -16,18 +16,20 @@ use futures::{
 };
 use tracing::{trace, warn};
 
-use self::sealed::ActorSystemIdentifier;
+use self::identifier::ActorSystemIdentifier;
 
 use super::DeviceId;
 
 mod error;
 mod handler_closure;
 mod handler_result;
+mod identifier;
 mod sender;
 
 pub use error::*;
 pub use handler_closure::*;
 pub use handler_result::*;
+pub use identifier::DynamicIdentifier;
 pub use sender::*;
 
 #[cfg(feature = "minfac")]
@@ -155,18 +157,18 @@ impl ActorSystem {
 
     pub fn get_untyped_sender(
         &self,
-        device_id: impl ActorSystemIdentifier,
+        identifier: impl ActorSystemIdentifier,
     ) -> Result<UntypedActorMessageSender, ActorErrorUnknownDevice> {
         let lock = self.state.read().expect("Should never be poisoned");
-        device_id.get_untyped_sender(sealed::SealedActorSystemState(&lock))
+        identifier.get_untyped_sender(identifier::SealedActorSystemState(&lock))
     }
 
     pub fn get_sender<T: ActorMessage>(
         &self,
-        device_id: impl sealed::ActorSystemIdentifier,
+        identifier: impl identifier::ActorSystemIdentifier,
     ) -> Result<ActorMessageSender<T>, ActorErrorUnknownDevice> {
-        self.get_untyped_sender(device_id)
-            .map(ActorMessageSender::new)
+        let lock = self.state.read().expect("Should never be poisoned");
+        identifier.get_typed_sender(identifier::SealedActorSystemState(&lock))
     }
 
     pub fn get_senders<TMsg: ActorMessage>(
@@ -183,25 +185,7 @@ impl ActorSystem {
     ) -> Result<ActorMessageSender<TMsg>, ActorErrorUnknownDevice> {
         match id {
             Some(id) => self.get_sender(id),
-            None => {
-                let ids = self.list_devices_for_message_type::<TMsg>();
-                let mut ids_iter = ids.iter();
-                let Some(id) = ids_iter.next() else {
-                    return Err(ActorErrorUnknownDevice::AmbiguousHandler {
-                        msg_type: std::any::type_name::<TMsg>(),
-                        possibilities: Default::default(),
-                    });
-                };
-
-                if ids_iter.next().is_none() {
-                    self.get_sender(*id)
-                } else {
-                    Err(ActorErrorUnknownDevice::AmbiguousHandler {
-                        msg_type: std::any::type_name::<TMsg>(),
-                        possibilities: ids,
-                    })
-                }
-            }
+            None => self.get_sender(DynamicIdentifier::None),
         }
     }
 
@@ -219,44 +203,10 @@ impl ActorSystem {
 
     pub async fn ask<TMsg: ActorMessage>(
         &self,
-        device_id: DeviceId,
+        device_id: impl ActorSystemIdentifier,
         msg: TMsg,
     ) -> ActorResult<TMsg> {
-        self.get_untyped_sender(device_id)?.ask(msg).await
-    }
-}
-
-mod sealed {
-    use futures::channel::mpsc;
-
-    use super::{ActorErrorUnknownDevice, ActorSystemState, UntypedActorMessageSender};
-    use crate::device::DeviceId;
-
-    pub struct SealedActorSystemState<'a>(pub(super) &'a ActorSystemState);
-
-    pub trait ActorSystemIdentifier {
-        fn get_untyped_sender(
-            self,
-            actor_system: SealedActorSystemState,
-        ) -> Result<UntypedActorMessageSender, ActorErrorUnknownDevice>;
-    }
-
-    impl ActorSystemIdentifier for DeviceId {
-        fn get_untyped_sender(
-            self,
-            state: SealedActorSystemState,
-        ) -> Result<UntypedActorMessageSender, ActorErrorUnknownDevice> {
-            let mpsc_sender = state
-                .0
-                .devices
-                .get(&self)
-                .map(|x| mpsc::Sender::clone(&x))
-                .ok_or(ActorErrorUnknownDevice::UnknownDeviceId {
-                    device_id: self,
-                    details: "No message queue for this device".into(),
-                })?;
-            Ok(UntypedActorMessageSender::new(self, mpsc_sender))
-        }
+        self.get_sender(device_id)?.ask(msg).await
     }
 }
 
@@ -779,8 +729,14 @@ mod tests {
             system.register(id).add_handler(handler).execute(State(0)),
             async move {
                 tokio::time::sleep(Duration::from_micros(10)).await;
-                let result = system.ask(id, I32Message(42)).await;
-                assert_eq!(42i64, result.unwrap());
+                let result1 = system.ask(id, I32Message(42)).await;
+                assert_eq!(42i64, result1.unwrap());
+                let result2 = system.ask(DynamicIdentifier::None, I32Message(42)).await;
+                assert_eq!(42i64, result2.unwrap());
+                let result3 = system
+                    .ask(DynamicIdentifier::DeviceId(id), I32Message(42))
+                    .await;
+                assert_eq!(42i64, result3.unwrap());
                 system.forget_senders();
             },
         )

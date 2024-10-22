@@ -4,7 +4,7 @@ use axum::{extract::Query, response::sse::Event};
 use futures::{stream::BoxStream, Stream, StreamExt};
 use image::{ImageEncoder, ImageResult};
 use minfac::ServiceCollection;
-use pilatus::device::{ActorSystem, DeviceId};
+use pilatus::device::{ActorSystem, DeviceId, DynamicIdentifier};
 use pilatus_axum::{
     extract::{ws::WebSocketUpgrade, InjectRegistered, Json, Path},
     http::StatusCode,
@@ -21,6 +21,7 @@ use tracing::{debug, warn};
 pub(super) fn register_services(c: &mut ServiceCollection) {
     #[rustfmt::skip]
     c.register_web("image", |x| x
+        .http("", |m| m.get(single_dynamic_image_handler))
         .http("/list/subscribe", |m| m.get(list_subscribe_devices))
         .http("/list/stream", |m| m.get(list_stream_devices))
         .http("/list/stream/localizable", |m| m.get(list_localizable_stream_devices))
@@ -28,7 +29,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
         .http("/subscribe", |m| m.get(subscribe_image_handler))
         .http("/stream/localizable", |m| m.get(stream_localizable_image_handler))
         .http("/viewer", |m| m.get(image_viewer))
-        .http("/:device_id/single", |m| m.get(single_image_handler))
+        .http("/:device_id/single", |m| m.get(single_luma_image_handler))
         .http("/:device_id/frame_intervals", |m| m.get(stream_frame_interval))
     );
 }
@@ -56,7 +57,7 @@ async fn stream_frame_interval(
     })))
 }
 
-async fn single_image_handler(
+async fn single_luma_image_handler(
     Path(device_id): Path<DeviceId>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
 ) -> Result<impl IntoResponse, StatusCode> {
@@ -78,6 +79,34 @@ async fn single_image_handler(
         )?;
         let name = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S");
         ImageResult::Ok((
+            AppendHeaders([(
+                "Content-Disposition",
+                format!("attachment; filename=\"{name}.png\""),
+            )]),
+            buf,
+        ))
+    })
+    .await
+    .map_err(|_| StatusCode::BAD_REQUEST)
+}
+
+async fn single_dynamic_image_handler(
+    InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
+    Query(id): Query<DynamicIdentifier>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let img = actor_system
+        .ask(id, SubscribeDynamicImageMessage::default())
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .next()
+        .await
+        .ok_or(StatusCode::BAD_REQUEST)?
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .image;
+    pilatus::execute_blocking(move || {
+        let buf = img.encode_png()?;
+        let name = chrono::Utc::now().format("%Y-%m-%d_%H-%M-%S-%f");
+        anyhow::Ok((
             AppendHeaders([(
                 "Content-Disposition",
                 format!("attachment; filename=\"{name}.png\""),
