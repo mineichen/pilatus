@@ -158,7 +158,7 @@ async fn subscribe_image_handler(
     Query(StreamQuery { device_id, format }): Query<StreamQuery>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-    debug!("Start streaming images: {device_id:?}");
+    debug!("Start streaming websocket images: {device_id:?}");
 
     ImageStreamer::<SubscribeDynamicImageMessage, BoxStream<'static, _>, _>::stream_image(
         upgrade,

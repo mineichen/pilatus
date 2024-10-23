@@ -22,13 +22,13 @@
 
     <script>
         let host_with_port = location.host;
-        const HEADER_LENGTH = 5;
+        const HEADER_LENGTH = 8;
 
         async function decode(blob) {
             if (blob.size < HEADER_LENGTH) {
                 throw "Blob is too small to contain an image: " + blob.size;
             }
-            const meta_len = new Uint32Array(await blob.slice(1, 5).arrayBuffer())[0];
+            const meta_len = new Uint32Array(await blob.slice(4, 8).arrayBuffer())[0];
 
             if (meta_len + HEADER_LENGTH > blob.size) {
                 throw "Blob with size " + blob.size + " can't extract enough text " + meta_len;
@@ -39,13 +39,15 @@
                 throw "couldn't parse json: " + text;
             }
             let error_code = new Uint8Array(await blob.slice(0, 1).arrayBuffer())[0];
-
+            console.log("Meta", meta);
             if (error_code !== 0) {
                 return new Promise((_, rej) => rej(error_code));
             }
 
+            const image_start = HEADER_LENGTH + meta_len + 4;
+            const image_len = new Uint32Array(await blob.slice(image_start - 4, image_start).arrayBuffer())[0];
             let reader = new FileReader();
-            let imageBlob = blob.slice(HEADER_LENGTH + meta_len);
+            let imageBlob = blob.slice(image_start, image_start + image_len);
             reader.readAsDataURL(imageBlob);
             return new Promise((res, rej) => {
                 reader.onloadend = function () {

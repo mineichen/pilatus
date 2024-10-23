@@ -59,9 +59,17 @@ pub enum StreamingImageFormat {
 /// Protocol Spec
 ///                   | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 /// 0..1              | ok/err codes  |    reserved   |
-/// 2..6              LE_bytes of Meta length
-/// 6..(MetaLen + 6)  Meta as JSON
-/// if len>(meta + 6) Image Bytes
+/// 1..4              |           reserved            |
+/// 4..8              |   u32::LE_bytes of MetaLen    |
+/// 8..(MetaLen + 8)  |          Meta as JSON         |
+///                   |   empty for image alignment   |
+/// (MetaLen+8)..(+12)| u32::LE_bytes of MainImagSize |
+/// omitted here      |       encoded MainImage       |
+///
+/// foreach addidtional image (ordering defined by request)
+///                   |    u32::LE_bytes of ImageSize  |
+///                   |         encoded Image         |
+///
 impl StreamableImage
     for (
         Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
@@ -72,12 +80,16 @@ impl StreamableImage
         match self.0 {
             Ok(x) => self.1.encode_dynamic_image(OK_CODE, x.image, x.meta),
             Err(e) => match e {
-                StreamImageError::MissedItems(_) => encode_meta(vec![MISSED_ITEM_CODE], |_| Ok(())),
+                StreamImageError::MissedItems(_) => {
+                    encode_meta(vec![MISSED_ITEM_CODE, 0, 0, 0], |_| Ok(()))
+                }
                 StreamImageError::ProcessingError { image, error } => {
                     self.1
                         .encode_dynamic_image(PROCESSING_CODE, image, error.to_string())
                 }
-                StreamImageError::ActorError(_) => encode_meta(vec![ACTOR_ERROR_CODE], |_| Ok(())),
+                StreamImageError::ActorError(_) => {
+                    encode_meta(vec![ACTOR_ERROR_CODE, 0, 0, 0], |_| Ok(()))
+                }
                 _ => Err(anyhow::anyhow!("Unknown error: {e:?}")),
             },
         }
@@ -102,11 +114,11 @@ fn prepare_dynamic_image_buf<T: Serialize>(
     flag: u8,
     meta: T,
     capacity: usize,
-) -> anyhow::Result<(Vec<u8>, impl Fn(&mut Vec<u8>) -> anyhow::Result<()>)> {
+) -> anyhow::Result<Vec<u8>> {
     let meta_writer = move |b: &mut Vec<u8>| serde_json::to_writer(b, &meta).map_err(Into::into);
     let mut buf = Vec::with_capacity(capacity);
-    buf.push(flag);
-    Ok((buf, meta_writer))
+    buf.extend_from_slice(&[flag, 0, 0, 0]);
+    encode_meta(buf, meta_writer)
 }
 
 fn encode_dynamic_raw_image<T: Serialize>(
@@ -115,21 +127,16 @@ fn encode_dynamic_raw_image<T: Serialize>(
     meta: T,
 ) -> anyhow::Result<Vec<u8>> {
     let dims = image.dimensions();
-    let (buf, meta_writer) = prepare_dynamic_image_buf(
+    let buf = prepare_dynamic_image_buf(
         flag,
         meta,
         dims.0.get() as usize * dims.1.get() as usize / 2,
     )?;
     match image {
-        DynamicImage::Luma8(i) => encode_raw(buf, i.buffer(), DataType::U8, 1, dims, meta_writer),
-        DynamicImage::Luma16(i) => encode_raw(
-            buf,
-            bytes_from_u16(i.buffer())?,
-            DataType::U16,
-            1,
-            dims,
-            meta_writer,
-        ),
+        DynamicImage::Luma8(i) => encode_raw(buf, i.buffer(), DataType::U8, 1, dims),
+        DynamicImage::Luma16(i) => {
+            encode_raw(buf, bytes_from_u16(i.buffer())?, DataType::U16, 1, dims)
+        }
         _ => Err(anyhow!("Unsupported image format: {:?}", image)),
     }
 }
@@ -150,13 +157,13 @@ fn encode_dynamic_jpeg_image<T: Serialize>(
     meta: T,
 ) -> anyhow::Result<Vec<u8>> {
     let dims = image.dimensions();
-    let (buf, meta_writer) = prepare_dynamic_image_buf(
+    let buf = prepare_dynamic_image_buf(
         flag,
         meta,
         dims.0.get() as usize * dims.1.get() as usize / 2,
     )?;
     match image {
-        DynamicImage::Luma8(i) => encode_jpeg(buf, i.buffer(), ColorType::Luma, dims, meta_writer),
+        DynamicImage::Luma8(i) => encode_jpeg(buf, i.buffer(), ColorType::Luma, dims),
         DynamicImage::Luma16(i) => encode_jpeg(
             buf,
             &i.buffer()
@@ -165,7 +172,6 @@ fn encode_dynamic_jpeg_image<T: Serialize>(
                 .collect::<Vec<_>>(),
             ColorType::Luma,
             dims,
-            meta_writer,
         ),
         _ => Err(anyhow!("Unsupported image format: {:?}", image)),
     }
@@ -215,27 +221,30 @@ fn encode_legacy(
     (width, height): (NonZeroU32, NonZeroU32),
     meta: impl FnOnce(&mut Vec<u8>) -> anyhow::Result<()>,
 ) -> anyhow::Result<Vec<u8>> {
-    encode_jpeg(
-        Vec::with_capacity(width.get() as usize * height.get() as usize),
-        image,
-        color,
-        (width, height),
-        meta,
-    )
-}
-
-fn encode_jpeg(
-    target: Vec<u8>,
-    image: &[u8],
-    color: ColorType,
-    (width, height): (NonZeroU32, NonZeroU32),
-    meta: impl FnOnce(&mut Vec<u8>) -> anyhow::Result<()>,
-) -> anyhow::Result<Vec<u8>> {
+    let target = Vec::with_capacity(width.get() as usize * height.get() as usize);
+    let (width, height) = (width, height);
     let mut buf = encode_meta(target, meta)?;
     let encoder = Encoder::new(&mut buf, 80);
     let t = std::time::Instant::now();
     encoder.encode(image, width.get() as u16, height.get() as u16, color)?;
     trace!("encoding time: {}ms", t.elapsed().as_millis());
+    Ok(buf)
+}
+
+fn encode_jpeg(
+    mut buf: Vec<u8>,
+    image: &[u8],
+    color: ColorType,
+    (width, height): (NonZeroU32, NonZeroU32),
+) -> anyhow::Result<Vec<u8>> {
+    buf.extend_from_slice(&[0, 0, 0, 0]);
+    let offset = buf.len();
+    let encoder = Encoder::new(&mut buf, 80);
+    let t = std::time::Instant::now();
+    encoder.encode(image, width.get() as u16, height.get() as u16, color)?;
+    trace!("encoding time: {}ms", t.elapsed().as_millis());
+    let size = (buf.len() - offset) as u32;
+    buf[offset - 4..offset].copy_from_slice(&size.to_le_bytes());
     Ok(buf)
 }
 
@@ -246,19 +255,24 @@ enum DataType {
 }
 
 fn encode_raw(
-    target: Vec<u8>,
+    mut buf: Vec<u8>,
     image: &[u8],
     pixel_kind: DataType,
     channels: u16,
     (width, height): (NonZeroU32, NonZeroU32),
-    meta: impl FnOnce(&mut Vec<u8>) -> anyhow::Result<()>,
 ) -> anyhow::Result<Vec<u8>> {
-    let mut buf = encode_meta(target, meta)?;
+    // https://stackoverflow.com/questions/45213511/formula-for-memory-alignment
+    let unaligned_pixel_start = buf.len() + 4;
+    let alignment_bytes = (((unaligned_pixel_start + 7) & !7) - unaligned_pixel_start) as u32;
+
+    const HEADER_BYTE_SIZE: u32 = 8;
+    buf.extend_from_slice(&(image.len() as u32 + HEADER_BYTE_SIZE + alignment_bytes).to_le_bytes());
+
+    buf.extend((0..alignment_bytes).map(|_| 0)); // Guarantee 8Byte aligned
     buf.push(0u8); // reserved
     buf.push(pixel_kind as u8);
     buf.put_slice(&channels.to_le_bytes());
     buf.put_slice(&width.get().to_le_bytes());
-    buf.put_slice(&height.get().to_le_bytes());
     buf.put_slice(image);
     debug!(
         "Endoced raw: {:?}, width: {width}, height: {height}",
