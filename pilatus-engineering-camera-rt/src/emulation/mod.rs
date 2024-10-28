@@ -17,6 +17,8 @@ mod publish_frame;
 mod record;
 mod subscribe;
 
+pub use record::RecordMessage;
+
 pub const DEVICE_TYPE: &str = "engineering-emulation-camera";
 
 pub(super) fn register_services(c: &mut ServiceCollection) {

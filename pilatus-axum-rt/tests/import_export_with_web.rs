@@ -6,7 +6,7 @@ use minfac::{Registered, ServiceCollection};
 use pilatus::{
     device::{ActorSystem, DeviceContext, DeviceResult, DeviceValidationContext},
     prelude::*,
-    DeviceConfig, RecipeId, SystemTerminator, UpdateParamsMessageError,
+    DeviceConfig, RecipeId, UpdateParamsMessageError,
 };
 use pilatus_rt::{RecipeServiceFassade, Runtime};
 use reqwest::StatusCode;

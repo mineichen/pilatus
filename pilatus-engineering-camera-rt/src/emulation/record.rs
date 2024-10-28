@@ -26,7 +26,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 }
 
 #[derive(Debug)]
-pub(super) struct RecordMessage {
+pub struct RecordMessage {
     source_id: DeviceId,
     collection_name: pilatus::Name,
     max_size_mb: Option<NonZeroU32>,
@@ -45,6 +45,17 @@ impl RecordMessage {
                 collection_name,
                 max_size_mb,
             }),
+        }
+    }
+    pub fn with_max_size(
+        source_id: DeviceId,
+        collection_name: pilatus::Name,
+        max_size_mb: NonZeroU32,
+    ) -> Self {
+        Self {
+            source_id,
+            collection_name,
+            max_size_mb: Some(max_size_mb),
         }
     }
 }
