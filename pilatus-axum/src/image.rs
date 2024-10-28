@@ -266,6 +266,7 @@ fn encode_raw(
     let alignment_bytes = (((unaligned_pixel_start + 7) & !7) - unaligned_pixel_start) as u32;
 
     const HEADER_BYTE_SIZE: u32 = 8;
+
     buf.extend_from_slice(&(image.len() as u32 + HEADER_BYTE_SIZE + alignment_bytes).to_le_bytes());
 
     buf.extend((0..alignment_bytes).map(|_| 0)); // Guarantee 8Byte aligned

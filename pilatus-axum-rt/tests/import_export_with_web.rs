@@ -62,10 +62,9 @@ fn upload_zip() -> anyhow::Result<()> {
         .register(register_test_services)
         .configure();
 
-    let terminator: SystemTerminator = rt.provider.get().unwrap();
     let web_stats: pilatus_axum::Stats = rt.provider.get().unwrap();
     let recipe_service = rt.provider.get().unwrap();
-    rt.run(async {
+    rt.run_until_finished(async {
         let port = web_stats.socket_addr().await.port();
         assert_ne!(port, 80);
         let base = format!("http://127.0.0.1:{port}/api");
@@ -100,7 +99,6 @@ fn upload_zip() -> anyhow::Result<()> {
         let (_, all) = get_current(&base, &client).await.unwrap();
         assert!(all.contains(&clone_id));
         //tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-        terminator.shutdown();
     });
     Ok(())
 }

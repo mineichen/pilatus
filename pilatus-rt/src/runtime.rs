@@ -4,7 +4,7 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::runtime::Builder;
 use tracing::{error, info};
 
-use pilatus::{GenericConfig, HostedService};
+use pilatus::{GenericConfig, HostedService, SystemTerminator};
 
 use crate::metadata_future::MetadataFuture;
 
@@ -91,9 +91,25 @@ pub struct ConfiguredRuntime {
 }
 
 impl ConfiguredRuntime {
+    pub fn run_until_finished<TFut: futures::Future>(self, other: TFut) -> TFut::Output {
+        let terminator = self
+            .provider
+            .get::<SystemTerminator>()
+            .expect("Cannot create Runtime without create::register, which provides this type");
+        self.run_and_return(async move {
+            let r = other.await;
+            terminator.shutdown();
+            r
+        })
+    }
+
     pub fn run(self, other: impl futures::Future<Output = ()>) {
+        self.run_and_return(other);
+    }
+
+    fn run_and_return<TFut: futures::Future>(self, other: TFut) -> TFut::Output {
         info!("Tokio runtime has started.");
-        self.tokio.block_on(futures::future::join(other, async {
+        let (r, _) = self.tokio.block_on(futures::future::join(other, async {
             let mut tasks: FuturesUnordered<_> = self
                 .provider
                 .get_all::<HostedService>()
@@ -131,5 +147,6 @@ impl ConfiguredRuntime {
         }));
 
         info!("Tokio runtime has ended.");
+        r
     }
 }
