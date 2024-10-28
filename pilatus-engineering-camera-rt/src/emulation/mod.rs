@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use minfac::{Registered, ServiceCollection};
-use pilatus::device::{HandlerResult, Step2};
+use pilatus::device::{HandlerResult, Step2, WithAbort};
 use pilatus::{
     device::{ActorSystem, DeviceContext, DeviceResult, DeviceValidationContext},
     prelude::*,
@@ -48,7 +48,7 @@ async fn device(
 
     actor_system
         .register(id)
-        .add_handler(DeviceState::record)
+        .add_handler(WithAbort::new(DeviceState::record))
         .add_handler(DeviceState::subscribe)
         .add_handler(DeviceState::publish_frame)
         .add_handler(DeviceState::update_params)

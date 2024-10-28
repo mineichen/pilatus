@@ -1,11 +1,9 @@
 use std::{
-    io::Cursor,
     num::NonZeroU32,
     time::{Duration, SystemTime},
 };
 
 use futures::StreamExt;
-use image::{ImageFormat, Luma};
 use minfac::ServiceCollection;
 use pilatus::{
     device::{ActorErrorResultExtensions, ActorMessage, ActorResult, ActorSystem, DeviceId},
@@ -57,14 +55,18 @@ impl ActorMessage for RecordMessage {
 }
 
 impl DeviceState {
-    pub(super) async fn record(&mut self, msg: RecordMessage) -> ActorResult<RecordMessage> {
+    pub(super) async fn record(
+        &mut self,
+        msg: RecordMessage,
+        reg: futures::stream::AbortRegistration,
+    ) -> ActorResult<RecordMessage> {
         let images = self
             .actor_system
             .ask(msg.source_id, SubscribeDynamicImageMessage::default())
             .await
             .map_actor_error(|_| anyhow::anyhow!("unknown error"))?;
 
-        let mut encoded_stream = images
+        let encoded_stream = images
             .filter(|e| std::future::ready(!matches!(e, Err(StreamImageError::MissedItems(..)))))
             .map(|x| async move {
                 let data = x?;
@@ -78,6 +80,7 @@ impl DeviceState {
                 .await?
             })
             .buffer_unordered(8);
+        let mut abortable_stream = futures::stream::Abortable::new(encoded_stream, reg);
 
         let mut size_budget =
             msg.max_size_mb.map(NonZeroU32::get).unwrap_or(100) as u64 * 1_000_000;
@@ -85,7 +88,7 @@ impl DeviceState {
         let relative_dir =
             RelativeDirectoryPathBuf::new(msg.collection_name.as_str()).expect("Is always valid");
         while let Some(x) =
-            tokio::time::timeout(Duration::from_secs(5), encoded_stream.next()).await?
+            tokio::time::timeout(Duration::from_secs(5), abortable_stream.next()).await?
         {
             let (time, encoded) = x?;
             let Some(remainer) = size_budget.checked_sub(encoded.len() as u64) else {
