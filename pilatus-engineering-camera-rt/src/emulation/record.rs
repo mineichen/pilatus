@@ -3,6 +3,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use minfac::ServiceCollection;
 use pilatus::{
@@ -105,13 +106,14 @@ impl DeviceState {
             let Some(remainer) = size_budget.checked_sub(encoded.len() as u64) else {
                 break;
             };
+            let chrono_time = DateTime::<Utc>::from(time);
             size_budget = remainer;
-            let timestamp = time
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .expect("SystemTime before UNIX EPOCHE");
-            let path =
-                RelativeFilePath::new(relative_dir.join(format!("{}.png", timestamp.as_millis())))
-                    .expect("String contains no invalid chars");
+
+            let path = RelativeFilePath::new(relative_dir.join(format!(
+                "{}.png",
+                chrono_time.format("%Y-%m-%d_%H-%M-%S-%3f")
+            )))
+            .expect("String contains no invalid chars");
 
             self.file_service
                 .add_file_unchecked(&path, &encoded)
