@@ -1,6 +1,6 @@
 use std::{
     num::NonZeroU32,
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 
 use chrono::{DateTime, Utc};

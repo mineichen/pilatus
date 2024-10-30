@@ -251,7 +251,7 @@ impl TryFrom<image::DynamicImage> for DynamicImage {
 
     fn try_from(value: image::DynamicImage) -> Result<Self, Self::Error> {
         let (width, height) = value.dimensions();
-        let (width, height) = (width.try_into()?, height.try_into().map_err(|e| e)?);
+        let (width, height) = (width.try_into()?, height.try_into()?);
         match value {
             image::DynamicImage::ImageLuma8(x) => Ok(DynamicImage::Luma8(GenericImage::new_vec(
                 x.to_vec(),

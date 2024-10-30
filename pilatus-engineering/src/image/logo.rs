@@ -118,7 +118,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
 
             GenericImage::<u8, 4>::new_arc(rgba.into_vec().into(), iwidth, iheight)
         } else if let Ok(svg) = resvg::usvg::Tree::from_data(&logo.0, &Default::default()) {
-            let x = resvg::usvg::Tree::from(svg);
+            let x = svg;
             let size = x.size();
             let (svg_width, svg_height) = (size.width(), size.height());
             let query_ratio = query.width.get() as f32 / query.height.get() as f32;

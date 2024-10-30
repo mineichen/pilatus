@@ -149,7 +149,7 @@ impl<TOutput: Send + 'static, EOutput: Send + Debug + 'static>
                                 }
                             }
                         }
-                        Err(e) => Err(EOutput::from(e)),
+                        Err(e) => Err(e),
                     }
                 }
             });

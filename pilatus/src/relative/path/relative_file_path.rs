@@ -71,7 +71,7 @@ impl RelativeFilePath {
     pub fn relative_dir(&self) -> &RelativeDirectoryPath {
         self.0
             .parent()
-            .map(|x| RelativeDirectoryPath::new_unchecked(x))
+            .map(RelativeDirectoryPath::new_unchecked)
             .unwrap_or(RelativeDirectoryPath::root())
     }
 

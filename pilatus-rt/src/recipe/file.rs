@@ -146,7 +146,7 @@ impl FileServiceTrait for TokioFileService {
         self.root.join(file_path.get_path())
     }
     fn get_directory_path(&self, dir_path: &RelativeDirectoryPath) -> PathBuf {
-        self.root.join(&dir_path)
+        self.root.join(dir_path)
     }
 
     fn get_root(&self) -> &Path {
@@ -208,7 +208,7 @@ impl TokioFileService {
                         let p = p
                             .strip_prefix(device_dir)
                             .expect("ReadDirStream returns relative entries");
-                        filter_map(file_type, &p)
+                        filter_map(file_type, p)
                     }
                 })
                 .boxed()

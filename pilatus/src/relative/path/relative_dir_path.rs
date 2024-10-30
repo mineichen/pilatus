@@ -71,7 +71,7 @@ impl ToOwned for RelativeDirectoryPath {
 
 impl Borrow<RelativeDirectoryPath> for RelativeDirectoryPathBuf {
     fn borrow(&self) -> &RelativeDirectoryPath {
-        &self
+        self
     }
 }
 
@@ -106,11 +106,11 @@ impl RelativeDirectoryPath {
         // safety: RelativeDirectoryPath is repr(transparent)
         unsafe { &*(std::ptr::from_ref(path) as *const RelativeDirectoryPath) }
     }
-    pub fn new<'a, S: AsRef<Path> + ?Sized>(
-        value: &'a S,
-    ) -> Result<&'a Self, RelativeDirPathError> {
+    pub fn new<S: AsRef<Path> + ?Sized>(
+        value: &S,
+    ) -> Result<&Self, RelativeDirPathError> {
         let buf = value.as_ref();
-        validate(&buf)?;
+        validate(buf)?;
         Ok(Self::new_unchecked(buf))
     }
 

@@ -34,7 +34,7 @@ impl ActorSystemIdentifier for DeviceId {
             .0
             .devices
             .get(&self)
-            .map(|x| mpsc::Sender::clone(&x))
+            .map(|x| mpsc::Sender::clone(x))
             .ok_or(ActorErrorUnknownDevice::UnknownDeviceId {
                 device_id: self,
                 details: "No message queue for this device".into(),
@@ -113,7 +113,6 @@ impl Default for DynamicIdentifier {
 
 #[cfg(test)]
 mod tests {
-    use uuid::Uuid;
 
     use super::*;
 
