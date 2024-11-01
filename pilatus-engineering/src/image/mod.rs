@@ -433,6 +433,7 @@ impl<T: 'static + Clone, const CHANNELS: usize> Factory<T, CHANNELS> for ArcFact
     };
 }
 
+#[allow(clippy::len_without_is_empty)]
 impl<const CHANNELS: usize, T: 'static + Clone> GenericImage<T, CHANNELS> {
     #[deprecated = "Use eigher new_vec or new_arc"]
     pub fn new(input: Vec<T>, width: NonZeroU32, height: NonZeroU32) -> Self {
@@ -465,7 +466,6 @@ impl<const CHANNELS: usize, T: 'static + Clone> GenericImage<T, CHANNELS> {
         let vtable = <ArcFactory as Factory<T, CHANNELS>>::VTABLE;
         unsafe { Self::new_with_vtable(input.cast::<T>(), width, height, vtable, len) }
     }
-
     pub const fn len(&self) -> usize {
         self.width.get() as usize * self.height.get() as usize * CHANNELS
     }
@@ -482,6 +482,12 @@ impl<const CHANNELS: usize, T: 'static + Clone> GenericImage<T, CHANNELS> {
         }
     }
 
+    /// Don't use this method unless you need a custom image.
+    ///
+    /// Use/provide methods like new_vec() and new_arc() for safe construction
+    ///
+    /// # Safety
+    /// The vtable must be able to cleanup the fields
     pub unsafe fn new_with_vtable(
         buf: *const T,
         width: NonZeroU32,

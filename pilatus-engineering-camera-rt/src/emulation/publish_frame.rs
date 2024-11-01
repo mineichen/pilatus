@@ -117,7 +117,7 @@ impl Eq for ExistingDirEntry {}
 
 impl PartialOrd for ExistingDirEntry {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.file_name().partial_cmp(other.0.file_name())
+        Some(self.cmp(other))
     }
 }
 
