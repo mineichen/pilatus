@@ -53,6 +53,12 @@ impl Deref for RelativeFilePath {
     }
 }
 
+impl AsRef<Path> for RelativeFilePath {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
 impl<'a> TryFrom<&'a str> for RelativeFilePath {
     type Error = RelativeFilePathError;
 

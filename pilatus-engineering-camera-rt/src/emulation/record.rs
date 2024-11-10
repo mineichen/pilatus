@@ -1,14 +1,13 @@
-use std::{
-    num::NonZeroU32,
-    time::Duration,
-};
+use std::{num::NonZeroU32, time::Duration};
 
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use minfac::ServiceCollection;
 use pilatus::{
-    device::{ActorErrorResultExtensions, ActorMessage, ActorResult, ActorSystem, DeviceId},
-    Name, RelativeDirectoryPathBuf, RelativeFilePath,
+    device::{
+        ActorError, ActorErrorResultExtensions, ActorMessage, ActorResult, ActorSystem, DeviceId,
+    },
+    Name, RelativeFilePath,
 };
 use pilatus_axum::{
     extract::{InjectRegistered, Json, Path},
@@ -97,8 +96,7 @@ impl DeviceState {
         let mut size_budget =
             msg.max_size_mb.map(NonZeroU32::get).unwrap_or(100) as u64 * 1_000_000;
 
-        let relative_dir =
-            RelativeDirectoryPathBuf::new(msg.collection_name.as_str()).expect("Is always valid");
+        let collection_dir = std::path::Path::new(msg.collection_name.as_str());
         while let Some(x) =
             tokio::time::timeout(Duration::from_secs(5), abortable_stream.next()).await?
         {
@@ -108,6 +106,14 @@ impl DeviceState {
             };
             let chrono_time = DateTime::<Utc>::from(time);
             size_budget = remainer;
+
+            let relative_dir = collection_dir
+                .join(&chrono_time.format("%Y-%m-%d").to_string())
+                .join(&chrono_time.format("%H-%M").to_string());
+
+            tokio::fs::create_dir_all(&relative_dir)
+                .await
+                .map_err(ActorError::custom)?;
 
             let path = RelativeFilePath::new(relative_dir.join(format!(
                 "{}.png",

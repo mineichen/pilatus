@@ -106,9 +106,7 @@ impl RelativeDirectoryPath {
         // safety: RelativeDirectoryPath is repr(transparent)
         unsafe { &*(std::ptr::from_ref(path) as *const RelativeDirectoryPath) }
     }
-    pub fn new<S: AsRef<Path> + ?Sized>(
-        value: &S,
-    ) -> Result<&Self, RelativeDirPathError> {
+    pub fn new<S: AsRef<Path> + ?Sized>(value: &S) -> Result<&Self, RelativeDirPathError> {
         let buf = value.as_ref();
         validate(buf)?;
         Ok(Self::new_unchecked(buf))
@@ -116,6 +114,10 @@ impl RelativeDirectoryPath {
 
     pub fn levels(&self) -> usize {
         self.components().count()
+    }
+
+    pub fn join(&self, relative_path: &RelativeDirectoryPath) -> RelativeDirectoryPathBuf {
+        RelativeDirectoryPathBuf(self.0.join(relative_path))
     }
 
     pub fn root() -> &'static Self {
