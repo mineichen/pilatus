@@ -11,7 +11,10 @@ docker buildx build --platform linux/arm64,linux/amd64 -t mineichen/pilatus-buil
 ## Setup docker environment for buildx
 ```
 docker buildx create --use
-docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+docker run --privileged --rm tonistiigi/binfmt --install all
 docker login -u mineichen
 
 ```
+
+# Troubleshooting
+If a cc command fails to build a crate on arm, it's most likely a virtualization-error and not a problem with cargo/rust. On OSX, binfmt solved the issue.

@@ -908,7 +908,7 @@ mod tests {
         let (new_recipe_id, new_device_config) = rs.duplicate_recipe(rs.get_active_id().await).await.unwrap();
         assert!(!new_device_config.devices.contains_key(&device_in_other_recipe_id), "Clone contains device with the same id as in the original");
         
-        let new_device_path_with_file = 'outer: loop {
+        let new_device_path_with_file = 'outer: {
             for device_id in new_device_config.devices.keys() {
                 let device_path = rs.device_dir(device_id);
                 if tokio::fs::metadata(&device_path).await.is_ok() {
