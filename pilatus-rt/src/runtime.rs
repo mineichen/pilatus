@@ -1,6 +1,6 @@
 use futures::{stream::FuturesUnordered, StreamExt};
 use minfac::{ServiceCollection, ServiceProvider};
-use std::{path::PathBuf, sync::Arc};
+use std::{any::Any, path::PathBuf, sync::Arc};
 use tokio::runtime::Builder;
 use tracing::{error, info};
 
@@ -49,6 +49,11 @@ impl Runtime {
 
     pub fn register(mut self, registrar: extern "C" fn(&mut ServiceCollection)) -> Self {
         (registrar)(&mut self.services);
+        self
+    }
+
+    pub fn register_instance(mut self, instance: impl Clone + Send + Sync + Any) -> Self {
+        self.services.register_instance(instance);
         self
     }
 
