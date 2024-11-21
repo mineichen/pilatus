@@ -11,6 +11,7 @@ image = { workspace = true }
 minfac = { workspace = true }
 pilatus = { path = "../pilatus" }
 pilatus-engineering = { path = "../pilatus-engineering", features = ["image-algorithm"] }
+pilatus-engineering-camera = { path = "../pilatus-engineering-camera" }
 pilatus-axum = { path = "../pilatus-axum" }
 serde = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }

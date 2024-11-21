@@ -7,4 +7,3 @@ pub extern "C" fn register(c: &mut ServiceCollection) {
 }
 
 pub use emulation::create_default_device_config as create_default_emulation_device_config;
-pub use emulation::RecordMessage;

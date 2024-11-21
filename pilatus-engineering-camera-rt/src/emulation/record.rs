@@ -1,12 +1,11 @@
 use std::{num::NonZeroU32, time::Duration};
 
+use super::DeviceState;
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use minfac::ServiceCollection;
 use pilatus::{
-    device::{
-        ActorError, ActorErrorResultExtensions, ActorMessage, ActorResult, ActorSystem, DeviceId,
-    },
+    device::{ActorError, ActorErrorResultExtensions, ActorResult, ActorSystem, DeviceId},
     Name, RelativeFilePath,
 };
 use pilatus_axum::{
@@ -15,54 +14,13 @@ use pilatus_axum::{
     ServiceCollectionExtensions,
 };
 use pilatus_engineering::image::{StreamImageError, SubscribeDynamicImageMessage};
+use pilatus_engineering_camera::RecordMessage;
 use serde::Deserialize;
-
-use super::DeviceState;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.register_web("engineering/emulation-camera", |r| {
         r.http("/:device_id/record/:collection_name", |f| f.put(record_web))
     })
-}
-
-#[derive(Debug)]
-pub struct RecordMessage {
-    source_id: DeviceId,
-    collection_name: pilatus::Name,
-    max_size_mb: Option<NonZeroU32>,
-}
-
-impl RecordMessage {
-    fn new(
-        source_id: DeviceId,
-        collection_name: pilatus::Name,
-        max_size_mb: Option<NonZeroU32>,
-    ) -> anyhow::Result<Self> {
-        match max_size_mb.map(NonZeroU32::get) {
-            Some(100_001..) => Err(anyhow::anyhow!("max_size_mb > 100_000")),
-            _ => Ok(Self {
-                source_id,
-                collection_name,
-                max_size_mb,
-            }),
-        }
-    }
-    pub fn with_max_size(
-        source_id: DeviceId,
-        collection_name: pilatus::Name,
-        max_size_mb: NonZeroU32,
-    ) -> Self {
-        Self {
-            source_id,
-            collection_name,
-            max_size_mb: Some(max_size_mb),
-        }
-    }
-}
-
-impl ActorMessage for RecordMessage {
-    type Output = ();
-    type Error = anyhow::Error;
 }
 
 impl DeviceState {
@@ -152,7 +110,7 @@ async fn record_web(
         max_size_mb,
     }): Json<RecordBody>,
 ) -> Result<(), (StatusCode, String)> {
-    let msg = RecordMessage::new(source_id, collection_name, max_size_mb)
+    let msg = RecordMessage::with_option_max_size(source_id, collection_name, max_size_mb)
         .map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()))?;
 
     actor_system

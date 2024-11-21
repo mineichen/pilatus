@@ -8,8 +8,8 @@ members = [
   "pilatus-engineering",
   "pilatus-rt",
   "examples/stream",
-  "pilatus-engineering-camera-rt"
-]
+  "pilatus-engineering-camera-rt", 
+  "pilatus-engineering-camera"]
 
 [workspace.dependencies]
 anyhow = "1"
