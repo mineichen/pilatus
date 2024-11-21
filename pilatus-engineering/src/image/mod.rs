@@ -50,11 +50,6 @@ pub use message::*;
 pub use png::*;
 pub use stable_hash::*;
 
-#[cfg(feature = "image-algorithm")]
-pub(super) fn register_services(c: &mut minfac::ServiceCollection) {
-    logo::register_services(c);
-}
-
 pub trait PointProjector {
     fn project_to_world_plane(
         &self,
