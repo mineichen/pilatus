@@ -30,7 +30,7 @@ use crate::{InvertibleTransform, InvertibleTransform3d};
 
 #[cfg(feature = "tokio")]
 mod broadcaster;
-mod collection;
+mod keys;
 #[cfg(feature = "image-algorithm")]
 mod logo;
 mod message;
@@ -40,8 +40,8 @@ mod stable_hash;
 
 #[cfg(feature = "tokio")]
 pub use broadcaster::*;
-pub use collection::*;
 use image::GenericImageView;
+pub use keys::*;
 #[cfg(feature = "image-algorithm")]
 pub use logo::*;
 

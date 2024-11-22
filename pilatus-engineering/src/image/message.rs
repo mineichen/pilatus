@@ -1,4 +1,4 @@
-use std::{convert::Infallible, fmt::Debug, sync::Arc};
+use std::{collections::HashMap, convert::Infallible, fmt::Debug, sync::Arc};
 
 use futures::stream::BoxStream;
 use pilatus::{
@@ -8,7 +8,7 @@ use pilatus::{
 use serde::{Deserialize, Serialize};
 
 use super::{
-    DynamicImage, DynamicPointProjector, ImageCollection, ImageKey, LumaImage, StableHash,
+    DynamicImage, DynamicPointProjector, ImageKey, LumaImage, SpecificImageKey, StableHash,
 };
 
 #[derive(Default)]
@@ -46,7 +46,7 @@ impl<T: Debug> From<ActorError<(T, anyhow::Error)>> for StreamImageError<T> {
 pub struct ImageWithMeta<T> {
     pub image: T,
     pub meta: ImageMeta,
-    pub other: ImageCollection<T>,
+    pub other: HashMap<SpecificImageKey, T>,
 }
 
 impl<T> std::ops::Deref for ImageWithMeta<T> {
@@ -87,7 +87,11 @@ impl<T> ImageWithMeta<T> {
         }
     }
 
-    pub fn with_meta_and_others(image: T, meta: ImageMeta, other: ImageCollection<T>) -> Self {
+    pub fn with_meta_and_others(
+        image: T,
+        meta: ImageMeta,
+        other: HashMap<SpecificImageKey, T>,
+    ) -> Self {
         Self { image, meta, other }
     }
 
