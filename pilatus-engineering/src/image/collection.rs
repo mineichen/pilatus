@@ -7,8 +7,11 @@ pub struct ImageKey(Option<Cow<'static, str>>);
 
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
-#[error("Cannot turn '{0}' into ImageKey")]
-pub struct IntoImageKeyError(Cow<'static, str>);
+#[error("Cannot turn '{value}' into ImageKey: {reason}")]
+pub struct IntoImageKeyError {
+    value: Cow<'static, str>,
+    reason: &'static str,
+}
 
 impl TryFrom<&'static str> for ImageKey {
     type Error = IntoImageKeyError;
@@ -22,10 +25,26 @@ impl TryFrom<Cow<'static, str>> for ImageKey {
     type Error = IntoImageKeyError;
 
     fn try_from(value: Cow<'static, str>) -> Result<Self, Self::Error> {
-        if value.chars().all(|c| c.is_alphabetic()) && !value.is_empty() {
-            Ok(ImageKey(Some(value)))
-        } else {
-            Err(IntoImageKeyError(value))
+        let mut chars = value.chars();
+        match chars.next() {
+            Some(x) if x.is_alphabetic() => {
+                if chars.all(|c| c.is_alphanumeric()) {
+                    Ok(ImageKey(Some(value)))
+                } else {
+                    Err(IntoImageKeyError {
+                        value,
+                        reason: "Contains chars which are not alphanumeric",
+                    })
+                }
+            }
+            Some(_) => Err(IntoImageKeyError {
+                value,
+                reason: "Must start with alphabetic char",
+            }),
+            None => Err(IntoImageKeyError {
+                value,
+                reason: "Mustn't be empty",
+            }),
         }
     }
 }
