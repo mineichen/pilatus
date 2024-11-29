@@ -31,9 +31,8 @@
                 "mutantdino.resourcemonitor",
                 "rust-lang.rust-analyzer",
                 "tamasfe.even-better-toml",
-                "serayuzgur.crates",
                 "skellock.just",
-                "mhutchie.git-graph"
+                "fill-labs.dependi"
             ]
         }
     }
