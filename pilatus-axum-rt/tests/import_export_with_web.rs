@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::{fs::File, io::Write, sync::Arc};
 
+use bytes::Bytes;
 use futures::{sink::SinkExt, StreamExt};
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
@@ -77,13 +78,13 @@ fn upload_zip() -> anyhow::Result<()> {
                 .unwrap();
 
         sock.send(tokio_tungstenite::tungstenite::Message::Binary(
-            (data.len() as u64).to_le_bytes().to_vec(),
+            Bytes::copy_from_slice((data.len() as u64).to_le_bytes().as_slice()),
         ))
         .await
         .unwrap();
         for chunk in data.chunks(3) {
             sock.send(tokio_tungstenite::tungstenite::Message::Binary(
-                chunk.to_vec(),
+                Bytes::copy_from_slice(chunk),
             ))
             .await
             .unwrap()

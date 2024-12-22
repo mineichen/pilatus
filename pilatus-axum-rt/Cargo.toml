@@ -40,7 +40,7 @@ pilatus = { path = "../pilatus", features = ["unstable"] }
 pilatus-rt = { path = "../pilatus-rt", features = ["unstable"] }
 reqwest = "0.12.5"
 tempfile = "3"
-tokio-tungstenite = "0.24"
+tokio-tungstenite = "0.26"
 
 [features]
 default = ["engineering"]
