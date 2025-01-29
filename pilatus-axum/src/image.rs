@@ -84,6 +84,7 @@ impl StreamableImage
                     encode_meta(vec![MISSED_ITEM_CODE, 0, 0, 0], |_| Ok(()))
                 }
                 StreamImageError::ProcessingError { image, error } => {
+                    debug!("Processing error: {error}");
                     self.1
                         .encode_dynamic_image(PROCESSING_CODE, image, error.to_string())
                 }
