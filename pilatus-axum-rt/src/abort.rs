@@ -16,7 +16,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
     use minfac::Registered;
 
     c.with::<Registered<GenericConfig>>().register_shared(|c| {
-        let config = c.get::<HttpAbortSettings>("http_abort").unwrap_or_default();
+        let config = c.get_or_default::<HttpAbortSettings>("http_abort");
         Arc::new(AbortService::new(config.limit))
     });
     c.with::<Registered<Arc<AbortService>>>()

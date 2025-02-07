@@ -58,7 +58,7 @@ async fn axum_service(
         Arc<PrivateState>,
     ),
 ) -> Result<(), anyhow::Error> {
-    let web_config = config.get::<WebConfig>("web").unwrap_or_default();
+    let web_config = config.get_or_default::<WebConfig>("web");
     debug!(
         "WebConfig: {}, raw: {:?}",
         serde_json::to_string(&web_config).unwrap(),

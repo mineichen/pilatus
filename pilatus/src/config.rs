@@ -4,10 +4,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use config::{builder::DefaultState, ConfigBuilder};
+use config::{builder::DefaultState, ConfigBuilder, ConfigError};
 use glob::glob;
 use serde::de::DeserializeOwned;
-use tracing::info;
+use tracing::{error, info};
 
 /// Devices can recive typed configs for e.g. MagicConstants like timeouts or socket addresses
 /// In pilatus it is parsed from all JSON-Files in the root (typically the same folder as the executable)
@@ -72,6 +72,27 @@ impl GenericConfig {
         }
     }
 
+    pub fn get_or_default<T: DeserializeOwned + Default>(&self, key: &str) -> T {
+        match self.config.get::<T>(key) {
+            Ok(x) => x,
+            Err(ConfigError::Type {
+                origin,
+                unexpected,
+                expected,
+                key,
+            }) => {
+                error!("{key:?} cannot be parsed into {expected}, got {unexpected}, configuration src: {origin:?}. Using default instead");
+                T::default()
+            }
+            Err(_) => Default::default(),
+        }
+    }
+
+    pub fn try_get<T: DeserializeOwned>(&self, key: &str) -> anyhow::Result<T> {
+        Ok(self.config.get::<T>(key)?)
+    }
+
+    #[deprecated = "Pattern x.get().unwrap_or_default() was very common, which ignored invalid configurations and silently uses the default instead. Use `get_or_default`, which produces error logs on invalid configs or `try_get` if you really want the errornous configs to be returned as anyhow::Error (try_get is equivalent to get)"]
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> anyhow::Result<T> {
         Ok(self.config.get::<T>(key)?)
     }
@@ -101,10 +122,10 @@ mod tests {
     }
 
     #[test]
-    fn get_default() -> Result<()> {
+    fn get_error_on_missing() -> Result<()> {
         let tmp = tempfile::tempdir()?;
         let c = GenericConfig::new(tmp.path())?;
-        assert!(c.get::<Foo>("foo").is_err());
+        assert!(c.try_get::<Foo>("foo").is_err());
         Ok(())
     }
 
@@ -116,7 +137,7 @@ mod tests {
         std::fs::write(path, r#"{ "foo":  { "bar": "Test" } }"#)?;
         let c = GenericConfig::new(tmp.path())?;
         assert_eq!(
-            c.get::<Foo>("foo")?,
+            c.try_get::<Foo>("foo")?,
             Foo {
                 bar: "Test".to_string(),
                 baz: 0

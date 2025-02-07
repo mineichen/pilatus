@@ -10,12 +10,14 @@ use tracing::Level;
 
 use crate::GenericConfig;
 
+// Each tracing can be disabled by setting {file|console|terminal} to None
 #[derive(Debug, Clone, PartialEq)]
 pub struct TracingConfig {
     default_level: tracing::Level,
     filters: HashMap<String, tracing::Level>,
     file: Option<TracingFileConfig>,
     console: Option<TracingConsoleConfig>,
+    terminal: Option<TracingTerminalConfig>,
 }
 
 pub struct TracingTopic {
@@ -49,15 +51,14 @@ impl<'a, T: IntoIterator<Item = TracingTopic>> From<(&'a GenericConfig, T)> for 
             }
         }
 
-        let p = value
-            .get::<TracingConfigPrivate>("tracing")
-            .unwrap_or_default();
+        let p = value.get_or_default::<TracingConfigPrivate>("tracing");
         filters.extend(p.filters.into_iter().map(|(k, v)| (k, v.0)));
         Self {
             default_level: p.default_level.0,
             filters,
             file: p.file,
             console: p.console,
+            terminal: p.terminal,
         }
         .instrument_path(value)
     }
@@ -92,6 +93,9 @@ impl TracingConfig {
     pub fn console(&self) -> Option<&TracingConsoleConfig> {
         self.console.as_ref()
     }
+    pub fn terminal(&self) -> Option<&TracingTerminalConfig> {
+        self.terminal.as_ref()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -116,8 +120,10 @@ struct TracingConfigPrivate {
     filters: HashMap<String, LevelWrapper>,
     file: Option<TracingFileConfig>,
     console: Option<TracingConsoleConfig>,
+    terminal: Option<TracingTerminalConfig>,
 }
 
+// Enable file and terminal by default
 impl Default for TracingConfigPrivate {
     fn default() -> Self {
         Self {
@@ -136,6 +142,7 @@ impl Default for TracingConfigPrivate {
             .collect(),
             file: Some(Default::default()),
             console: Default::default(),
+            terminal: Some(Default::default()),
         }
     }
 }
@@ -156,6 +163,29 @@ impl Default for TracingFileConfig {
         Self {
             path: "./logs".into(),
             number_of_files: 2,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct TracingTerminalConfig {
+    pub ansi: bool,
+}
+
+impl Default for TracingTerminalConfig {
+    fn default() -> Self {
+        Self {
+            ansi: {
+                /// Windows cannot display colors in the default cmd, leading to weird looking log messages
+                #[cfg(target_os = "windows")]
+                {
+                    false
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    true
+                }
+            },
         }
     }
 }
@@ -229,8 +259,9 @@ mod tests {
                     ("tokio".to_owned(), Level::DEBUG),
                     ("mio_serial".to_owned(), Level::INFO),
                 ]),
-                file: Some(TracingFileConfig::default()),
+                file: Some(Default::default()),
                 console: None,
+                terminal: Some(Default::default())
             }
             .instrument_path(&generic),
             TracingConfig::from((&generic, []))
@@ -263,6 +294,7 @@ mod tests {
                     path: "./test_data/mylog".into()
                 }),
                 console: None,
+                terminal: Some(Default::default())
             },
             TracingConfig::from((&generic, []))
         );

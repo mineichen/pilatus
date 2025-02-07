@@ -62,7 +62,12 @@ pub(super) fn init(
 fn init_tracing(config: &TracingConfig) -> (Result<(), TryInitError>, TracingState) {
     let filter_config = config.log_string();
 
-    let file = config.file().expect("Only works with file_logging enabled");
+    let file = config
+        .file()
+        .expect("Optional file logging can be configured, but is not yet implemented");
+    let terminal = config
+        .terminal()
+        .expect("Optional terminal logging can be configured, but is not yet implemented");
 
     let num_files = file.number_of_files;
     let (non_blocking, guard) = tracing_appender::non_blocking(LogFileWriter::new(
@@ -86,8 +91,9 @@ fn init_tracing(config: &TracingConfig) -> (Result<(), TryInitError>, TracingSta
     });
 
     let terminal_layer = tracing_subscriber::fmt::layer()
-        .with_line_number(true)
         .compact()
+        .with_line_number(true)
+        .with_ansi(terminal.ansi)
         .with_filter(term_level_filter);
     let file_layer = tracing_subscriber::fmt::layer()
         .with_writer(non_blocking)
