@@ -100,6 +100,33 @@ impl FileServiceTrait for TokioFileService {
         }
     }
 
+    fn stream_files_recursive(
+        &self,
+        path: &RelativeDirectoryPath,
+    ) -> BoxStream<'static, Result<RelativeFilePath, TransactionError>> {
+        let path = self.root.join(path);
+        let root_clone = self.root.clone();
+        pilatus::visit_directory_files(&path)
+            .take_while(|f| {
+                std::future::ready(if let Err(e) = f {
+                    e.kind() != std::io::ErrorKind::NotFound
+                } else {
+                    true
+                })
+            })
+            .map_err(TransactionError::other)
+            .try_filter_map(move |relative_to_pilatus_entry| {
+                let r = RelativeFilePath::new(
+                    relative_to_pilatus_entry
+                        .path()
+                        .strip_prefix(&root_clone)
+                        .expect("Iteration was done in root"),
+                )
+                .map_err(|e| TransactionError::other(e));
+                async move { Ok(Some(r?)) }
+            })
+            .boxed()
+    }
     fn stream_files(
         &self,
         path: &RelativeDirectoryPath,
@@ -292,6 +319,31 @@ mod tests {
             file_content.as_bytes(),
         )
         .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stream_files_recursive_works() -> anyhow::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let device_id = DeviceId::new_v4();
+        let mut svc = TokioFileService::builder(dir.path()).build(device_id);
+
+        svc.add_file_unchecked(&RelativeFilePath::new("foo/bar/baz.jpg")?, &vec![0u8])
+            .await?;
+        svc.add_file_unchecked(&RelativeFilePath::new("foo/baz/bar.png")?, &vec![0u8])
+            .await?;
+        svc.add_file_unchecked(&RelativeFilePath::new("foo/baz/bar.jpg")?, &vec![0u8])
+            .await?;
+
+        let mut baz = svc
+            .stream_files_recursive(&RelativeDirectoryPath::new("foo/baz")?)
+            .map_ok(|x| x.as_os_str().to_string_lossy().to_string())
+            .try_collect::<Vec<_>>()
+            .await?;
+
+        baz.sort_unstable();
+        assert_eq!(baz, vec!["foo/baz/bar.jpg", "foo/baz/bar.png"]);
+
         Ok(())
     }
 

@@ -7,7 +7,7 @@ use pilatus::{
     prelude::*,
     UpdateParamsMessage, UpdateParamsMessageError,
 };
-use pilatus::{FileService, FileServiceBuilder};
+use pilatus::{FileService, FileServiceBuilder, Name};
 use pilatus_engineering::image::{DynamicImage, ImageWithMeta, StreamImageError};
 use publish_frame::PublisherState;
 use serde::{Deserialize, Serialize};
@@ -90,6 +90,7 @@ impl DeviceState {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields, default)]
 pub struct Params {
+    active: Option<Name>,
     interval: u64,
     file_ending: String,
 }
@@ -97,6 +98,7 @@ pub struct Params {
 impl Default for Params {
     fn default() -> Self {
         Self {
+            active: None,
             interval: 500,
             file_ending: Default::default(),
         }

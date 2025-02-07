@@ -119,6 +119,10 @@ pub trait FileServiceTrait {
         &self,
         dir_path: &RelativeDirectoryPath,
     ) -> anyhow::Result<PathBuf>;
+    fn stream_files_recursive(
+        &self,
+        path: &RelativeDirectoryPath,
+    ) -> BoxStream<'static, Result<RelativeFilePath, TransactionError>>;
     fn stream_files(
         &self,
         path: &RelativeDirectoryPath,
