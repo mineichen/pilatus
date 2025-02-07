@@ -100,7 +100,7 @@ impl Default for Params {
         Self {
             active: None,
             interval: 500,
-            file_ending: Default::default(),
+            file_ending: "png".into(),
         }
     }
 }
