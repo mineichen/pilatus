@@ -17,7 +17,7 @@ use pilatus::{
     TransactionError, TransactionOptions, UntypedDeviceParamsWithVariables, VariableError,
     Variables, VariablesPatch,
 };
-use pilatus::{UncommittedChangesError, UnknownDeviceError};
+use pilatus::{RelativeDirectoryPath, UncommittedChangesError, UnknownDeviceError};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
@@ -130,7 +130,9 @@ impl<'a, T: Deref<Target = Recipes>> RecipeDataService<'a, T> {
                 .map(|f| f.map(|f| f.path()))
                 .try_collect()
                 .await?;
-            let mut r_sorted = running_fs.list_recursive().await?;
+            let mut r_sorted = running_fs
+                .list_recursive(&RelativeDirectoryPath::root())
+                .await?;
             if b_sorted.len() != r_sorted.len() {
                 Err(UncommittedChangesError)?;
             }
@@ -774,9 +776,19 @@ mod tests {
         fs.add_file_unchecked(&RelativeFilePath::new("test.txt").unwrap(), b"test")
             .await
             .unwrap();
-        assert_eq!(1, fs.list_recursive().await?.len());
+        assert_eq!(
+            1,
+            fs.list_recursive(RelativeDirectoryPath::root())
+                .await?
+                .len()
+        );
         rs.restore_active().await?;
-        assert_eq!(0, fs.list_recursive().await?.len());
+        assert_eq!(
+            0,
+            fs.list_recursive(RelativeDirectoryPath::root())
+                .await?
+                .len()
+        );
 
         Ok(())
     }

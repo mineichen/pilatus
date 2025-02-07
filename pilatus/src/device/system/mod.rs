@@ -222,6 +222,7 @@ type InternalSender = mpsc::Sender<(TypeId, BoxMessage)>;
 #[derive(Debug, Default)]
 #[allow(clippy::type_complexity)]
 struct ActorSystemState {
+    /// Arc currently used to implement WeakSenders, which can only send if strong ones exist somewhere else
     devices: HashMap<DeviceId, Arc<InternalSender>>,
     /// Map from a MessageType to Uuid of Actors which are able to handle the message
     messages: HashMap<TypeId, HashSet<DeviceId>>,

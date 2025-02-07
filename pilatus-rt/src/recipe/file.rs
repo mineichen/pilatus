@@ -30,8 +30,8 @@ impl FileServiceTrait for TokioFileService {
         Ok(fs::metadata(s).await.is_ok())
     }
 
-    async fn list_recursive(&self) -> std::io::Result<Vec<PathBuf>> {
-        pilatus::visit_directory_files(&self.root)
+    async fn list_recursive(&self, root: &RelativeDirectoryPath) -> std::io::Result<Vec<PathBuf>> {
+        pilatus::visit_directory_files(&self.root.join(root))
             .take_while(|f| {
                 std::future::ready(if let Err(e) = f {
                     e.kind() != std::io::ErrorKind::NotFound
