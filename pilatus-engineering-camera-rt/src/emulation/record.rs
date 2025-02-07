@@ -69,10 +69,6 @@ impl DeviceState {
                 .join(&chrono_time.format("%Y-%m-%d").to_string())
                 .join(&chrono_time.format("%H-%M").to_string());
 
-            tokio::fs::create_dir_all(&relative_dir)
-                .await
-                .map_err(ActorError::custom)?;
-
             let path = RelativeFilePath::new(relative_dir.join(format!(
                 "{}.png",
                 chrono_time.format("%Y-%m-%d_%H-%M-%S-%3f")
