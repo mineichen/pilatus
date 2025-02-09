@@ -113,7 +113,7 @@ impl PublisherState {
         let first = files.peek();
         let (current, new_count) = match (first, files.iter().nth(state.counter as usize)) {
             (_, Some(x)) => (x, state.counter + 1),
-            (Some(x), _) => (x, 0),
+            (Some(x), _) => (x, 1),
             _ => return Err(anyhow::anyhow!("Stop streaming, there is no file")),
         };
         if !state.paused {
