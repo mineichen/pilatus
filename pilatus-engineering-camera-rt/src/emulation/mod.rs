@@ -13,6 +13,7 @@ use publish_frame::PublisherState;
 use serde::{Deserialize, Serialize};
 
 mod list_collections;
+mod pause;
 mod publish_frame;
 mod record;
 mod subscribe;
@@ -21,12 +22,14 @@ pub const DEVICE_TYPE: &str = "engineering-emulation-camera";
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     record::register_services(c);
+    pause::register_services(c);
     c.with::<(Registered<ActorSystem>, Registered<FileServiceBuilder>)>()
         .register_device(DEVICE_TYPE, validator, device);
 }
 
 struct DeviceState {
     counter: u32,
+    paused: bool,
     stream: tokio::sync::broadcast::Sender<
         Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
     >,
@@ -53,6 +56,7 @@ async fn device(
         .add_handler(DeviceState::publish_frame)
         .add_handler(DeviceState::update_params)
         .add_handler(DeviceState::list_collections)
+        .add_handler(DeviceState::toggle_pause)
         .execute(DeviceState {
             publisher: Arc::new(PublisherState {
                 self_sender: actor_system
@@ -64,6 +68,7 @@ async fn device(
             file_service: file_service_builder.build(ctx.id),
             stream: tokio::sync::broadcast::channel(1).0,
             counter: 0,
+            paused: false,
             actor_system: actor_system.clone(),
         })
         .await;

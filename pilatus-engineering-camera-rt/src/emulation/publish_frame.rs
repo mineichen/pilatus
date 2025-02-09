@@ -24,13 +24,11 @@ impl DeviceState {
     ) -> impl HandlerResult<PublishImageMessage> {
         let re_schedule = if let Some(strong) = msg.0.upgrade() {
             match strong.next_image(self).await {
-                Ok(image) => {
-                    self.counter += 1;
-                    self.stream
-                        .send(Ok(ImageWithMeta::with_hash(image, None)))
-                        .ok()
-                        .map(|_| msg.0)
-                }
+                Ok(image) => self
+                    .stream
+                    .send(Ok(ImageWithMeta::with_hash(image, None)))
+                    .ok()
+                    .map(|_| msg.0),
                 Err(e) => {
                     warn!("Stop due to acquisition error: {e:?}");
                     None
@@ -112,19 +110,15 @@ impl PublisherState {
             })
             .collect::<BinaryHeap<_>>()
             .await;
-        let mut iter = files.iter();
-        let first = iter.next();
-        let current = match (
-            first,
-            files.iter().nth(state.counter.saturating_sub(1) as usize),
-        ) {
-            (_, Some(x)) => x,
-            (Some(x), _) => {
-                state.counter = 0;
-                x
-            }
+        let first = files.peek();
+        let (current, new_count) = match (first, files.iter().nth(state.counter as usize)) {
+            (_, Some(x)) => (x, state.counter + 1),
+            (Some(x), _) => (x, 0),
             _ => return Err(anyhow::anyhow!("Stop streaming, there is no file")),
         };
+        if !state.paused {
+            state.counter = new_count;
+        }
 
         let image_data = state.file_service.get_file(&current.0).await?;
         let img =
