@@ -128,16 +128,15 @@ fn encode_dynamic_raw_image<T: Serialize>(
     meta: T,
 ) -> anyhow::Result<Vec<u8>> {
     let dims = image.dimensions();
-    let buf = prepare_dynamic_image_buf(
-        flag,
-        meta,
-        dims.0.get() as usize * dims.1.get() as usize / 2,
-    )?;
+    let (width, height) = dims;
+    let buf =
+        prepare_dynamic_image_buf(flag, meta, width.get() as usize * height.get() as usize / 2)?;
     match image {
         DynamicImage::Luma8(i) => encode_raw(buf, i.buffer(), DataType::U8, 1, dims),
         DynamicImage::Luma16(i) => {
             encode_raw(buf, bytes_from_u16(i.buffer())?, DataType::U16, 1, dims)
         }
+        DynamicImage::Rgb8Planar(i) => encode_raw(buf, i.buffer(), DataType::U8, 3, dims),
         _ => Err(anyhow!("Unsupported image format: {:?}", image)),
     }
 }
@@ -174,6 +173,7 @@ fn encode_dynamic_jpeg_image<T: Serialize>(
             ColorType::Luma,
             dims,
         ),
+        DynamicImage::Rgb8Planar(i) => encode_jpeg(buf, i.buffer(), ColorType::Rgb, dims),
         _ => Err(anyhow!("Unsupported image format: {:?}", image)),
     }
 }

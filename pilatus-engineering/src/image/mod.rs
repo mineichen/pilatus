@@ -96,25 +96,40 @@ impl PackedGenericImage {
     pub fn new(i: GenericImage<u8, 3>) -> Self {
         Self(i)
     }
+    fn from_unpacked_image(i: &GenericImage<u8, 3>) -> Self {
+        let (width, height) = i.dimensions();
+        let area = (width.get() * height.get()) as usize;
+        let (r, rest) = i.buffer().split_at(area);
+        let (g, b) = rest.split_at(area);
+        Self::from_unpacked([r, g, b], (width, height))
+    }
+
     pub fn from_unpacked([r, g, b]: [&[u8]; 3], (width, height): (NonZeroU32, NonZeroU32)) -> Self {
         let len = width.get() as usize * height.get() as usize;
         assert_eq!(len, r.len());
         assert_eq!(len, g.len());
         assert_eq!(len, b.len());
 
-        let mut write_buf = vec![0; len * 3];
+        let mut write_buf_container = Arc::new_uninit_slice(len * 3);
+        let write_buf = Arc::get_mut(&mut write_buf_container).unwrap();
         let mut next_write = 0;
 
         for channel in 0..len {
             unsafe {
-                *write_buf.get_unchecked_mut(next_write) = *r.get_unchecked(channel);
-                *write_buf.get_unchecked_mut(next_write + 1) = *g.get_unchecked(channel);
-                *write_buf.get_unchecked_mut(next_write + 2) = *b.get_unchecked(channel);
+                write_buf
+                    .get_unchecked_mut(next_write)
+                    .write(*r.get_unchecked(channel));
+                write_buf
+                    .get_unchecked_mut(next_write + 1)
+                    .write(*g.get_unchecked(channel));
+                write_buf
+                    .get_unchecked_mut(next_write + 2)
+                    .write(*b.get_unchecked(channel));
             }
             next_write += 3;
         }
         PackedGenericImage(GenericImage::<u8, 3>::new_arc(
-            write_buf.into(),
+            unsafe { write_buf_container.assume_init() },
             width,
             height,
         ))
@@ -131,7 +146,7 @@ impl RgbImage for PackedGenericImage {
     }
 
     fn into_unpacked(self: Arc<Self>) -> Arc<dyn UnpackedRgbImage> {
-        unimplemented!()
+        Arc::new(UnpackedGenericImage::from_packed_image(&self))
     }
 
     fn size(&self) -> (NonZeroU32, NonZeroU32) {
@@ -159,6 +174,41 @@ impl UnpackedGenericImage {
     pub fn new(i: GenericImage<u8, 3>) -> Self {
         Self(i)
     }
+
+    fn from_packed_image(i: &GenericImage<u8, 3>) -> Self {
+        let (width, height) = i.dimensions();
+        Self::from_packed(i.buffer(), (width, height))
+    }
+
+    pub fn from_packed(v: &[u8], (width, height): (NonZeroU32, NonZeroU32)) -> Self {
+        let len = width.get() as usize * height.get() as usize;
+        let mut write_buf_container = Arc::new_uninit_slice(len * 3);
+        let write_buf = Arc::get_mut(&mut write_buf_container).unwrap();
+        let mut next_read = 0;
+
+        let area = (width.get() * height.get()) as usize;
+        let twice_area = area + area;
+
+        for channel in 0..len {
+            unsafe {
+                write_buf
+                    .get_unchecked_mut(channel)
+                    .write(*v.get_unchecked(next_read));
+                write_buf
+                    .get_unchecked_mut(channel + area)
+                    .write(*v.get_unchecked(next_read + 1));
+                write_buf
+                    .get_unchecked_mut(channel + twice_area)
+                    .write(*v.get_unchecked(next_read + 2));
+            }
+            next_read += 3;
+        }
+        UnpackedGenericImage(GenericImage::<u8, 3>::new_arc(
+            unsafe { write_buf_container.assume_init() },
+            width,
+            height,
+        ))
+    }
 }
 
 impl Deref for UnpackedGenericImage {
@@ -175,14 +225,7 @@ impl RgbImage for UnpackedGenericImage {
     }
 
     fn into_packed(self: Arc<Self>) -> Arc<dyn PackedRgbImage> {
-        let (width, height) = self.dimensions();
-        let area = (width.get() * height.get()) as usize;
-        let (r, rest) = self.buffer().split_at(area);
-        let (g, b) = rest.split_at(area);
-        Arc::new(PackedGenericImage::from_unpacked(
-            [r, g, b],
-            (width, height),
-        ))
+        Arc::new(PackedGenericImage::from_unpacked_image(&self))
     }
 
     fn into_unpacked(self: Arc<Self>) -> Arc<dyn UnpackedRgbImage> {
@@ -221,6 +264,8 @@ impl<'a> From<&'a GenericImage<u8, 1>> for PackedGenericImage {
 pub enum DynamicImage {
     Luma8(LumaImage),
     Luma16(GenericImage<u16, 1>),
+    /// r,r,r,r,g,g,g,g,b,b,b,b
+    Rgb8Planar(GenericImage<u8, 3>),
 }
 
 impl DynamicImage {
@@ -228,6 +273,7 @@ impl DynamicImage {
         match self {
             DynamicImage::Luma8(x) => x.dimensions(),
             DynamicImage::Luma16(x) => x.dimensions(),
+            DynamicImage::Rgb8Planar(x) => x.dimensions(),
         }
     }
 }
@@ -249,21 +295,24 @@ impl TryFrom<image::DynamicImage> for DynamicImage {
         let (width, height) = (width.try_into()?, height.try_into()?);
         match value {
             image::DynamicImage::ImageLuma8(x) => Ok(DynamicImage::Luma8(GenericImage::new_vec(
-                x.to_vec(),
+                x.into_vec(),
                 width,
                 height,
             ))),
             image::DynamicImage::ImageLuma16(x) => Ok(DynamicImage::Luma16(GenericImage::new_vec(
-                x.to_vec(),
+                x.into_vec(),
                 width,
                 height,
             ))),
             image::DynamicImage::ImageLumaA8(_) => Err(ImageConversionError::Unsupported(
                 Cow::Borrowed("ImageLumaA8"),
             )),
-            image::DynamicImage::ImageRgb8(_) => Err(ImageConversionError::Unsupported(
-                Cow::Borrowed("ImageRgb8"),
-            )),
+            image::DynamicImage::ImageRgb8(x) => {
+                let unpacked = UnpackedGenericImage::from_packed_image(&PackedGenericImage(
+                    GenericImage::new_vec(x.into_vec(), width, height),
+                ));
+                Ok(DynamicImage::Rgb8Planar(unpacked.0))
+            }
             image::DynamicImage::ImageRgba8(_) => Err(ImageConversionError::Unsupported(
                 Cow::Borrowed("ImageRgba8"),
             )),
@@ -302,6 +351,12 @@ pub struct GenericImage<T: 'static, const CHANNELS: usize> {
 impl<T, const CHANNELS: usize> Clone for GenericImage<T, CHANNELS> {
     fn clone(&self) -> Self {
         unsafe { (self.vtable.clone)(self) }
+    }
+}
+
+impl<T: std::cmp::PartialEq, const CHANNELS: usize> PartialEq for GenericImage<T, CHANNELS> {
+    fn eq(&self, other: &Self) -> bool {
+        self.width == other.width && self.height == other.height && self.buffer() == other.buffer()
     }
 }
 
@@ -429,13 +484,19 @@ impl<T: 'static + Clone, const CHANNELS: usize> Factory<T, CHANNELS> for ArcFact
 }
 
 #[allow(clippy::len_without_is_empty)]
-impl<const CHANNELS: usize, T: 'static + Clone> GenericImage<T, CHANNELS> {
+impl<const CHANNELS: usize, T: 'static> GenericImage<T, CHANNELS> {
     #[deprecated = "Use eigher new_vec or new_arc"]
-    pub fn new(input: Vec<T>, width: NonZeroU32, height: NonZeroU32) -> Self {
+    pub fn new(input: Vec<T>, width: NonZeroU32, height: NonZeroU32) -> Self
+    where
+        T: Clone,
+    {
         Self::new_vec(input, width, height)
     }
 
-    pub fn new_vec(input: Vec<T>, width: NonZeroU32, height: NonZeroU32) -> Self {
+    pub fn new_vec(input: Vec<T>, width: NonZeroU32, height: NonZeroU32) -> Self
+    where
+        T: Clone,
+    {
         let cap = input.capacity();
         let buf = input.as_ptr();
         assert_eq!(
@@ -449,7 +510,10 @@ impl<const CHANNELS: usize, T: 'static + Clone> GenericImage<T, CHANNELS> {
         unsafe { Self::new_with_vtable(buf, width, height, vtable, cap) }
     }
 
-    pub fn new_arc(input: Arc<[T]>, width: NonZeroU32, height: NonZeroU32) -> Self {
+    pub fn new_arc(input: Arc<[T]>, width: NonZeroU32, height: NonZeroU32) -> Self
+    where
+        T: Clone,
+    {
         assert_eq!(
             input.len() as u32,
             width.get() * height.get() * CHANNELS as u32,
@@ -501,7 +565,10 @@ impl<const CHANNELS: usize, T: 'static + Clone> GenericImage<T, CHANNELS> {
         }
     }
 
-    pub fn to_vec(self) -> Vec<T> {
+    pub fn to_vec(self) -> Vec<T>
+    where
+        T: Clone,
+    {
         if self.vtable.drop as usize == clear_vec::<T, CHANNELS> as usize {
             let size = self.len();
             let result = unsafe { Vec::from_raw_parts(self.ptr as *mut _, size, self.data) };
