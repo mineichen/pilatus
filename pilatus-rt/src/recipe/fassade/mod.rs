@@ -287,7 +287,7 @@ pub(crate) mod unstable {
         }
 
         pub async fn create_device_file(&self, did: DeviceId, filename: &str, content: &[u8]) {
-            let mut service = self.build_device_file_service(did);
+            let service = self.build_device_file_service(did);
             service
                 .add_file_unchecked(&filename.try_into().unwrap(), content)
                 .await

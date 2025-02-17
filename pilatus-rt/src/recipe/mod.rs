@@ -732,7 +732,7 @@ mod tests {
         let device_id_with_file = rs
             .add_device_to_active_recipe(DeviceConfig::mock("params"))
             .await?;
-        let mut file_service = rs.build_device_file_service(device_id);
+        let file_service = rs.build_device_file_service(device_id);
         file_service
             .add_file_unchecked(&"bar/test.txt".try_into()?, b"content")
             .await?;
@@ -772,7 +772,7 @@ mod tests {
         let did = rs
             .add_device_to_active_recipe(DeviceConfig::mock(""))
             .await?;
-        let mut fs = rs.build_device_file_service(did);
+        let fs = rs.build_device_file_service(did);
         fs.add_file_unchecked(&RelativeFilePath::new("test.txt").unwrap(), b"test")
             .await
             .unwrap();
@@ -820,7 +820,7 @@ mod tests {
         let r1_id = rs.get_active_id().await;
 
         rs.activate_recipe(r2_id).await?;
-        let mut fs = rs.build_device_file_service(r2_d1);
+        let fs = rs.build_device_file_service(r2_d1);
         fs.add_file_unchecked(&"test.txt".try_into()?, b"test")
             .await?;
 
@@ -843,7 +843,7 @@ mod tests {
         let r2_d1 = r2.add_device(DeviceConfig::mock("params"));
         let r2_id = rs.add_recipe(r2).await?;
         let r1_id = rs.get_active_id().await;
-        let mut fs = rs.build_device_file_service(r2_d1);
+        let fs = rs.build_device_file_service(r2_d1);
         let initial_filename = "test.txt".try_into()?;
         fs.add_file_unchecked(&initial_filename, content).await?;
         rs.activate_recipe(r2_id).await?;

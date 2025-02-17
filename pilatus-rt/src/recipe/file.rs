@@ -44,7 +44,7 @@ impl FileServiceTrait for TokioFileService {
             .await
     }
     async fn add_file_unchecked(
-        &mut self,
+        &self,
         file_path: &RelativeFilePath,
         data: &[u8],
     ) -> Result<(), anyhow::Error> {
@@ -326,7 +326,7 @@ mod tests {
     async fn stream_files_recursive_works() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
         let device_id = DeviceId::new_v4();
-        let mut svc = TokioFileService::builder(dir.path()).build(device_id);
+        let svc = TokioFileService::builder(dir.path()).build(device_id);
 
         svc.add_file_unchecked(&RelativeFilePath::new("foo/bar/baz.jpg")?, &vec![0u8])
             .await?;
@@ -351,7 +351,7 @@ mod tests {
     async fn list_files() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
         let device_id = DeviceId::new_v4();
-        let mut svc = TokioFileService::builder(dir.path()).build(device_id);
+        let svc = TokioFileService::builder(dir.path()).build(device_id);
 
         for (dir, file) in [
             (

@@ -105,7 +105,7 @@ pub trait FileServiceTrait {
     async fn list_recursive(&self, path: &RelativeDirectoryPath) -> std::io::Result<Vec<PathBuf>>;
     // If the parent doesn't exist, it will be created recursively
     async fn add_file_unchecked(
-        &mut self,
+        &self,
         file_path: &RelativeFilePath,
         data: &[u8],
     ) -> Result<(), anyhow::Error>;

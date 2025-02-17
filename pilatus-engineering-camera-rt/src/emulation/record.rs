@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use minfac::ServiceCollection;
 use pilatus::{
-    device::{ActorError, ActorErrorResultExtensions, ActorResult, ActorSystem, DeviceId},
+    device::{ActorErrorResultExtensions, ActorSystem, DeviceId, HandlerResult, Step2},
     Name, RelativeFilePath,
 };
 use pilatus_axum::{
@@ -28,59 +28,63 @@ impl DeviceState {
         &mut self,
         msg: RecordMessage,
         reg: futures::stream::AbortRegistration,
-    ) -> ActorResult<RecordMessage> {
+    ) -> impl HandlerResult<RecordMessage> {
         let images = self
             .actor_system
             .ask(msg.source_id, SubscribeDynamicImageMessage::default())
             .await
-            .map_actor_error(|_| anyhow::anyhow!("unknown error"))?;
-
-        let encoded_stream = images
-            .filter(|e| std::future::ready(!matches!(e, Err(StreamImageError::MissedItems(..)))))
-            .map(|x| async move {
-                let data = x?;
-                tokio::task::spawn_blocking(move || {
-                    anyhow::Ok((
-                        // todo: Take from metadata when it is available
-                        std::time::SystemTime::now(),
-                        data.image.encode_png()?,
-                    ))
+            .map_actor_error(|_| anyhow::anyhow!("unknown error"));
+        let file_service = self.file_service.clone();
+        Step2(async move {
+            let images = images?;
+            let encoded_stream = images
+                .filter(|e| {
+                    std::future::ready(!matches!(e, Err(StreamImageError::MissedItems(..))))
                 })
-                .await?
-            })
-            .buffer_unordered(8);
-        let mut abortable_stream = futures::stream::Abortable::new(encoded_stream, reg);
+                .map(|x| async move {
+                    let data = x?;
+                    tokio::task::spawn_blocking(move || {
+                        anyhow::Ok((
+                            // todo: Take from metadata when it is available
+                            std::time::SystemTime::now(),
+                            data.image.encode_png()?,
+                        ))
+                    })
+                    .await?
+                })
+                .buffer_unordered(8);
+            let mut abortable_stream = futures::stream::Abortable::new(encoded_stream, reg);
 
-        let mut size_budget =
-            msg.max_size_mb.map(NonZeroU32::get).unwrap_or(100) as u64 * 1_000_000;
+            let mut size_budget =
+                msg.max_size_mb.map(NonZeroU32::get).unwrap_or(100) as u64 * 1_000_000;
 
-        let collection_dir = std::path::Path::new(msg.collection_name.as_str());
-        while let Some(x) =
-            tokio::time::timeout(Duration::from_secs(5), abortable_stream.next()).await?
-        {
-            let (time, encoded) = x?;
-            let Some(remainer) = size_budget.checked_sub(encoded.len() as u64) else {
-                break;
-            };
-            let chrono_time = DateTime::<Utc>::from(time);
-            size_budget = remainer;
+            let collection_dir = std::path::Path::new(msg.collection_name.as_str());
 
-            let relative_dir = collection_dir
-                .join(&chrono_time.format("%Y-%m-%d").to_string())
-                .join(&chrono_time.format("%H-%M").to_string());
+            while let Some(x) =
+                tokio::time::timeout(Duration::from_secs(5), abortable_stream.next()).await?
+            {
+                let (time, encoded) = x?;
+                let Some(remainer) = size_budget.checked_sub(encoded.len() as u64) else {
+                    break;
+                };
+                let chrono_time = DateTime::<Utc>::from(time);
+                size_budget = remainer;
 
-            let path = RelativeFilePath::new(relative_dir.join(format!(
-                "{}.png",
-                chrono_time.format("%Y-%m-%d_%H-%M-%S-%3f")
-            )))
-            .expect("String contains no invalid chars");
+                let relative_dir = collection_dir
+                    .join(&chrono_time.format("%Y-%m-%d").to_string())
+                    .join(&chrono_time.format("%H-%M").to_string());
 
-            self.file_service
-                .add_file_unchecked(&path, &encoded)
-                .await?;
-        }
+                let path = RelativeFilePath::new(relative_dir.join(format!(
+                    "{}.png",
+                    chrono_time.format("%Y-%m-%d_%H-%M-%S-%3f")
+                )))
+                .expect("String contains no invalid chars");
 
-        Ok(())
+                file_service.add_file_unchecked(&path, &encoded).await?;
+            }
+
+            Ok(())
+        })
     }
 }
 

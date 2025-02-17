@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use futures::channel::mpsc;
 use minfac::{Registered, ServiceCollection};
 use pilatus::device::{HandlerResult, Step2, WithAbort};
 use pilatus::{
@@ -14,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 mod list_collections;
 mod pause;
+mod permanent_recording;
 mod publish_frame;
 mod record;
 mod subscribe;
@@ -33,9 +35,10 @@ struct DeviceState {
     stream: tokio::sync::broadcast::Sender<
         Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
     >,
-    file_service: FileService<()>,
+    file_service: Arc<FileService<()>>,
     publisher: Arc<PublisherState>,
     actor_system: ActorSystem,
+    recording_sender: mpsc::Sender<Option<permanent_recording::PermanentRecordingConfig>>,
 }
 
 async fn validator(ctx: DeviceValidationContext<'_>) -> Result<Params, UpdateParamsMessageError> {
@@ -48,30 +51,43 @@ async fn device(
     (actor_system, file_service_builder): (ActorSystem, FileServiceBuilder),
 ) -> DeviceResult {
     let id = ctx.id;
-
-    actor_system
+    let system = actor_system
         .register(id)
         .add_handler(WithAbort::new(DeviceState::record))
         .add_handler(DeviceState::subscribe)
         .add_handler(DeviceState::publish_frame)
         .add_handler(DeviceState::update_params)
         .add_handler(DeviceState::list_collections)
-        .add_handler(DeviceState::toggle_pause)
-        .execute(DeviceState {
-            publisher: Arc::new(PublisherState {
-                self_sender: actor_system
-                    .get_weak_untyped_sender(ctx.id)
-                    .expect("Just created"),
+        .add_handler(DeviceState::toggle_pause);
+    let (recording_sender, permanent_recording_task) =
+        permanent_recording::setup_permanent_recording(
+            actor_system.get_weak_untyped_sender(id)?,
+            &params.permanent_recording,
+        );
 
-                params,
-            }),
-            file_service: file_service_builder.build(ctx.id),
-            stream: tokio::sync::broadcast::channel(1).0,
-            counter: 0,
-            paused: false,
-            actor_system: actor_system.clone(),
-        })
-        .await;
+    futures::future::join(
+        async {
+            system
+                .execute(DeviceState {
+                    publisher: Arc::new(PublisherState {
+                        self_sender: actor_system
+                            .get_weak_untyped_sender(ctx.id)
+                            .expect("Just created"),
+
+                        params,
+                    }),
+                    file_service: Arc::new(file_service_builder.build(ctx.id)),
+                    stream: tokio::sync::broadcast::channel(1).0,
+                    counter: 0,
+                    paused: false,
+                    actor_system,
+                    recording_sender,
+                })
+                .await;
+        },
+        permanent_recording_task,
+    )
+    .await;
 
     Ok(())
 }
@@ -82,6 +98,15 @@ impl DeviceState {
         UpdateParamsMessage { params }: UpdateParamsMessage<Params>,
     ) -> impl HandlerResult<UpdateParamsMessage<Params>> {
         let mutable = Arc::make_mut(&mut self.publisher);
+        if mutable.params.permanent_recording != params.permanent_recording {
+            if let Err(e) = self
+                .recording_sender
+                .try_send(params.permanent_recording.clone())
+            {
+                tracing::error!("Couldn't send recording task: {e}")
+            };
+        }
+
         mutable.params = params;
         let weak = Arc::downgrade(&self.publisher);
 
@@ -98,6 +123,7 @@ pub struct Params {
     active: Option<Name>,
     interval: u64,
     file_ending: String,
+    permanent_recording: Option<permanent_recording::PermanentRecordingConfig>,
 }
 
 impl Default for Params {
@@ -106,6 +132,7 @@ impl Default for Params {
             active: None,
             interval: 500,
             file_ending: "png".into(),
+            permanent_recording: None,
         }
     }
 }
