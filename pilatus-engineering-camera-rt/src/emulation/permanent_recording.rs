@@ -6,7 +6,7 @@ use futures::{
     StreamExt,
 };
 use pilatus::{
-    device::{DeviceId, WeakUntypedActorMessageSender},
+    device::{ActorError, DeviceId, WeakUntypedActorMessageSender},
     Name,
 };
 use serde::{Deserialize, Serialize};
@@ -51,15 +51,12 @@ async fn handle_permanent_recording(
                 ),
             ));
             match futures::future::select(record_task, &mut recv.next()).await {
-                Either::Left((r, _)) => {
-                    if let Err(e) = r {
-                        eprintln!("Error during record: {e:?}. Try again in 1s");
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-                        maybe_next = Some(config);
-                        continue;
-                    } else {
-                        break;
-                    }
+                Either::Left((Ok(_) | Err(ActorError::UnknownDevice(..)), _)) => break,
+                Either::Left((Err(e), _)) => {
+                    eprintln!("Error during record: {e:?}. Try again in 1s");
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    maybe_next = Some(config);
+                    continue;
                 }
                 Either::Right((Some(next_job), _)) => {
                     maybe_next = next_job;
