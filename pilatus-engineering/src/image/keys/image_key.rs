@@ -23,10 +23,21 @@ impl TryFrom<Cow<'static, str>> for ImageKey {
     }
 }
 
+impl From<SpecificImageKey> for ImageKey {
+    fn from(value: SpecificImageKey) -> Self {
+        Self(Some(value))
+    }
+}
+
 impl ImageKey {
     pub const fn unspecified() -> Self {
         Self(None)
     }
+
+    pub fn specific(&self) -> Option<&SpecificImageKey> {
+        self.0.as_ref()
+    }
+
     pub(in super::super) fn by_name_or<'a, T>(
         &self,
         collection: &'a HashMap<SpecificImageKey, T>,

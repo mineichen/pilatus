@@ -2,7 +2,7 @@ use std::{num::NonZeroU32, time::Duration};
 
 use super::DeviceState;
 use chrono::{DateTime, Utc};
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use minfac::ServiceCollection;
 use pilatus::{
     device::{ActorErrorResultExtensions, ActorSystem, DeviceId, HandlerResult, Step2},
@@ -38,19 +38,27 @@ impl DeviceState {
         Step2(async move {
             let images = images?;
             let encoded_stream = images
+                // ignore missing
                 .filter(|e| {
                     std::future::ready(!matches!(e, Err(StreamImageError::MissedItems(..))))
                 })
-                .map(|x| async move {
-                    let data = x?;
-                    tokio::task::spawn_blocking(move || {
-                        anyhow::Ok((
-                            // todo: Take from metadata when it is available
-                            std::time::SystemTime::now(),
-                            data.image.encode_png()?,
-                        ))
-                    })
-                    .await?
+                .map_err(anyhow::Error::from)
+                .map(|x| async {
+                    let time = std::time::SystemTime::now();
+                    let img = x?;
+
+                    let encoded = futures::stream::iter(img.into_iter())
+                        .then(|(key, img)| async move {
+                            tokio::task::spawn_blocking(move || {
+                                let i = img.encode_png()?;
+                                anyhow::Ok((key, i))
+                            })
+                            .await?
+                        })
+                        .try_collect::<Vec<_>>()
+                        .await?;
+
+                    anyhow::Ok((time, encoded))
                 })
                 .buffer_unordered(8);
             let mut abortable_stream = futures::stream::Abortable::new(encoded_stream, reg);
@@ -63,24 +71,31 @@ impl DeviceState {
             while let Some(x) =
                 tokio::time::timeout(Duration::from_secs(5), abortable_stream.next()).await?
             {
-                let (time, encoded) = x?;
-                let Some(remainer) = size_budget.checked_sub(encoded.len() as u64) else {
+                let (time, images) = x?;
+                let required_size: usize = images.iter().map(|(_, encoded)| encoded.len()).sum();
+                let Some(remainer) = size_budget.checked_sub(required_size as u64) else {
                     break;
                 };
-                let chrono_time = DateTime::<Utc>::from(time);
                 size_budget = remainer;
+                let chrono_time = DateTime::<Utc>::from(time);
 
                 let relative_dir = collection_dir
                     .join(&chrono_time.format("%Y-%m-%d").to_string())
                     .join(&chrono_time.format("%H-%M").to_string());
 
-                let path = RelativeFilePath::new(relative_dir.join(format!(
-                    "{}.png",
-                    chrono_time.format("%Y-%m-%d_%H-%M-%S-%3f")
-                )))
-                .expect("String contains no invalid chars");
+                for (key, encoded) in images {
+                    let path = RelativeFilePath::new(relative_dir.join(format!(
+                        "{}_{}.png",
+                        chrono_time.format("%Y-%m-%d_%H-%M-%S-%3f"),
+                        match key.specific() {
+                            Some(x) => x.as_str(),
+                            None => "main",
+                        }
+                    )))
+                    .expect("String contains no invalid chars");
 
-                file_service.add_file_unchecked(&path, &encoded).await?;
+                    file_service.add_file_unchecked(&path, &encoded).await?;
+                }
             }
 
             Ok(())

@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize, Debug, PartialEq, Eq, Hash)]
 pub struct SpecificImageKey(Cow<'static, str>);
 
+impl SpecificImageKey {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 impl<'de> Deserialize<'de> for SpecificImageKey {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

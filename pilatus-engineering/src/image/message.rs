@@ -49,6 +49,25 @@ pub struct ImageWithMeta<T> {
     pub other: HashMap<SpecificImageKey, T>,
 }
 
+impl<T> IntoIterator for ImageWithMeta<T> {
+    type Item = (ImageKey, T);
+    type IntoIter = std::iter::Chain<
+        std::iter::Once<(ImageKey, T)>,
+        std::iter::Map<
+            std::collections::hash_map::IntoIter<SpecificImageKey, T>,
+            fn((SpecificImageKey, T)) -> (ImageKey, T),
+        >,
+    >;
+
+    fn into_iter(self) -> Self::IntoIter {
+        std::iter::once((ImageKey::unspecified(), self.image)).chain(
+            self.other
+                .into_iter()
+                .map((|(key, i)| (key.into(), i)) as fn((SpecificImageKey, T)) -> (ImageKey, T)),
+        )
+    }
+}
+
 impl<T> std::ops::Deref for ImageWithMeta<T> {
     type Target = ImageMeta;
 
