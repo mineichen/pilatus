@@ -10,6 +10,7 @@ use pilatus::{
     Name,
 };
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct PermanentRecordingConfig {
@@ -53,7 +54,7 @@ async fn handle_permanent_recording(
             match futures::future::select(record_task, &mut recv.next()).await {
                 Either::Left((Ok(_) | Err(ActorError::UnknownDevice(..)), _)) => break,
                 Either::Left((Err(e), _)) => {
-                    eprintln!("Error during record: {e:?}. Try again in 1s");
+                    warn!("Error during record: {e:?}. Try again in 1s");
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     maybe_next = Some(config);
                     continue;

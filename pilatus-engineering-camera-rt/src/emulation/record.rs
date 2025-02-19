@@ -1,4 +1,4 @@
-use std::{num::NonZeroU32, time::Duration};
+use std::num::NonZeroU32;
 
 use super::DeviceState;
 use chrono::{DateTime, Utc};
@@ -16,6 +16,7 @@ use pilatus_axum::{
 use pilatus_engineering::image::{StreamImageError, SubscribeDynamicImageMessage};
 use pilatus_engineering_camera::RecordMessage;
 use serde::Deserialize;
+use tracing::debug;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.register_web("engineering/emulation-camera", |r| {
@@ -36,6 +37,7 @@ impl DeviceState {
             .map_actor_error(|_| anyhow::anyhow!("unknown error"));
         let file_service = self.file_service.clone();
         Step2(async move {
+            debug!("Step2");
             let images = images?;
             let encoded_stream = images
                 // ignore missing
@@ -46,7 +48,7 @@ impl DeviceState {
                 .map(|x| async {
                     let time = std::time::SystemTime::now();
                     let img = x?;
-
+                    debug!("Before encode");
                     let encoded = futures::stream::iter(img.into_iter())
                         .then(|(key, img)| async move {
                             tokio::task::spawn_blocking(move || {
@@ -57,7 +59,7 @@ impl DeviceState {
                         })
                         .try_collect::<Vec<_>>()
                         .await?;
-
+                    debug!("Finished encoding {}", encoded.len());
                     anyhow::Ok((time, encoded))
                 })
                 .buffer_unordered(8);
@@ -68,9 +70,7 @@ impl DeviceState {
 
             let collection_dir = std::path::Path::new(msg.collection_name.as_str());
 
-            while let Some(x) =
-                tokio::time::timeout(Duration::from_secs(5), abortable_stream.next()).await?
-            {
+            while let Some(x) = abortable_stream.next().await {
                 let (time, images) = x?;
                 let required_size: usize = images.iter().map(|(_, encoded)| encoded.len()).sum();
                 let Some(remainer) = size_budget.checked_sub(required_size as u64) else {
