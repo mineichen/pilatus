@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use futures::channel::mpsc;
@@ -30,7 +32,6 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 }
 
 struct DeviceState {
-    counter: u32,
     paused: bool,
     stream: tokio::sync::broadcast::Sender<
         Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
@@ -75,10 +76,10 @@ async fn device(
                             .expect("Just created"),
 
                         params,
+                        pending_active: Default::default(),
                     }),
                     file_service: Arc::new(file_service_builder.build(ctx.id)),
                     stream: tokio::sync::broadcast::channel(1).0,
-                    counter: 0,
                     paused: false,
                     actor_system,
                     recording_sender,
@@ -97,8 +98,7 @@ impl DeviceState {
         &mut self,
         UpdateParamsMessage { params }: UpdateParamsMessage<Params>,
     ) -> impl HandlerResult<UpdateParamsMessage<Params>> {
-        let mutable = Arc::make_mut(&mut self.publisher);
-        if mutable.params.permanent_recording != params.permanent_recording {
+        if self.publisher.params.permanent_recording != params.permanent_recording {
             if let Err(e) = self
                 .recording_sender
                 .try_send(params.permanent_recording.clone())
@@ -106,8 +106,21 @@ impl DeviceState {
                 tracing::error!("Couldn't send recording task: {e}")
             };
         }
-
-        mutable.params = params;
+        match Arc::get_mut(&mut self.publisher) {
+            Some(old)
+                if old.params.active == params.active
+                    && old.params.file_ending == params.file_ending =>
+            {
+                old.params = params;
+            }
+            _ => {
+                self.publisher = Arc::new(PublisherState {
+                    params,
+                    self_sender: self.publisher.self_sender.clone(),
+                    pending_active: Default::default(),
+                })
+            }
+        }
         let weak = Arc::downgrade(&self.publisher);
 
         Step2(async {
@@ -120,7 +133,7 @@ impl DeviceState {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields, default)]
 pub struct Params {
-    active: Option<Name>,
+    active: ActiveRecipe,
     interval: u64,
     file_ending: String,
     permanent_recording: Option<permanent_recording::PermanentRecordingConfig>,
@@ -129,10 +142,47 @@ pub struct Params {
 impl Default for Params {
     fn default() -> Self {
         Self {
-            active: None,
+            active: Default::default(),
             interval: 500,
             file_ending: "png".into(),
             permanent_recording: None,
+        }
+    }
+}
+
+/// Strings which are valid Names, so don't contain any slashes/backward-slashes, are interpreted as recorded collections. Otherwise it's assumed to be a path. Use ./foo if you want a folder located in $PWD
+#[derive(Default, Debug, Clone, PartialEq)]
+enum ActiveRecipe {
+    #[default]
+    Undefined,
+    Named(Name),
+    External(PathBuf),
+}
+
+impl Serialize for ActiveRecipe {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            ActiveRecipe::Undefined => Option::<()>::None.serialize(serializer),
+            ActiveRecipe::Named(name_wrapper) => name_wrapper.as_str().serialize(serializer),
+            ActiveRecipe::External(path_buf) => path_buf.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ActiveRecipe {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match Option::<String>::deserialize(deserializer)? {
+            Some(x) => match Name::from_str(&x) {
+                Ok(x) => Ok(Self::Named(x)),
+                Err(_) => Ok(Self::External(PathBuf::from(x))),
+            },
+            None => Ok(Self::Undefined),
         }
     }
 }

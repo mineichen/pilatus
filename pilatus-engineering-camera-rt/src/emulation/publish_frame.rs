@@ -1,14 +1,14 @@
-use std::{collections::BinaryHeap, sync::Weak, time::Duration};
+use std::{collections::BinaryHeap, path::PathBuf, sync::Weak, time::Duration};
 
 use futures::{StreamExt, TryStreamExt};
 use pilatus::{
     device::{ActorMessage, HandlerResult, Step2, WeakUntypedActorMessageSender},
-    RelativeDirectoryPath, RelativeDirectoryPathBuf, RelativeFilePath, TransactionError,
+    RelativeDirectoryPath, TransactionError,
 };
 use pilatus_engineering::image::{DynamicImage as PilatusDynamicImage, ImageWithMeta};
-use tracing::warn;
+use tracing::{debug, warn};
 
-use super::{DeviceState, Params};
+use super::{ActiveRecipe, DeviceState, Params};
 
 pub(super) struct PublishImageMessage(pub Weak<PublisherState>);
 
@@ -47,10 +47,10 @@ impl DeviceState {
     }
 }
 
-#[derive(Clone)]
 pub(super) struct PublisherState {
     pub params: Params,
     pub self_sender: WeakUntypedActorMessageSender,
+    pub pending_active: tokio::sync::Mutex<BinaryHeap<ExistingCollectionEntry>>,
 }
 
 impl PublisherState {
@@ -68,22 +68,28 @@ impl PublisherState {
     pub async fn get_collection_directory(
         &self,
         state: &super::DeviceState,
-    ) -> Result<RelativeDirectoryPathBuf, TransactionError> {
+    ) -> Result<PathBuf, TransactionError> {
         let mut all = state
             .file_service
             .stream_directories(RelativeDirectoryPath::root());
-        let maybe = match self.params.active.as_ref() {
-            Some(name) => {
+        let maybe = match &self.params.active {
+            ActiveRecipe::Undefined => all
+                .next()
+                .await
+                .map(|result| result.map(|f| state.file_service.get_directory_path(&f))),
+            ActiveRecipe::Named(name) => {
                 std::pin::pin!(all.try_filter_map(|x| async move {
                     Ok(match x.file_name() {
-                        Some(filename) if filename == name.as_str() => Some(x),
+                        Some(filename) if filename == name.as_str() => {
+                            Some(state.file_service.get_directory_path(&x))
+                        }
                         _ => None,
                     })
                 }))
                 .next()
                 .await
             }
-            None => all.next().await,
+            ActiveRecipe::External(path_buf) => path_buf.exists().then(|| Ok(path_buf.clone())),
         };
         match maybe {
             Some(x) => x,
@@ -91,7 +97,6 @@ impl PublisherState {
                 "No collection exists"
             ))),
         }
-        //        RelativeDirectoryPath::new(self.params.)
     }
 
     // Todo: Cache list instead of getting it in each acquisition (e.g. only get it when run is over to accomodate for new images without restart)
@@ -99,43 +104,46 @@ impl PublisherState {
         &self,
         state: &mut super::DeviceState,
     ) -> anyhow::Result<PilatusDynamicImage> {
-        let files = state
-            .file_service
-            .stream_files_recursive(&self.get_collection_directory(state).await?)
-            .filter_map(|x| async {
-                let entry = x.ok()?;
+        let next = {
+            let mut lock = self.pending_active.lock().await;
+            if lock.is_empty() {
+                *lock = pilatus::visit_directory_files(self.get_collection_directory(state).await?)
+                    .filter_map(|x| async {
+                        let entry = x.ok()?;
 
-                (entry.file_name().ends_with(&self.params.file_ending))
-                    .then_some(ExistingCollectionEntry(entry))
-            })
-            .collect::<BinaryHeap<_>>()
-            .await;
-        let first = files.peek();
-        let (current, new_count) = match (first, files.iter().nth(state.counter as usize)) {
-            (_, Some(x)) => (x, state.counter + 1),
-            (Some(x), _) => (x, 1),
-            _ => return Err(anyhow::anyhow!("Stop streaming, there is no file")),
+                        (entry
+                            .file_name()
+                            .to_str()?
+                            .ends_with(&self.params.file_ending))
+                        .then_some(ExistingCollectionEntry(entry.path()))
+                    })
+                    .collect::<BinaryHeap<_>>()
+                    .await;
+            }
+            if state.paused {
+                lock.peek().cloned()
+            } else {
+                lock.pop()
+            }
         };
-        if !state.paused {
-            state.counter = new_count;
-        }
 
-        let image_data = state.file_service.get_file(&current.0).await?;
+        let Some(path) = next else {
+            return Err(anyhow::anyhow!("Stop streaming, there is no file"));
+        };
+
+        let image_data = tokio::fs::read(&path.0).await?;
         let img =
             tokio::task::spawn_blocking(move || image::load_from_memory(&image_data)).await??;
-
+        debug!(
+            "Publish '{:?}'",
+            &path.0.file_name().and_then(|x| x.to_str()).unwrap_or("")
+        );
         Ok(img.try_into()?)
     }
 }
 
-struct ExistingCollectionEntry(RelativeFilePath);
-
-impl PartialEq for ExistingCollectionEntry {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.file_name() == other.0.file_name()
-    }
-}
-impl Eq for ExistingCollectionEntry {}
+#[derive(PartialEq, Eq, Clone)]
+pub(super) struct ExistingCollectionEntry(PathBuf);
 
 impl PartialOrd for ExistingCollectionEntry {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -145,6 +153,6 @@ impl PartialOrd for ExistingCollectionEntry {
 
 impl Ord for ExistingCollectionEntry {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.file_name().cmp(other.0.file_name())
+        other.0.cmp(&self.0)
     }
 }
