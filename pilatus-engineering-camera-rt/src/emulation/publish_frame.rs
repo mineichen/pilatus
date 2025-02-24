@@ -90,12 +90,9 @@ impl PublisherState {
                 .map(|result| result.map(|f| state.file_service.get_directory_path(&f))),
             ActiveRecipe::Named(name) => {
                 std::pin::pin!(all.try_filter_map(|x| async move {
-                    Ok(match x.file_name() {
-                        Some(filename) if filename == name.as_str() => {
-                            Some(state.file_service.get_directory_path(&x))
-                        }
-                        _ => None,
-                    })
+                    Ok(x.file_name()
+                        .filter(|filename| *filename == name.as_str())
+                        .map(|_| state.file_service.get_directory_path(&x)))
                 }))
                 .next()
                 .await
