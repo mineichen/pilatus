@@ -1,4 +1,9 @@
-use std::{collections::BinaryHeap, path::PathBuf, sync::Weak, time::Duration};
+use std::{
+    collections::BinaryHeap,
+    path::PathBuf,
+    sync::{Arc, Weak},
+    time::Duration,
+};
 
 use futures::{StreamExt, TryStreamExt};
 use pilatus::{
@@ -10,11 +15,17 @@ use tracing::{debug, warn};
 
 use super::{ActiveRecipe, DeviceState, Params};
 
-pub(super) struct PublishImageMessage(pub Weak<PublisherState>);
+pub(super) struct PublishImageMessage(Weak<PublisherState>);
 
 impl ActorMessage for PublishImageMessage {
     type Output = ();
     type Error = ();
+}
+
+impl PublishImageMessage {
+    pub fn new(state: &Arc<PublisherState>) -> Self {
+        Self(Arc::downgrade(state))
+    }
 }
 
 impl DeviceState {

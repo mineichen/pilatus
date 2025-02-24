@@ -3,7 +3,6 @@ mod device_config;
 mod duplicate_recipe;
 mod error;
 mod file;
-mod ord_hash_map;
 #[allow(clippy::module_inception)]
 mod recipe;
 mod recipes;

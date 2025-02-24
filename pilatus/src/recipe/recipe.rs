@@ -1,12 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
+use indexmap::IndexMap;
 use sealedstruct::{Seal, ValidationResultExtensions, Validator};
 use serde::{Deserialize, Serialize};
 
-use super::{
-    device_config::DeviceConfig, duplicate_recipe::DuplicateRecipe, ord_hash_map::OrdHashMap,
-};
+use super::{device_config::DeviceConfig, duplicate_recipe::DuplicateRecipe};
 use crate::{device::DeviceId, Name, RecipeId, UntypedDeviceParamsWithVariables};
 
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Seal)]
@@ -50,7 +49,7 @@ impl Validator for RecipeMetadataRaw {
 pub struct Recipe {
     pub created: DateTime<Utc>,
     pub tags: Vec<Name>,
-    pub devices: OrdHashMap<DeviceId, DeviceConfig>,
+    pub devices: IndexMap<DeviceId, DeviceConfig>,
 }
 
 impl Default for Recipe {

@@ -37,7 +37,7 @@ impl RecipeExporterTrait for RecipeServiceFassade {
         let recipe_id_str = recipe_id.to_string();
         let output_path_base = Path::new(&recipe_id_str);
         let mut used_variable_names = HashSet::new();
-        for (&device_id, config) in recipe.devices.iter_unordered() {
+        for (&device_id, config) in recipe.devices.iter() {
             used_variable_names.extend(config.params.variables_names());
             let path = recipe_dir_path.join(device_id.to_string());
             if let Ok(meta) = fs::metadata(&path).await {

@@ -172,7 +172,7 @@ impl<'a, T: Deref<Target = Recipes>> RecipeDataService<'a, T> {
             id,
             recipe
                 .devices
-                .iter_unordered()
+                .iter()
                 .map(|(k, v)| (*k, v.clone()))
                 .collect(),
             self.recipes.as_ref().clone(),
@@ -199,7 +199,7 @@ impl<'a, T: DerefMut<Target = Recipes>> RecipeDataService<'a, T> {
         device_id: DeviceId,
     ) -> Result<(), TransactionError> {
         let recipe = self.recipes.get_with_id_or_error_mut(&recipe_id)?;
-        if recipe.devices.remove(&device_id).is_none() {
+        if recipe.devices.shift_remove(&device_id).is_none() {
             Err(UnknownDeviceError(device_id))?
         } else {
             tokio::fs::remove_dir_all(self.device_dir(&device_id))
@@ -257,7 +257,7 @@ impl<'a, T: DerefMut<Target = Recipes>> RecipeDataService<'a, T> {
                 .active()
                 .1
                 .devices
-                .iter_unordered()
+                .iter()
                 .map(|(id, _)| *id)
                 .collect::<Vec<_>>(),
         )

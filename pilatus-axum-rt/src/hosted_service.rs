@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use axum::routing::get_service;
 use futures::{channel::oneshot, FutureExt};
 use minfac::{Registered, ServiceCollection, WeakServiceProvider};
-use pilatus::{prelude::*, GenericConfig, OnceExtractor, SystemShutdown};
+use pilatus::{prelude::*, GenericConfig, OnceExtractor, SystemShutdown, TracingTopic};
 use pilatus_axum::MinfacRouter;
 use serde::Deserialize;
 use tokio::net::TcpListener;
@@ -19,6 +19,8 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
         Registered<Arc<PrivateState>>,
     )>()
     .register_hosted_service("Main Webserver", axum_service);
+    c.register(|| TracingTopic::new("tower_http", tracing::Level::INFO));
+    c.register(|| TracingTopic::new("tungstenite::protocol", tracing::Level::INFO));
     c.register_shared(|| {
         let (tx, rx) = oneshot::channel();
         Arc::new(PrivateState(tx.into(), rx.shared()))
@@ -101,7 +103,7 @@ async fn axum_service(
     axum::serve(listener, router)
         .with_graceful_shutdown(async move {
             shutdown.await;
-            info!("Shutdown is triggered. If HostedServices still hangs, it might be related to https://github.com/hyperium/hyper-util/pull/101");
+            debug!("Shutdown is triggered");
         })
         .await?;
     Ok(())

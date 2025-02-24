@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::io::{self, BufWriter, Read};
 use std::path::Path;
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tracing::trace;
 
@@ -10,7 +11,6 @@ use crate::{device::DeviceId, DeviceConfig, Name, RecipeId};
 use crate::{TransactionError, UntypedDeviceParamsWithVariables};
 
 use super::duplicate_recipe::DuplicateRecipe;
-use super::ord_hash_map::OrdHashMap;
 use super::recipe::Recipe;
 use super::variable::{Variables, VariablesPatch};
 
@@ -21,7 +21,7 @@ pub struct Recipes {
     active_id: RecipeId,
     // used to check for changes/restore
     active_backup: Recipe,
-    all: OrdHashMap<RecipeId, Recipe>,
+    all: IndexMap<RecipeId, Recipe>,
     variables: Variables,
 }
 
@@ -35,7 +35,7 @@ impl<'de> Deserialize<'de> for Recipes {
         pub struct DeserializeRecipes {
             active_id: RecipeId,
             active_backup: Recipe,
-            all: OrdHashMap<RecipeId, Recipe>,
+            all: IndexMap<RecipeId, Recipe>,
             variables: Variables,
         }
 
@@ -64,7 +64,7 @@ impl Default for Recipes {
         Self {
             active_id: id.clone(),
             active_backup: active.clone(),
-            all: OrdHashMap::from([(id, active)]),
+            all: IndexMap::from([(id, active)]),
             variables: Default::default(),
         }
     }
@@ -107,7 +107,7 @@ impl Recipes {
     ) -> impl Iterator<Item = Result<ListActiveRecipesItem<'_>, UncommittedChangesError>> {
         self.active_without_id()
             .devices
-            .iter_unordered()
+            .iter()
             .map(|(running_id, running)| {
                 let backup = self
                     .active_backup
@@ -130,13 +130,13 @@ impl Recipes {
     }
 
     pub fn iter_without_backup(&self) -> impl Iterator<Item = (&'_ RecipeId, &'_ Recipe)> {
-        self.all.iter_unordered()
+        self.all.iter()
     }
 
     pub fn iter_with_backup(&self) -> impl Iterator<Item = (&'_ RecipeId, &'_ Recipe)> {
         [(&self.active_id, &self.active_backup)]
             .into_iter()
-            .chain(self.all.iter_unordered())
+            .chain(self.all.iter())
     }
 
     pub fn find_variable_usage_in_all_recipes<'a: 'b, 'b>(
@@ -151,30 +151,24 @@ impl Recipes {
         ),
     > + 'b {
         self.iter_with_backup().flat_map(|(id, recipe)| {
-            recipe
-                .devices
-                .iter_unordered()
-                .filter_map(|(device_id, device)| {
-                    device
-                        .params
-                        .variables_names()
-                        .any(|v| vars.contains_key(&v))
-                        .then_some((
-                            id.clone(),
-                            device.device_type.to_owned(),
-                            *device_id,
-                            &device.params,
-                        ))
-                })
+            recipe.devices.iter().filter_map(|(device_id, device)| {
+                device
+                    .params
+                    .variables_names()
+                    .any(|v| vars.contains_key(&v))
+                    .then_some((
+                        id.clone(),
+                        device.device_type.to_owned(),
+                        *device_id,
+                        &device.params,
+                    ))
+            })
         })
     }
 
     pub fn recipeid_per_deviceid(&self) -> impl Iterator<Item = (DeviceId, RecipeId)> + '_ {
-        self.iter_with_backup().flat_map(|(rid, v)| {
-            v.devices
-                .iter_unordered()
-                .map(move |(id, _)| (*id, rid.clone()))
-        })
+        self.iter_with_backup()
+            .flat_map(|(rid, v)| v.devices.iter().map(move |(id, _)| (*id, rid.clone())))
     }
 
     pub fn has_uncommitted_changes(&self, id: &RecipeId) -> bool {
@@ -188,8 +182,8 @@ impl Recipes {
         }
         self.active_backup
             .devices
-            .iter_ordered()
-            .zip(running.devices.iter_ordered())
+            .iter()
+            .zip(running.devices.iter())
             .any(|(a, b)| a != b)
     }
 
@@ -198,11 +192,7 @@ impl Recipes {
             if self.has_active_changes() {
                 Err((UncommittedChangesError).into())
             } else {
-                let ids = recipe
-                    .devices
-                    .iter_unordered()
-                    .map(|(id, _)| *id)
-                    .collect::<Vec<_>>();
+                let ids = recipe.devices.iter().map(|(id, _)| *id).collect::<Vec<_>>();
                 self.active_backup = recipe.clone();
                 self.active_id = id.clone();
                 Ok(ids)
@@ -244,7 +234,7 @@ impl Recipes {
         }
 
         let was_active_id = &self.active_id == old_id;
-        let Some(recipe) = self.all.remove(old_id) else {
+        let Some(recipe) = self.all.shift_remove(old_id) else {
             return Err(TransactionError::UnknownRecipeId(old_id.clone()));
         };
 
@@ -296,7 +286,7 @@ impl Recipes {
             Err(RemoveRecipeError::IsActive)
         } else {
             self.all
-                .remove(id)
+                .shift_remove(id)
                 .ok_or_else(|| RemoveRecipeError::UnknownRecipe(id.clone()))
         }
     }
@@ -306,7 +296,7 @@ impl Recipes {
         Recipes {
             active_id: id.clone(),
             active_backup: r.clone(),
-            all: OrdHashMap::from([(id, r)]),
+            all: IndexMap::from([(id, r)]),
             variables: Default::default(),
         }
     }

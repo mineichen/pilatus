@@ -67,7 +67,7 @@ pub enum StreamingImageFormat {
 /// omitted here      |       encoded MainImage       |
 ///
 /// foreach addidtional image (ordering defined by request)
-///                   |    u32::LE_bytes of ImageSize  |
+///                   |    u32::LE_bytes of ImageSize |
 ///                   |         encoded Image         |
 ///
 impl StreamableImage
@@ -275,8 +275,8 @@ fn encode_raw(
     buf.put_slice(&channels.to_le_bytes());
     buf.put_slice(&width.get().to_le_bytes());
     buf.put_slice(image);
-    debug!(
-        "Endoced raw: {:?}, width: {width}, height: {height}",
+    trace!(
+        "Encoded raw: {:?}, width: {width}, height: {height}",
         &buf[0..buf.len().min(10)]
     );
     Ok(buf)

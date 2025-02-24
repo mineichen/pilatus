@@ -4,6 +4,7 @@ use futures::StreamExt;
 use pilatus::{device::ActorResult, MissedItemsError};
 use pilatus_engineering::image::{StreamImageError, SubscribeDynamicImageMessage};
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
+use tracing::debug;
 
 use super::{publish_frame::PublishImageMessage, DeviceState};
 
@@ -13,10 +14,11 @@ impl DeviceState {
         _msg: SubscribeDynamicImageMessage,
     ) -> ActorResult<SubscribeDynamicImageMessage> {
         if Arc::weak_count(&self.publisher) == 0 {
+            debug!("No PublishImageMessage is stored in the queue. Initialize Publishing");
             self.publisher
                 .self_sender
                 .clone()
-                .tell(PublishImageMessage(Arc::downgrade(&self.publisher)))
+                .tell(PublishImageMessage::new(&self.publisher))
                 .ok();
         }
         Ok(
