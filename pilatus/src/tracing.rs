@@ -132,7 +132,6 @@ impl Default for TracingConfigPrivate {
                 ("hyper", LevelWrapper(Level::INFO)),
                 ("request", LevelWrapper(Level::INFO)),
                 ("async_zip", LevelWrapper(Level::INFO)),
-                ("tower_http", LevelWrapper(Level::INFO)),
                 ("mio_serial", LevelWrapper(Level::INFO)),
                 ("pilatus::image", LevelWrapper(Level::INFO)),
                 ("tungstenite::protocol", LevelWrapper(Level::INFO)),
@@ -153,6 +152,7 @@ pub struct TracingConsoleConfig {
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(default)]
 pub struct TracingFileConfig {
     pub path: PathBuf,
     pub number_of_files: usize,
@@ -162,7 +162,7 @@ impl Default for TracingFileConfig {
     fn default() -> Self {
         Self {
             path: "./logs".into(),
-            number_of_files: 2,
+            number_of_files: 10,
         }
     }
 }
