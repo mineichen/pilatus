@@ -65,10 +65,12 @@ impl MissedItemsError {
     }
 }
 
+struct ShutdownBetweenCreationAndExecuteError;
+
 pub struct SubscribeState<TResult> {
     params: SubscribeParams,
     actor_system: ActorSystem,
-    self_sender: WeakUntypedActorMessageSender,
+    self_sender: Result<WeakUntypedActorMessageSender, ShutdownBetweenCreationAndExecuteError>,
     pipeline: Box<dyn Fn() -> Option<BoxStream<'static, TResult>> + Send>,
 }
 
@@ -76,7 +78,7 @@ impl<T> SubscribeState<T> {
     pub fn new(ctx: &DeviceContext, actor_system: ActorSystem, params: SubscribeParams) -> Self {
         let self_sender = actor_system
             .get_weak_untyped_sender(ctx.id)
-            .expect("Must be alive");
+            .map_err(|_| ShutdownBetweenCreationAndExecuteError);
         Self {
             params,
             actor_system,
@@ -122,7 +124,12 @@ impl<TOutput: Send + 'static, EOutput: Send + Debug + 'static>
         if let Some(x) = (this.pipeline)() {
             return Ok(x);
         }
-        let self_sender = this.self_sender.clone();
+        let Ok(self_sender) = this.self_sender.as_ref() else {
+            unreachable!(
+                "If the device was shutdown during startup, noone should be able to subscribe"
+            );
+        };
+        let self_sender = self_sender.clone();
         let provider = this.params.provider;
         let inner = this
             .actor_system

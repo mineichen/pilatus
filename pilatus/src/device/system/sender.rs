@@ -90,6 +90,10 @@ impl WeakUntypedActorMessageSender {
         }
     }
 
+    pub fn device_id(&self) -> DeviceId {
+        self.device_id
+    }
+
     pub fn tell<TMsg: ActorMessage>(&mut self, msg: TMsg) -> Result<(), ActorWeakTellError> {
         if let Ok(mut x) = self.build_strong::<TMsg>() {
             x.tell(msg).map_err(Into::into)

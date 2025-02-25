@@ -1,4 +1,4 @@
-use std::{future::Future, time::Duration};
+use std::{future::Future, num::NonZeroU32, time::Duration};
 
 use futures::{
     channel::mpsc::{self, Sender},
@@ -10,7 +10,7 @@ use pilatus::{
     Name,
 };
 use serde::{Deserialize, Serialize};
-use tracing::warn;
+use tracing::{debug, warn};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct PermanentRecordingConfig {
@@ -44,15 +44,22 @@ async fn handle_permanent_recording(
             let Some(config) = maybe_next.take() else {
                 break;
             };
+            if config.source_id == self_sender.device_id() {
+                warn!("Emulation Camera cannot permanently record itself");
+                break;
+            }
             let record_task = std::pin::pin!(self_sender.ask(
                 pilatus_engineering_camera::RecordMessage::with_max_size(
                     config.source_id.clone(),
                     config.collection_name.clone(),
-                    4_000_000.try_into().unwrap(),
+                    NonZeroU32::MAX,
                 ),
             ));
-            match futures::future::select(record_task, &mut recv.next()).await {
-                Either::Left((Ok(_) | Err(ActorError::UnknownDevice(..)), _)) => break,
+            match futures::future::select(record_task, recv.next()).await {
+                Either::Left((Ok(_) | Err(ActorError::UnknownDevice(..)), _)) => {
+                    warn!("Recording unknown device");
+                    break;
+                }
                 Either::Left((Err(e), _)) => {
                     warn!("Error during record: {e:?}. Try again in 1s");
                     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -60,11 +67,16 @@ async fn handle_permanent_recording(
                     continue;
                 }
                 Either::Right((Some(next_job), _)) => {
+                    debug!("Schedule new job: {next_job:?}");
                     maybe_next = next_job;
                     continue;
                 }
-                Either::Right((None, _)) => return,
+                Either::Right((None, _)) => {
+                    debug!("Permanent Recording shut down (inner loop)");
+                    return;
+                }
             }
         }
     }
+    debug!("Permanent Recording shut down");
 }
