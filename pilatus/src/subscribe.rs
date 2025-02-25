@@ -138,30 +138,27 @@ impl<TOutput: Send + 'static, EOutput: Send + Debug + 'static>
                 SubscribeMessage::<Q, Result<TInput, EOutput>, ()>::from(msg.query),
             )
             .await?
-            .then(move |r| {
+            .map(move |r| {
                 let mut actor_system = self_sender.clone();
                 async move {
-                    match r {
-                        Ok(data) => {
-                            let time = std::time::Instant::now();
+                    let time = std::time::Instant::now();
 
-                            match actor_system.ask(TProcessMsg::from(data)).await {
-                                Ok(x) => {
-                                    trace!("Processed Pointcloud in {:?}", time.elapsed());
-                                    Ok(x)
-                                }
-                                Err(e) => {
-                                    error!("Error processing pc: {e}");
-                                    Err(EOutput::from(e))
-                                }
-                            }
-                        }
-                        Err(e) => Err(e),
-                    }
+                    let x = actor_system.ask(TProcessMsg::from(r?)).await.map_err(|e| {
+                        error!("Error processing pc: {e}");
+                        EOutput::from(e)
+                    })?;
+
+                    trace!(
+                        "Processed {} in {:?}",
+                        std::any::type_name::<TProcessMsg>(),
+                        time.elapsed()
+                    );
+                    Ok(x)
                 }
-            });
+            })
+            .buffered(8);
 
-        let stream = StreamBroadcast::new(inner.fuse(), 2);
+        let stream = StreamBroadcast::new(inner.fuse(), 10);
         let downgraded = stream.downgrade();
         this.pipeline = Box::new(move || {
             downgraded.re_subscribe().upgrade().map(|x| {
