@@ -1,5 +1,6 @@
 use std::{
     collections::BinaryHeap,
+    ops::DerefMut,
     path::PathBuf,
     sync::{Arc, Weak},
     time::Duration,
@@ -61,7 +62,10 @@ impl DeviceState {
 pub(super) struct PublisherState {
     pub params: Params,
     pub self_sender: WeakUntypedActorMessageSender,
-    pub pending_active: tokio::sync::Mutex<BinaryHeap<ExistingCollectionEntry>>,
+    pub pending_active: tokio::sync::Mutex<(
+        BinaryHeap<ExistingCollectionEntry>,
+        Option<ExistingCollectionEntry>,
+    )>,
 }
 
 impl PublisherState {
@@ -114,6 +118,7 @@ impl PublisherState {
     ) -> anyhow::Result<PilatusDynamicImage> {
         let next = {
             let mut lock = self.pending_active.lock().await;
+            let (lock, last) = lock.deref_mut();
             if lock.is_empty() {
                 *lock = pilatus::visit_directory_files(self.get_collection_directory(state).await?)
                     .filter_map(|x| async {
@@ -128,11 +133,11 @@ impl PublisherState {
                     .collect::<BinaryHeap<_>>()
                     .await;
             }
-            if state.paused {
-                lock.peek().cloned()
-            } else {
-                lock.pop()
+            if !state.paused {
+                *last = lock.pop();
             }
+
+            last.clone()
         };
 
         let Some(path) = next else {
