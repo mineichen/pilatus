@@ -71,7 +71,7 @@ pub(super) struct PublisherState {
 impl PublisherState {
     pub async fn send_delayed(weak: Weak<Self>) {
         if let Some(state) = weak.upgrade() {
-            tokio::time::sleep(Duration::from_millis(state.params.interval)).await;
+            tokio::time::sleep(Duration::from_millis(state.params.file.interval)).await;
             state
                 .self_sender
                 .clone()
@@ -87,7 +87,7 @@ impl PublisherState {
         let mut all = state
             .file_service
             .stream_directories(RelativeDirectoryPath::root());
-        let maybe = match &self.params.active {
+        let maybe = match &self.params.file.active {
             ActiveRecipe::Undefined => all
                 .next()
                 .await
@@ -127,7 +127,7 @@ impl PublisherState {
                         (entry
                             .file_name()
                             .to_str()?
-                            .ends_with(&self.params.file_ending))
+                            .ends_with(&self.params.file.file_ending))
                         .then_some(ExistingCollectionEntry(entry.path()))
                     })
                     .collect::<BinaryHeap<_>>()

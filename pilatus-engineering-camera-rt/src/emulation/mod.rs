@@ -108,8 +108,8 @@ impl DeviceState {
         }
         match Arc::get_mut(&mut self.publisher) {
             Some(old)
-                if old.params.active == params.active
-                    && old.params.file_ending == params.file_ending =>
+                if old.params.file.active == params.file.active
+                    && old.params.file.file_ending == params.file.file_ending =>
             {
                 old.params = params;
             }
@@ -133,19 +133,31 @@ impl DeviceState {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields, default)]
 pub struct Params {
+    file: FileParams,
+    permanent_recording: Option<permanent_recording::PermanentRecordingConfig>,
+}
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(deny_unknown_fields, default)]
+struct FileParams {
     active: ActiveRecipe,
     interval: u64,
     file_ending: String,
-    permanent_recording: Option<permanent_recording::PermanentRecordingConfig>,
 }
 
 impl Default for Params {
     fn default() -> Self {
         Self {
+            file: Default::default(),
+            permanent_recording: None,
+        }
+    }
+}
+impl Default for FileParams {
+    fn default() -> Self {
+        Self {
             active: Default::default(),
             interval: 500,
             file_ending: "png".into(),
-            permanent_recording: None,
         }
     }
 }
