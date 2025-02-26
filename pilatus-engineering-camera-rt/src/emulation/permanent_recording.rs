@@ -14,8 +14,14 @@ use tracing::{debug, warn};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct PermanentRecordingConfig {
-    collection_name: Name,
-    source_id: DeviceId,
+    pub collection_name: Name,
+    pub(super) source_id: DeviceId,
+}
+
+impl PermanentRecordingConfig {
+    pub(crate) fn collection_path(&self) -> &std::path::Path {
+        std::path::Path::new(self.collection_name.as_str())
+    }
 }
 
 pub(super) fn setup_permanent_recording(
@@ -31,11 +37,11 @@ pub(super) fn setup_permanent_recording(
         .expect("Just created above with capacity 2");
     (
         recording_sender,
-        handle_permanent_recording(weak_self_sender, recording_receiver),
+        handle_background_permanent_recording(weak_self_sender, recording_receiver),
     )
 }
-
-async fn handle_permanent_recording(
+/// This function doesn't handle recording in 'forward' mode
+async fn handle_background_permanent_recording(
     mut self_sender: WeakUntypedActorMessageSender,
     mut recv: mpsc::Receiver<Option<PermanentRecordingConfig>>,
 ) {

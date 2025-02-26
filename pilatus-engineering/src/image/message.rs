@@ -68,6 +68,13 @@ impl<T> IntoIterator for ImageWithMeta<T> {
     }
 }
 
+impl<T> ImageWithMeta<T> {
+    pub fn iter(&self) -> impl Iterator<Item = (ImageKey, &T)> {
+        std::iter::once((ImageKey::unspecified(), &self.image))
+            .chain(self.other.iter().map(|(key, i)| (key.clone().into(), i)))
+    }
+}
+
 impl<T> std::ops::Deref for ImageWithMeta<T> {
     type Target = ImageMeta;
 

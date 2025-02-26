@@ -2,7 +2,7 @@ use std::{num::NonZeroU32, sync::Arc, time::SystemTime};
 
 use super::DeviceState;
 use chrono::{DateTime, Utc};
-use futures::{Stream, StreamExt, TryStreamExt};
+use futures::{StreamExt, TryStreamExt};
 use minfac::ServiceCollection;
 use pilatus::{
     device::{ActorErrorResultExtensions, ActorSystem, DeviceId, HandlerResult, Step2},
@@ -13,12 +13,10 @@ use pilatus_axum::{
     http::StatusCode,
     ServiceCollectionExtensions,
 };
-use pilatus_engineering::image::{
-    ImageKey, ImageWithMeta, StreamImageError, SubscribeDynamicImageMessage,
-};
+use pilatus_engineering::image::{ImageKey, ImageWithMeta, SubscribeDynamicImageMessage};
 use pilatus_engineering_camera::RecordMessage;
 use serde::Deserialize;
-use tracing::{debug, warn};
+use tracing::debug;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.register_web("engineering/emulation-camera", |r| {
@@ -39,7 +37,13 @@ impl DeviceState {
             .map_actor_error(|_| anyhow::anyhow!("unknown error"));
         let file_service = self.file_service.clone();
         Step2(async move {
-            let encoded_stream = stream_encoded(images?);
+            let encoded_stream = images?
+                .map(|x| async {
+                    let time = std::time::SystemTime::now();
+                    let encoded = encode_all(x?).await?;
+                    anyhow::Ok((time, encoded))
+                })
+                .buffer_unordered(8);
             let abortable_stream = futures::stream::Abortable::new(encoded_stream, reg);
 
             let mut size_budget =
@@ -71,46 +75,25 @@ impl DeviceState {
     }
 }
 
-fn stream_encoded(
-    x: impl Stream<
-        Item = Result<
-            ImageWithMeta<pilatus_engineering::image::DynamicImage>,
-            StreamImageError<pilatus_engineering::image::DynamicImage>,
-        >,
-    >,
-) -> impl Stream<Item = anyhow::Result<(SystemTime, Vec<(ImageKey, Vec<u8>)>)>> {
-    x.filter_map(|e| {
-        std::future::ready(match e {
-            Err(StreamImageError::MissedItems(e)) => {
-                warn!("Missing frames detected: {e}");
-                None
-            }
-            Ok(x) => Some(Ok(x)),
-            Err(e) => Some(Err(anyhow::Error::from(e))),
-        })
-    })
-    .map(|x| async {
-        let time = std::time::SystemTime::now();
-        let img = x?;
-        debug!("Before encode");
-        let encoded = futures::stream::iter(img.into_iter())
-            .then(|(key, img)| async move {
-                tokio::task::spawn_blocking(move || {
-                    let i = img.encode_png()?;
-                    anyhow::Ok((key, i))
-                })
-                .await?
+pub(crate) async fn encode_all(
+    all: ImageWithMeta<pilatus_engineering::image::DynamicImage>,
+) -> anyhow::Result<(Vec<(ImageKey, Vec<u8>)>)> {
+    debug!("Before encode");
+    let r = futures::stream::iter(all.into_iter())
+        .then(|(key, img)| async move {
+            tokio::task::spawn_blocking(move || {
+                let i = img.encode_png()?;
+                anyhow::Ok((key, i))
             })
-            .try_collect::<Vec<_>>()
-            .await?;
-        debug!("Finished encoding {}", encoded.len());
-
-        anyhow::Ok((time, encoded))
-    })
-    .buffer_unordered(8)
+            .await?
+        })
+        .try_collect::<Vec<_>>()
+        .await;
+    debug!("Finished encoding {:?}", r.as_ref().map(|x| x.len()));
+    r
 }
 
-async fn save_encoded(
+pub async fn save_encoded(
     (time, images): (SystemTime, Vec<(ImageKey, Vec<u8>)>),
     file_service: Arc<FileService>,
     collection_dir: &std::path::Path,

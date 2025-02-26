@@ -3,8 +3,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use futures::channel::mpsc;
+use futures::FutureExt;
 use minfac::{Registered, ServiceCollection};
-use pilatus::device::{HandlerResult, Step2, WithAbort};
+use pilatus::device::{DeviceId, HandlerResult, Step2, WithAbort};
 use pilatus::{
     device::{ActorSystem, DeviceContext, DeviceResult, DeviceValidationContext},
     prelude::*,
@@ -14,6 +15,7 @@ use pilatus::{FileService, FileServiceBuilder, Name};
 use pilatus_engineering::image::{DynamicImage, ImageWithMeta, StreamImageError};
 use publish_frame::PublisherState;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 mod list_collections;
 mod pause;
@@ -98,44 +100,66 @@ impl DeviceState {
         &mut self,
         UpdateParamsMessage { params }: UpdateParamsMessage<Params>,
     ) -> impl HandlerResult<UpdateParamsMessage<Params>> {
-        if self.publisher.params.permanent_recording != params.permanent_recording {
-            if let Err(e) = self
-                .recording_sender
-                .try_send(params.permanent_recording.clone())
-            {
-                tracing::error!("Couldn't send recording task: {e}")
-            };
-        }
-        match Arc::get_mut(&mut self.publisher) {
-            Some(old)
-                if old.params.file.active == params.file.active
-                    && old.params.file.file_ending == params.file.file_ending =>
-            {
-                old.params = params;
-            }
-            _ => {
-                self.publisher = Arc::new(PublisherState {
-                    params,
-                    self_sender: self.publisher.self_sender.clone(),
-                    pending_active: Default::default(),
-                })
-            }
-        }
-        let weak = Arc::downgrade(&self.publisher);
+        match params.mode {
+            EmulationMode::File => {
+                if self.publisher.params.permanent_recording != params.permanent_recording {
+                    if let Err(e) = self
+                        .recording_sender
+                        .try_send(params.permanent_recording.clone())
+                    {
+                        tracing::error!("Couldn't send recording task: {e}")
+                    };
+                }
+                match Arc::get_mut(&mut self.publisher) {
+                    Some(old)
+                        if old.params.file.active == params.file.active
+                            && old.params.file.file_ending == params.file.file_ending =>
+                    {
+                        old.params = params;
+                    }
+                    _ => {
+                        self.publisher = Arc::new(PublisherState {
+                            params,
+                            self_sender: self.publisher.self_sender.clone(),
+                            pending_active: Default::default(),
+                        })
+                    }
+                }
+                let weak = Arc::downgrade(&self.publisher);
 
-        Step2(async {
-            PublisherState::send_delayed(weak).await;
-            Ok(())
-        })
+                Step2(
+                    async {
+                        PublisherState::send_delayed(weak).await;
+                        Ok(())
+                    }
+                    .boxed(),
+                )
+            }
+            EmulationMode::Streaming => {
+                warn!("Updating Stream params not yet supported. Update is ignored");
+                Step2(std::future::ready(Ok(())).boxed())
+            }
+        }
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 #[serde(deny_unknown_fields, default)]
 pub struct Params {
+    mode: EmulationMode,
     file: FileParams,
+    streaming: StreamingParams,
     permanent_recording: Option<permanent_recording::PermanentRecordingConfig>,
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[serde(deny_unknown_fields)]
+enum EmulationMode {
+    #[default]
+    File,
+    Streaming,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields, default)]
 struct FileParams {
@@ -144,14 +168,12 @@ struct FileParams {
     file_ending: String,
 }
 
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            file: Default::default(),
-            permanent_recording: None,
-        }
-    }
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[serde(deny_unknown_fields, default)]
+struct StreamingParams {
+    source_device_id: Option<DeviceId>,
 }
+
 impl Default for FileParams {
     fn default() -> Self {
         Self {
