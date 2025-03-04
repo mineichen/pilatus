@@ -139,24 +139,33 @@ impl<TOutput: Send + 'static, EOutput: Send + Debug + 'static>
             )
             .await?
             .map(move |r| {
-                let mut actor_system = self_sender.clone();
+                let mut self_sender = self_sender.clone();
                 async move {
                     let time = std::time::Instant::now();
+                    let r = match r {
+                        Ok(x) => x,
+                        Err(e) => return Some(Err(e)),
+                    };
 
-                    let x = actor_system.ask(TProcessMsg::from(r?)).await.map_err(|e| {
-                        error!("Error processing pc: {e}");
-                        EOutput::from(e)
-                    })?;
-
-                    trace!(
-                        "Processed {} in {:?}",
-                        std::any::type_name::<TProcessMsg>(),
-                        time.elapsed()
-                    );
-                    Ok(x)
+                    match self_sender.ask(TProcessMsg::from(r)).await {
+                        Ok(x) => {
+                            trace!(
+                                "Processed {} in {:?}",
+                                std::any::type_name::<TProcessMsg>(),
+                                time.elapsed()
+                            );
+                            Some(Ok(x))
+                        }
+                        Err(ActorError::UnknownDevice(_x)) => None,
+                        Err(e) => {
+                            error!("Error during processing: {e}");
+                            Some(Err(EOutput::from(e)))
+                        }
+                    }
                 }
             })
-            .buffered(8);
+            .buffered(8)
+            .filter_map(|r| std::future::ready(r));
 
         let stream = StreamBroadcast::new(inner.fuse(), 10);
         let downgraded = stream.downgrade();
