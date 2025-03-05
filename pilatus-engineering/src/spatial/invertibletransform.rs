@@ -12,6 +12,12 @@ pub struct InvertibleTransformRaw {
     pub m32: f64,
 }
 
+impl Default for InvertibleTransform {
+    fn default() -> Self {
+        Self::identity()
+    }
+}
+
 impl sealedstruct::Validator for InvertibleTransformRaw {
     fn check(&self) -> sealedstruct::Result<()> {
         (self.determinant() != 0.)
@@ -47,5 +53,19 @@ impl InvertibleTransformRaw {
     // Other parts cancel out with the last row being (0,0,1)
     pub fn determinant(&self) -> f64 {
         self.m11 * self.m22 - self.m21 * self.m12
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(feature = "nalgebra")]
+    fn default_is_unit_matrix() {
+        use core::f64;
+
+        let nalgebra = InvertibleTransform::default().to_nalgebra();
+        assert!(nalgebra.is_identity(f64::EPSILON));
     }
 }
