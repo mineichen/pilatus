@@ -58,14 +58,11 @@ impl InvertibleTransformRaw {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     #[cfg(feature = "nalgebra")]
     fn default_is_unit_matrix() {
-        use core::f64;
-
-        let nalgebra = InvertibleTransform::default().to_nalgebra();
-        assert!(nalgebra.is_identity(f64::EPSILON));
+        let nalgebra_mat = super::InvertibleTransform::default().to_nalgebra();
+        assert!(nalgebra_mat.is_identity(f64::EPSILON));
     }
 }
