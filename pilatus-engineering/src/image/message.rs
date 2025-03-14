@@ -128,21 +128,46 @@ impl<T> ImageWithMeta<T> {
     /// let mut image = ImageWithMeta::with_hash((2,2), None);
     /// let bar_key: ImageKey = "bar".try_into().unwrap();
     /// image.insert(bar_key.clone(), (4,4));
-    /// assert_eq!(Ok(&(2,2)), image.by_key(&ImageKey::unspecified()));
-    /// assert_eq!(Ok(&(4,4)), image.by_key(&bar_key));
+    /// assert_eq!(&(2,2), image.by_key(&ImageKey::unspecified()).unwrap());
+    /// assert_eq!(&(4,4), image.by_key(&bar_key).unwrap());
     ///
     /// image.image = (5, 5);
-    /// assert_eq!(Ok(&(5,5)), image.by_key(&ImageKey::unspecified()));
+    /// assert_eq!(&(5,5), image.by_key(&ImageKey::unspecified()).unwrap());
     /// assert_eq!(Some((5,5)), image.insert(ImageKey::unspecified(), (6,6)));
-    /// assert_eq!(Ok(&(6,6)), image.by_key(&ImageKey::unspecified()));
+    /// assert_eq!(&(6,6), image.by_key(&ImageKey::unspecified()).unwrap());
     /// ```
-    pub fn by_key(&self, key: &ImageKey) -> Result<&T, &T> {
-        key.by_key_or(&self.other, &self.image).ok_or(&self.image)
+    pub fn by_key<'a>(&'a self, search_key: &'a ImageKey) -> Result<&'a T, UnknownKeyError<'a, T>>
+    where
+        T: Debug,
+    {
+        search_key
+            .by_key_or(&self.other, &self.image)
+            .ok_or_else(|| UnknownKeyError {
+                main_image: &self.image,
+                search_key,
+                available_keys: self.other.keys(),
+            })
     }
 
     // Returns The old value
     pub fn insert(&mut self, key: ImageKey, value: T) -> Option<T> {
         key.insert_or(value, &mut self.other, &mut self.image)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Unknown image key: {search_key:?}. Available are {available_keys:?}")]
+pub struct UnknownKeyError<'a, T: Debug> {
+    pub main_image: &'a T,
+    pub search_key: &'a ImageKey,
+    pub available_keys: std::collections::hash_map::Keys<'a, SpecificImageKey, T>,
+}
+
+impl<'a, T: Debug + Clone + Send + Sync> Into<(T, anyhow::Error)> for UnknownKeyError<'a, T> {
+    fn into(self) -> (T, anyhow::Error) {
+        let image = self.main_image.clone();
+        let error = anyhow::anyhow!("{self:?}");
+        (image, error)
     }
 }
 

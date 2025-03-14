@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::SystemTime};
+use std::sync::Arc;
 
 use futures::{StreamExt, TryFutureExt};
 use pilatus::{device::ActorResult, MissedItemsError};

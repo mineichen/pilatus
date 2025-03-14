@@ -131,7 +131,7 @@ pub struct UntypedDeviceParamsWithoutVariables(Value);
 
 impl UntypedDeviceParamsWithoutVariables {
     pub fn params_as<T: DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
-        T::deserialize(self.0.clone())
+        T::deserialize(&self.0)
     }
 
     pub fn from_serializable<S: Serialize>(x: &S) -> serde_json::Result<Self> {

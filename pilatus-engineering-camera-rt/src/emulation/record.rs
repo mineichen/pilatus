@@ -77,7 +77,7 @@ impl DeviceState {
 
 pub(crate) async fn encode_all(
     all: ImageWithMeta<pilatus_engineering::image::DynamicImage>,
-) -> anyhow::Result<(Vec<(ImageKey, Vec<u8>)>)> {
+) -> anyhow::Result<Vec<(ImageKey, Vec<u8>)>> {
     debug!("Before encode");
     let r = futures::stream::iter(all.into_iter())
         .then(|(key, img)| async move {
