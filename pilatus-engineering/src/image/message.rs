@@ -121,22 +121,23 @@ impl<T> ImageWithMeta<T> {
         Self { image, meta, other }
     }
 
+    /// Ok if the key is found or unspecified, Err if a key was specified but not found (returning the main image then)
     /// ```
     /// use pilatus_engineering::image::{ImageWithMeta, ImageKey};
     ///
     /// let mut image = ImageWithMeta::with_hash((2,2), None);
     /// let bar_key: ImageKey = "bar".try_into().unwrap();
     /// image.insert(bar_key.clone(), (4,4));
-    /// assert_eq!(Some(&(2,2)), image.by_name(&ImageKey::unspecified()));
-    /// assert_eq!(Some(&(4,4)), image.by_name(&bar_key));
+    /// assert_eq!(Ok(&(2,2)), image.by_key(&ImageKey::unspecified()));
+    /// assert_eq!(Ok(&(4,4)), image.by_key(&bar_key));
     ///
     /// image.image = (5, 5);
-    /// assert_eq!(Some(&(5,5)), image.by_name(&ImageKey::unspecified()));
+    /// assert_eq!(Ok(&(5,5)), image.by_key(&ImageKey::unspecified()));
     /// assert_eq!(Some((5,5)), image.insert(ImageKey::unspecified(), (6,6)));
-    /// assert_eq!(Some(&(6,6)), image.by_name(&ImageKey::unspecified()));
+    /// assert_eq!(Ok(&(6,6)), image.by_key(&ImageKey::unspecified()));
     /// ```
-    pub fn by_name(&self, name: &ImageKey) -> Option<&T> {
-        name.by_name_or(&self.other, &self.image)
+    pub fn by_key(&self, key: &ImageKey) -> Result<&T, &T> {
+        key.by_key_or(&self.other, &self.image).ok_or(&self.image)
     }
 
     // Returns The old value

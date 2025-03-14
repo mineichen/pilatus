@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{IntoSpecificImageKeyError, SpecificImageKey};
 
-#[derive(Clone, Serialize, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Clone, Serialize, Debug, PartialEq, Eq, Hash, Deserialize, Default)]
 pub struct ImageKey(Option<SpecificImageKey>);
 
 impl TryFrom<&'static str> for ImageKey {
@@ -38,7 +38,7 @@ impl ImageKey {
         self.0.as_ref()
     }
 
-    pub(in super::super) fn by_name_or<'a, T>(
+    pub(in super::super) fn by_key_or<'a, T>(
         &self,
         collection: &'a HashMap<SpecificImageKey, T>,
         default: &'a T,
