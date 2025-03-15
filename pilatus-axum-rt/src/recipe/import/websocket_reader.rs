@@ -134,7 +134,7 @@ impl<T: Stream<Item = Result<Message, axum::Error>> + Unpin + Debug> AsyncRead
                                 bytes.len()
                             } else {
                                 buf.put_slice(&bytes[0..capacity]);
-                                state.buffer = Some(ExtractVec::new(bytes, capacity));
+                                state.buffer = Some(ExtractVec::new(bytes.into(), capacity));
                                 capacity
                             }
                         };
@@ -204,9 +204,12 @@ mod tests {
     async fn send_too_much_throws_error() {
         let data = (0..100u8).collect::<Vec<_>>();
         let len_bytes = 99u64.to_le_bytes().to_vec();
-        let msgs = std::iter::once(Result::<_, axum::Error>::Ok(Message::Binary(len_bytes))).chain(
+        let msgs = std::iter::once(Result::<_, axum::Error>::Ok(Message::Binary(
+            len_bytes.into(),
+        )))
+        .chain(
             data.chunks(10)
-                .map(|x| Ok(Message::Binary(x.to_vec())))
+                .map(|x| Ok(Message::Binary(x.to_vec().into())))
                 .collect::<Vec<_>>(),
         );
         let mut state = super::AsyncWebsocketReaderState::Init(Some(futures::stream::iter(msgs)));
@@ -220,13 +223,15 @@ mod tests {
     async fn read_all() {
         let data = (0..99u8).collect::<Vec<_>>();
         let len_bytes = 99u64.to_le_bytes().to_vec();
-        let msgs = std::iter::once(Result::<_, axum::Error>::Ok(Message::Binary(len_bytes)))
-            .chain(
-                data.chunks(10)
-                    .map(|x| Ok(Message::Binary(x.to_vec())))
-                    .collect::<Vec<_>>(),
-            )
-            .chain(std::iter::once(Ok(Message::Text("Moore".to_string()))));
+        let msgs = std::iter::once(Result::<_, axum::Error>::Ok(Message::Binary(
+            len_bytes.into(),
+        )))
+        .chain(
+            data.chunks(10)
+                .map(|x| Ok(Message::Binary(x.to_vec().into())))
+                .collect::<Vec<_>>(),
+        )
+        .chain(std::iter::once(Ok(Message::Text("Moore".into()))));
         let mut stream = futures::stream::iter(msgs);
         let mut state = super::AsyncWebsocketReaderState::Init(Some(&mut stream));
 
@@ -240,7 +245,7 @@ mod tests {
         let Some(Ok(Message::Text(x))) = stream.next().await else {
             panic!("Expected more items");
         };
-        assert_eq!("Moore".to_string(), x);
+        assert_eq!("Moore", x.as_str());
     }
 
     #[tokio::test]
@@ -248,9 +253,12 @@ mod tests {
         const SIZE: usize = 10 * 1024 * 1024;
         let data = vec![1; 10 * 1024 * 1024];
         let len_bytes = (data.len() as u64).to_le_bytes().to_vec();
-        let msgs = std::iter::once(Result::<_, axum::Error>::Ok(Message::Binary(len_bytes))).chain(
+        let msgs = std::iter::once(Result::<_, axum::Error>::Ok(Message::Binary(
+            len_bytes.into(),
+        )))
+        .chain(
             data.chunks(1024 * 1024)
-                .map(|x| Ok(Message::Binary(x.to_vec())))
+                .map(|x| Ok(Message::Binary(x.to_vec().into())))
                 .collect::<Vec<_>>(),
         );
         let mut state = super::AsyncWebsocketReaderState::Init(Some(futures::stream::iter(msgs)));

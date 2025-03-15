@@ -46,7 +46,6 @@ pub trait WebSocketDropperService: Send + Sync {
     fn create_dropper(&self) -> Dropper;
 }
 
-#[async_trait]
 impl<S: Send + Sync> FromRequestParts<S> for WebSocketUpgrade {
     type Rejection = (http::StatusCode, String);
 

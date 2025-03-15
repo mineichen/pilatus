@@ -9,7 +9,7 @@ version = "0.1.0"
 anyhow = { workspace = true }
 async-stream = "0.3"
 async-trait = "0.1"
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.8", features = ["ws"] }
 bytes = { workspace = true }
 futures = { workspace = true }
 jpeg-encoder = { version = "0.6", features = ["simd"], optional = true}

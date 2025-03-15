@@ -14,11 +14,11 @@ use pilatus_axum::{
 pub(super) fn register_services(c: &mut ServiceCollection) {
     #[rustfmt::skip]
     c.register_web("recipe/file", |r| r
-        .http("/list/:device_id/*path", |m| m
+        .http("/list/{device_id}/{*path}", |m| m
             .get(list_files))
-        .http("/list/:device_id", |m| m
+        .http("/list/{device_id}", |m| m
             .get(list_files_root))
-        .http("/:device_id/*filename", |m| m
+        .http("/{device_id}/{*filename}", |m| m
             .get(get_file)
             .put(add_file)
             .delete(delete_file))

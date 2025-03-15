@@ -30,7 +30,6 @@ impl Abort {
 
 pub struct AbortServiceInterface(pub Box<dyn Fn(Uuid) -> Option<AbortRegistration>>);
 
-#[async_trait]
 impl<S: Send + Sync> FromRequestParts<S> for Abort {
     type Rejection = (http::StatusCode, &'static str);
 

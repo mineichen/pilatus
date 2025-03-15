@@ -11,6 +11,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
     );
 }
 
+#[axum::debug_handler]
 async fn get_time() -> impl IntoResponse {
     #[derive(Serialize)]
     struct Response {

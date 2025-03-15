@@ -44,7 +44,7 @@ async fn handle_socket(
     {
         let json = serde_json::to_string(&data)?;
         consumer
-            .send(pilatus_axum::extract::ws::Message::Text(json))
+            .send(pilatus_axum::extract::ws::Message::Text(json.into()))
             .await?;
     }
     coinbase_data.close();

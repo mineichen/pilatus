@@ -24,6 +24,15 @@ impl Router {
         f: fn(MethodRouter<()>) -> MethodRouter<()>,
     ) -> Router {
         let MethodRouter(axum_method_router, deps) = f(MethodRouter::new());
+
+        if path.contains(':') {
+            panic!("Axum changed its path-parameters from ':foo' to '{{foo}}'");
+        }
+
+        if path.contains("*") && !path.contains("{*") {
+            panic!("Axum changed its wildcard-parameters from '*foo' to '{{*foo}}'");
+        }
+
         self.axum_router = self
             .axum_router
             .route(&format!("/{}{path}", self.prefix), axum_method_router);

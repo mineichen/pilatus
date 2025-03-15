@@ -12,7 +12,7 @@ async_zip = { version = "0.0.17", default-features = false, features = [
   "deflate",
   "tokio",
 ] }
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.8", features = ["ws", "macros"] }
 bytes = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 futures = { workspace = true }

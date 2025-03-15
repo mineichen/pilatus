@@ -20,7 +20,9 @@ use tracing::debug;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.register_web("engineering/emulation-camera", |r| {
-        r.http("/:device_id/record/:collection_name", |f| f.put(record_web))
+        r.http("/{device_id}/record/{collection_name}", |f| {
+            f.put(record_web)
+        })
     })
 }
 

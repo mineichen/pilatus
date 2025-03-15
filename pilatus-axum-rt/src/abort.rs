@@ -24,7 +24,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 
     #[rustfmt::skip]
     c.register_web("abort", |x| x
-        .http("/:id", |m| m.delete(abort))
+        .http("/{id}", |m| m.delete(abort))
     );
 }
 

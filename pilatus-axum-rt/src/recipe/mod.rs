@@ -33,12 +33,12 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
         .http("/stream",|m| m.get(stream_recipe_update_handler))
         .http("/commit", |m| m.put(commit_active))
         .http("/restore", |m| m.put(restore_active))
-        .http("/:id/meta", |m| m.put(update_recipe_metadata))
-        .http("/:id/clone", |m| m.put(clone_recipe))
-        .http("/:id", |m| m.delete(delete_recipe))
-        .http("/:id/device/:device_id/params", |m| m.put(update_device_params))
-        .http("/:id/device/:device_id/name", |m| m.put(update_device_name))
-        .http("/:id/device/:device_id/committed", |m| m.put(restore_committed))
+        .http("/{id}/meta", |m| m.put(update_recipe_metadata))
+        .http("/{id}/clone", |m| m.put(clone_recipe))
+        .http("/{id}", |m| m.delete(delete_recipe))
+        .http("/{id}/device/{device_id}/params", |m| m.put(update_device_params))
+        .http("/{id}/device/{device_id}/name", |m| m.put(update_device_name))
+        .http("/{id}/device/{device_id}/committed", |m| m.put(restore_committed))
     );
 
     file::register_services(c);
@@ -92,7 +92,7 @@ async fn handle_socket(socket: WebSocket, watcher: impl Stream<Item = Uuid>) {
             _ = async {
                 while let Some(data) = watcher.next().await {
                     if socket_tx
-                        .send(Message::Text(data.to_string()))
+                        .send(Message::Text(data.to_string().into()))
                         .await
                         .is_err()
                     {

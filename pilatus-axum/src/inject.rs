@@ -7,7 +7,6 @@ use crate::{
     http::{self, request::Parts, StatusCode},
 };
 
-#[async_trait]
 impl<TDep: Resolvable, S: Send + Sync> FromRequestParts<S> for Inject<TDep> {
     type Rejection = (http::StatusCode, &'static str);
 
@@ -20,7 +19,6 @@ impl<TDep: Resolvable, S: Send + Sync> FromRequestParts<S> for Inject<TDep> {
     }
 }
 
-#[async_trait]
 impl<TDep: std::any::Any, S: Send + Sync> FromRequestParts<S> for InjectRegistered<TDep> {
     type Rejection = (http::StatusCode, &'static str);
 
@@ -37,7 +35,6 @@ impl<TDep: std::any::Any, S: Send + Sync> FromRequestParts<S> for InjectRegister
     }
 }
 
-#[async_trait]
 impl<TDep: std::any::Any, S: Send + Sync> FromRequestParts<S> for InjectAll<TDep> {
     type Rejection = (http::StatusCode, &'static str);
 

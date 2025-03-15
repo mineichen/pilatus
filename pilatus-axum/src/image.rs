@@ -411,7 +411,7 @@ where
             // Without move, encode_task doesn't stop
             let mut moved_rx: mpsc::Receiver<_> = rx;
             while let Some(x) = moved_rx.next().await {
-                if socket_tx.send(Message::Binary(x)).await.is_err() {
+                if socket_tx.send(Message::Binary(x.into())).await.is_err() {
                     break;
                 }
             }

@@ -140,6 +140,6 @@ enum ImportServerMessage {
 
 impl ImportServerMessage {
     fn into_message(self) -> Message {
-        Message::Text(serde_json::to_string(&self).unwrap())
+        Message::Text(serde_json::to_string(&self).unwrap().into())
     }
 }

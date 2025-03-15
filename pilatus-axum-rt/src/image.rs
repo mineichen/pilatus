@@ -29,8 +29,8 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
         .http("/subscribe", |m| m.get(subscribe_image_handler))
         .http("/stream/localizable", |m| m.get(stream_localizable_image_handler))
         .http("/viewer", |m| m.get(image_viewer))
-        .http("/:device_id/single", |m| m.get(single_luma_image_handler))
-        .http("/:device_id/frame_intervals", |m| m.get(stream_frame_interval))
+        .http("/{device_id}/single", |m| m.get(single_luma_image_handler))
+        .http("/{device_id}/frame_intervals", |m| m.get(stream_frame_interval))
     );
 }
 

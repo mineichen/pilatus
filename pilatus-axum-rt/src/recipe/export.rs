@@ -12,7 +12,7 @@ use crate::zip_writer_wrapper::ZipWriterWrapper;
 pub(super) fn register_services(c: &mut ServiceCollection) {
     #[rustfmt::skip]
     c.register_web("recipe", |r| r
-        .http("/:id/export",|m| m.get(export_recipe))
+        .http("/{id}/export",|m| m.get(export_recipe))
     );
 }
 async fn export_recipe(
