@@ -9,7 +9,7 @@ pilatus = { path = "../pilatus" }
 pilatus-engineering = { path = "../pilatus-engineering" }
 pilatus-rt = { path = "../pilatus-rt", optional = true }                       # Must remain an internal dependency
 image = { workspace = true }                    # Must remain an internal dependency
-resvg = { version = "0.44.0" }
+resvg = { version = "0.45.0" }
 tracing = { workspace = true }
 
 

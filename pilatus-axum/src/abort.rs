@@ -1,6 +1,5 @@
 use std::fmt::Debug;
 
-use async_trait::async_trait;
 use axum::http::StatusCode;
 use futures::stream::{AbortRegistration, Abortable};
 use pilatus::device::ActorError;

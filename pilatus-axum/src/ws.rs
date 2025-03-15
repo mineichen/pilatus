@@ -1,7 +1,6 @@
 /// Pilatus provides it's own WebSocketUpgrade to avoid running Websockets when changeing recipes
 use std::{future::Future, sync::Arc};
 
-use async_trait::async_trait;
 use axum::{
     extract::{ws, FromRequestParts},
     http::{self, request::Parts, StatusCode},
