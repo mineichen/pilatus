@@ -72,14 +72,12 @@ async fn device(
         async {
             system
                 .execute(DeviceState {
-                    publisher: Arc::new(PublisherState {
-                        self_sender: actor_system
+                    publisher: Arc::new(PublisherState::new(
+                        actor_system
                             .get_weak_untyped_sender(ctx.id)
                             .expect("Just created"),
-
                         params,
-                        pending_active: Default::default(),
-                    }),
+                    )),
                     file_service: Arc::new(file_service_builder.build(ctx.id)),
                     stream: tokio::sync::broadcast::channel(1).0,
                     paused: false,
@@ -117,13 +115,7 @@ impl DeviceState {
                     {
                         old.params = params;
                     }
-                    _ => {
-                        self.publisher = Arc::new(PublisherState {
-                            params,
-                            self_sender: self.publisher.self_sender.clone(),
-                            pending_active: Default::default(),
-                        })
-                    }
+                    _ => self.publisher = Arc::new(self.publisher.with_params(params)),
                 }
                 let weak = Arc::downgrade(&self.publisher);
 
@@ -164,8 +156,9 @@ enum EmulationMode {
 #[serde(deny_unknown_fields, default)]
 struct FileParams {
     active: ActiveRecipe,
-    interval: u64,
+    auto_restart: bool,
     file_ending: String,
+    interval: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -178,8 +171,9 @@ impl Default for FileParams {
     fn default() -> Self {
         Self {
             active: Default::default(),
-            interval: 500,
+            auto_restart: true,
             file_ending: "png".into(),
+            interval: 500,
         }
     }
 }

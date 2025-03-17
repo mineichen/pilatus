@@ -6,7 +6,7 @@ use pilatus_engineering::image::{StreamImageError, SubscribeDynamicImageMessage}
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tracing::{debug, warn};
 
-use super::{publish_frame::PublishImageMessage, DeviceState, EmulationMode};
+use super::{DeviceState, EmulationMode};
 
 impl DeviceState {
     pub(super) async fn subscribe(
@@ -17,11 +17,9 @@ impl DeviceState {
             EmulationMode::File => {
                 if Arc::weak_count(&self.publisher) == 0 {
                     debug!("No PublishImageMessage is stored in the queue. Initialize Publishing");
-                    self.publisher
-                        .self_sender
-                        .clone()
-                        .tell(PublishImageMessage::new(&self.publisher))
-                        .ok();
+                    if let Err(e) = self.publisher.enqueue(self).await {
+                        warn!("Couldn't enqueue publisher: {e:?}");
+                    }
                 }
                 Ok(
                     tokio_stream::wrappers::BroadcastStream::new(self.stream.subscribe())
