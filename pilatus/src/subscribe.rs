@@ -165,7 +165,7 @@ impl<TOutput: Send + 'static, EOutput: Send + Debug + 'static>
                 }
             })
             .buffered(8)
-            .filter_map(|r| std::future::ready(r));
+            .filter_map(std::future::ready);
 
         let stream = StreamBroadcast::new(inner.fuse(), 10);
         let downgraded = stream.downgrade();

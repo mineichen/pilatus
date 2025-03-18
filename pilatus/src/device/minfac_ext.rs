@@ -21,7 +21,7 @@ pub trait ServiceBuilderExtensions {
         TFut: Future<Output = DeviceResult> + Send + 'static;
 }
 
-impl<'col, TDep> ServiceBuilderExtensions for ServiceBuilder<'col, TDep>
+impl<TDep> ServiceBuilderExtensions for ServiceBuilder<'_, TDep>
 where
     TDep: Resolvable + Send + 'static,
     TDep::ItemPreChecked: Send,

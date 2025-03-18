@@ -27,7 +27,7 @@ impl ImageSelector {
     pub fn output(&self) -> &ImageKey {
         match &self.image_output {
             ImageSelectorOutput::SameAsInput => &self.image_input,
-            ImageSelectorOutput::Selector(image_key) => &image_key,
+            ImageSelectorOutput::Selector(image_key) => image_key,
         }
     }
 

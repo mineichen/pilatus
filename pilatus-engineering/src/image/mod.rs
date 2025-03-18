@@ -251,7 +251,7 @@ impl UnpackedRgbImage for UnpackedGenericImage {
     }
 }
 
-impl<'a> From<&'a GenericImage<u8, 1>> for PackedGenericImage {
+impl From<&GenericImage<u8, 1>> for PackedGenericImage {
     fn from(input: &GenericImage<u8, 1>) -> Self {
         let data = input.buffer().iter().flat_map(|&i| [i, i, i]).collect();
         let inner = GenericImage::<u8, 3>::new_arc(data, input.width, input.height);

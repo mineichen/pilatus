@@ -123,7 +123,7 @@ impl ChangeParamsStrategy {
     }
 }
 
-impl<'a, TRecipe: DerefMut<Target = Recipes>> RecipeDataService<'a, TRecipe> {
+impl<TRecipe: DerefMut<Target = Recipes>> RecipeDataService<'_, TRecipe> {
     pub async fn change_device_params_on_active_recipe<T: Any>(
         &mut self,
         device_id: DeviceId,

@@ -17,9 +17,9 @@ impl<'de> Deserialize<'de> for SpecificImageKey {
         D: serde::Deserializer<'de>,
     {
         let str = Cow::<'static, str>::deserialize(deserializer)?;
-        Ok(str
+        str
             .try_into()
-            .map_err(<D::Error as serde::de::Error>::custom)?)
+            .map_err(<D::Error as serde::de::Error>::custom)
     }
 }
 

@@ -122,7 +122,7 @@ impl FileServiceTrait for TokioFileService {
                         .strip_prefix(&root_clone)
                         .expect("Iteration was done in root"),
                 )
-                .map_err(|e| TransactionError::other(e));
+                .map_err(TransactionError::other);
                 async move { Ok(Some(r?)) }
             })
             .boxed()
@@ -328,15 +328,15 @@ mod tests {
         let device_id = DeviceId::new_v4();
         let svc = TokioFileService::builder(dir.path()).build(device_id);
 
-        svc.add_file_unchecked(&RelativeFilePath::new("foo/bar/baz.jpg")?, &vec![0u8])
+        svc.add_file_unchecked(&RelativeFilePath::new("foo/bar/baz.jpg")?, &[0u8])
             .await?;
-        svc.add_file_unchecked(&RelativeFilePath::new("foo/baz/bar.png")?, &vec![0u8])
+        svc.add_file_unchecked(&RelativeFilePath::new("foo/baz/bar.png")?, &[0u8])
             .await?;
-        svc.add_file_unchecked(&RelativeFilePath::new("foo/baz/bar.jpg")?, &vec![0u8])
+        svc.add_file_unchecked(&RelativeFilePath::new("foo/baz/bar.jpg")?, &[0u8])
             .await?;
 
         let mut baz = svc
-            .stream_files_recursive(&RelativeDirectoryPath::new("foo/baz")?)
+            .stream_files_recursive(RelativeDirectoryPath::new("foo/baz")?)
             .map_ok(|x| x.as_os_str().to_string_lossy().to_string())
             .try_collect::<Vec<_>>()
             .await?;

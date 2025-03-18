@@ -56,7 +56,7 @@ async fn handle_background_permanent_recording(
             }
             let record_task = std::pin::pin!(self_sender.ask(
                 pilatus_engineering_camera::RecordMessage::with_max_size(
-                    config.source_id.clone(),
+                    config.source_id,
                     config.collection_name.clone(),
                     NonZeroU32::MAX,
                 ),

@@ -105,7 +105,7 @@ pub struct RecipeDataService<'a, T: 'a> {
     change_strategies: &'a HashMap<(&'static str, TypeId), Box<dyn Any + Send + Sync>>,
 }
 
-impl<'a, T: Deref<Target = Recipes>> RecipeDataService<'a, T> {
+impl<T: Deref<Target = Recipes>> RecipeDataService<'_, T> {
     async fn state(&self) -> ActiveState {
         let has_uncommitted_changes =
             self.check_active_files().await.is_err() || self.recipes.has_active_changes();
@@ -131,7 +131,7 @@ impl<'a, T: Deref<Target = Recipes>> RecipeDataService<'a, T> {
                 .try_collect()
                 .await?;
             let mut r_sorted = running_fs
-                .list_recursive(&RelativeDirectoryPath::root())
+                .list_recursive(RelativeDirectoryPath::root())
                 .await?;
             if b_sorted.len() != r_sorted.len() {
                 Err(UncommittedChangesError)?;
@@ -192,7 +192,7 @@ impl<'a, T: Deref<Target = Recipes>> RecipeDataService<'a, T> {
     }
 }
 
-impl<'a, T: DerefMut<Target = Recipes>> RecipeDataService<'a, T> {
+impl<T: DerefMut<Target = Recipes>> RecipeDataService<'_, T> {
     async fn delete_device(
         &mut self,
         recipe_id: RecipeId,
@@ -490,7 +490,7 @@ pub(crate) mod unstable {
     use super::{recipes::recipes_try_add_new_with_id, *};
     use pilatus::{device::DeviceId, Recipe, RecipeId, TransactionError};
 
-    impl<'a, T: Deref<Target = Recipes>> RecipeDataService<'a, T> {
+    impl<T: Deref<Target = Recipes>> RecipeDataService<'_, T> {
         pub fn device_config(
             &self,
             _recipe_id: RecipeId,
@@ -503,7 +503,7 @@ pub(crate) mod unstable {
         }
     }
 
-    impl<'a, T: DerefMut<Target = Recipes>> RecipeDataService<'a, T> {
+    impl<T: DerefMut<Target = Recipes>> RecipeDataService<'_, T> {
         pub async fn add_recipe_with_id(
             &mut self,
             id: RecipeId,

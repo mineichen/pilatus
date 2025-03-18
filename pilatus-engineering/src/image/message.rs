@@ -163,10 +163,10 @@ pub struct UnknownKeyError<'a, T: Debug> {
     pub available_keys: std::collections::hash_map::Keys<'a, SpecificImageKey, T>,
 }
 
-impl<'a, T: Debug + Clone + Send + Sync> Into<(T, anyhow::Error)> for UnknownKeyError<'a, T> {
-    fn into(self) -> (T, anyhow::Error) {
-        let image = self.main_image.clone();
-        let error = anyhow::anyhow!("{self:?}");
+impl<T: Debug + Clone + Send + Sync> From<UnknownKeyError<'_, T>> for (T, anyhow::Error) {
+    fn from(val: UnknownKeyError<'_, T>) -> Self {
+        let image = val.main_image.clone();
+        let error = anyhow::anyhow!("{val:?}");
         (image, error)
     }
 }

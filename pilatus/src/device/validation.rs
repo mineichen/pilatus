@@ -15,7 +15,7 @@ pub struct DeviceValidationContext<'a> {
     pub(super) raw: &'a DeviceContext,
 }
 
-impl<'a> DeviceValidationContext<'a> {
+impl DeviceValidationContext<'_> {
     pub fn params_as<T: DeserializeOwned>(&self) -> Result<T, UpdateParamsMessageError> {
         let resolved = self.raw.variables.resolve(&self.raw.params_with_vars)?;
         Ok(resolved.params_as::<T>()?)

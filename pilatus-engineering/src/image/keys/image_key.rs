@@ -61,7 +61,7 @@ impl ImageKey {
                 std::mem::swap(&mut value, fallback);
                 Some(value)
             }
-            Some(key) => col.insert(key.into(), value),
+            Some(key) => col.insert(key, value),
         }
     }
 }

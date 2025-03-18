@@ -103,8 +103,8 @@ pub async fn save_encoded(
     let chrono_time = DateTime::<Utc>::from(time);
 
     let relative_dir = collection_dir
-        .join(&chrono_time.format("%Y-%m-%d").to_string())
-        .join(&chrono_time.format("%H-%M").to_string());
+        .join(chrono_time.format("%Y-%m-%d").to_string())
+        .join(chrono_time.format("%H-%M").to_string());
 
     for (key, encoded) in images {
         let path = RelativeFilePath::new(relative_dir.join(format!(
