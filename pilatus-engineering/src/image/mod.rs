@@ -170,6 +170,12 @@ impl PackedRgbImage for PackedGenericImage {
 #[derive(Debug)]
 pub struct UnpackedGenericImage(GenericImage<u8, 3>);
 
+impl From<UnpackedGenericImage> for PackedGenericImage {
+    fn from(value: UnpackedGenericImage) -> Self {
+        PackedGenericImage::from_unpacked_image(&value.0)
+    }
+}
+
 impl From<PackedGenericImage> for DynamicImage {
     fn from(value: PackedGenericImage) -> Self {
         let planar = UnpackedGenericImage::from_packed_image(&value.0);

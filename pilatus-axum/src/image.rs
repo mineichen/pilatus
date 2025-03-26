@@ -2,7 +2,7 @@
 /// The initial protocoll stopped if a error occured. Such errors could be temporal (camera not found) or fixable by changing parameters back)
 /// In that case, the subscriber started to randomly request new frames without knowing if this is reasonable
 /// The new design still allows all previous workflows by simply adding .take_while() and therefore volunatarely close the stream.
-/// Furthermore, the new design allows errors to contain images, for situations, where e.g.  
+/// Furthermore, the new design allows errors to contain images, for situations, where e.g.
 use std::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
@@ -21,9 +21,9 @@ use futures::{
 use jpeg_encoder::{ColorType, Encoder};
 use pilatus::device::{ActorError, ActorMessage, ActorSystem, DeviceId};
 use pilatus_engineering::image::{
-    BroadcastImage, DynamicImage, ImageWithMeta, LocalizableBroadcastImage, LumaImage, RgbImage,
-    StreamImageError, SubscribeImageMessage, SubscribeImageOk, SubscribeLocalizableImageMessage,
-    SubscribeLocalizableImageOk,
+    BroadcastImage, DynamicImage, ImageWithMeta, LocalizableBroadcastImage, LumaImage,
+    PackedGenericImage, RgbImage, StreamImageError, SubscribeImageMessage, SubscribeImageOk,
+    SubscribeLocalizableImageMessage, SubscribeLocalizableImageOk, UnpackedGenericImage,
 };
 use serde::Serialize;
 use tracing::{debug, trace};
@@ -173,7 +173,10 @@ fn encode_dynamic_jpeg_image<T: Serialize>(
             ColorType::Luma,
             dims,
         ),
-        DynamicImage::Rgb8Planar(i) => encode_jpeg(buf, i.buffer(), ColorType::Rgb, dims),
+        DynamicImage::Rgb8Planar(i) => {
+            let packed: PackedGenericImage = UnpackedGenericImage::new(i).into();
+            encode_jpeg(buf, packed.buffer(), ColorType::Rgb, dims)
+        }
         _ => Err(anyhow!("Unsupported image format: {:?}", image)),
     }
 }
