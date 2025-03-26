@@ -1,112 +1,138 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-
-<head>
-    <title>Image viewer</title>
-    <style>
-        #current-device-id {
-            font-size: 0.5em;
-        }
-    </style>
-</head>
-
-<body>
-    <h1>Image stream <span id="current-device-id"></span></h1>
-    <select id="device-select">
-    </select>
-    <a id="capture-link" target="_blank">Capture PNG</a>
-    <br />
-    <img id="image" height="600" />
-    <div id="meta"></div>
-
-
-    <script>
-        let host_with_port = location.host;
-        const HEADER_LENGTH = 8;
-
-        async function decode(blob) {
-            if (blob.size < HEADER_LENGTH) {
-                throw "Blob is too small to contain an image: " + blob.size;
+    <head>
+        <title>Image viewer</title>
+        <style>
+            #body {
+                background: #111;
             }
-            const meta_len = new Uint32Array(await blob.slice(4, 8).arrayBuffer())[0];
+            h1 {
+                color: #ccc;
+            }
+            #current-device-id {
+                font-size: 0.5em;
+            }
+        </style>
+    </head>
 
-            if (meta_len + HEADER_LENGTH > blob.size) {
-                throw "Blob with size " + blob.size + " can't extract enough text " + meta_len;
-            }
-            const text = await blob.slice(HEADER_LENGTH, meta_len + HEADER_LENGTH).text();
-            const meta = (meta_len > 0) ? (JSON.parse(text)) : null;
-            if (meta === undefined) {
-                throw "couldn't parse json: " + text;
-            }
-            let error_code = new Uint8Array(await blob.slice(0, 1).arrayBuffer())[0];
-            console.log("Meta", meta);
-            if (error_code !== 0) {
-                return new Promise((_, rej) => rej(error_code));
-            }
+    <body>
+        <h1>Image stream <span id="current-device-id"></span></h1>
+        <select id="device-select"></select>
+        <a id="capture-link" target="_blank">Capture PNG</a>
+        <br />
+        <img id="image" height="600" />
+        <div id="meta"></div>
 
-            const image_start = HEADER_LENGTH + meta_len + 4;
-            const image_len = new Uint32Array(await blob.slice(image_start - 4, image_start).arrayBuffer())[0];
-            let reader = new FileReader();
-            let imageBlob = blob.slice(image_start, image_start + image_len);
-            reader.readAsDataURL(imageBlob);
-            return new Promise((res, rej) => {
-                reader.onloadend = function () {
-                    const base64data = reader.result;
-                    res([base64data, meta])
+        <script>
+            let host_with_port = location.host;
+            const HEADER_LENGTH = 8;
+
+            async function decode(blob) {
+                if (blob.size < HEADER_LENGTH) {
+                    throw "Blob is too small to contain an image: " + blob.size;
                 }
-            })
-        }
+                const meta_len = new Uint32Array(
+                    await blob.slice(4, 8).arrayBuffer(),
+                )[0];
 
-        let socket = null;
-        async function init() {
-            let data = await (await fetch("/api/image/list/subscribe")).json();
-
-            let selector = document.getElementById("device-select");
-            selector.addEventListener("change", (e) => {
-                stream_image(e.target.value);
-            })
-            if (data[0]) {
-                stream_image(data[0]);
-            } else {
-                let el = document.createElement("option");
-                el.text = "No sources found";
-                selector.appendChild(el);
-            }
-
-            for (var item of data) {
-                let el = document.createElement("option");
-                el.innerHTML = item;
-                el.setAttribute("value", item);
-                selector.appendChild(el);
-            }
-
-        }
-
-        async function stream_image(id) {
-            if (socket) {
-                await socket.close();
-            }
-
-            document.getElementById("current-device-id").innerText = id;
-            document.getElementById("capture-link").setAttribute("href", "/api/image?device_id=" + id);
-
-
-            socket = new WebSocket("ws://" + host_with_port + "/api/image/subscribe?device_id=" + id);
-            socket.addEventListener("message", async data => {
-                console.log("data arrive?", data);
-                try {
-                    let decoded = await decode(data.data);
-                    document.getElementById("image").src = decoded[0];
-                    document.getElementById("meta").src = decoded[1];
-                } catch (e) {
-                    console.error("Error", e);
+                if (meta_len + HEADER_LENGTH > blob.size) {
+                    throw (
+                        "Blob with size " +
+                        blob.size +
+                        " can't extract enough text " +
+                        meta_len
+                    );
                 }
-            });
-        }
+                const text = await blob
+                    .slice(HEADER_LENGTH, meta_len + HEADER_LENGTH)
+                    .text();
+                const meta = meta_len > 0 ? JSON.parse(text) : null;
+                if (meta === undefined) {
+                    throw "couldn't parse json: " + text;
+                }
+                let error_code = new Uint8Array(
+                    await blob.slice(0, 1).arrayBuffer(),
+                )[0];
+                console.log("Meta", meta);
+                if (error_code !== 0) {
+                    return new Promise((_, rej) => rej(error_code));
+                }
 
-        init();
+                const image_start = HEADER_LENGTH + meta_len + 4;
+                const image_len = new Uint32Array(
+                    await blob
+                        .slice(image_start - 4, image_start)
+                        .arrayBuffer(),
+                )[0];
+                let reader = new FileReader();
+                let imageBlob = blob.slice(
+                    image_start,
+                    image_start + image_len,
+                );
+                reader.readAsDataURL(imageBlob);
+                return new Promise((res, rej) => {
+                    reader.onloadend = function () {
+                        const base64data = reader.result;
+                        res([base64data, meta]);
+                    };
+                });
+            }
 
-    </script>
-</body>
+            let socket = null;
+            async function init() {
+                let data = await (
+                    await fetch("/api/image/list/subscribe")
+                ).json();
 
+                let selector = document.getElementById("device-select");
+                selector.addEventListener("change", (e) => {
+                    stream_image(e.target.value);
+                });
+                if (data[0]) {
+                    stream_image(data[0]);
+                } else {
+                    let el = document.createElement("option");
+                    el.text = "No sources found";
+                    selector.appendChild(el);
+                }
+
+                for (var item of data) {
+                    let el = document.createElement("option");
+                    el.innerHTML = item;
+                    el.setAttribute("value", item);
+                    selector.appendChild(el);
+                }
+            }
+
+            async function stream_image(id) {
+                if (socket) {
+                    await socket.close();
+                }
+
+                document.getElementById("current-device-id").innerText = id;
+                document
+                    .getElementById("capture-link")
+                    .setAttribute("href", "/api/image?device_id=" + id);
+
+                socket = new WebSocket(
+                    "ws://" +
+                        host_with_port +
+                        "/api/image/subscribe?device_id=" +
+                        id,
+                );
+                socket.addEventListener("message", async (data) => {
+                    console.log("data arrive?", data);
+                    try {
+                        let decoded = await decode(data.data);
+                        document.getElementById("image").src = decoded[0];
+                        document.getElementById("meta").src = decoded[1];
+                    } catch (e) {
+                        console.error("Error", e);
+                    }
+                });
+            }
+
+            init();
+        </script>
+    </body>
 </html>
