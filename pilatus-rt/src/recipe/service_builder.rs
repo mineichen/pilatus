@@ -49,7 +49,7 @@ impl RecipeServiceBuilder {
     pub fn build(self) -> RecipeServiceAccessor {
         let mut path = self.path.join("recipes"); // /root/recipes
         for c in 1..100 {
-            match Self::try_from_file_or_new(&path, self.listeners.as_ref()) {
+            match Self::try_from_file_or_new(&path, &self.listeners) {
                 Ok(recipes) => {
                     let (update_sender, _) = tokio::sync::broadcast::channel(10);
                     return RecipeServiceAccessor {
@@ -80,11 +80,11 @@ impl RecipeServiceBuilder {
             let file = std::fs::File::open(jpath.clone())?;
             recipes = Recipes::from_reader(file)?;
         } else {
-            //create new recipes.json, as current path's folder is empty
+            // create new recipes.json, as current path's folder is empty
             let mut r = Recipe::default();
 
-            //add all default devices
-            for listener in listeners {
+            // add all default devices
+            for listener in listeners.iter() {
                 listener.call(&mut r);
             }
 
