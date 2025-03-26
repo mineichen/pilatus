@@ -600,7 +600,31 @@ impl<T, const CHANNELS: usize> Drop for GenericImage<T, CHANNELS> {
 
 #[cfg(test)]
 mod tests {
+    use image::Rgb;
+
     use super::*;
+
+    #[test]
+    fn load_and_save_dynamic_rgb_image() {
+        let image = image::ImageBuffer::<Rgb<u8>, _>::from_vec(
+            2,
+            2,
+            vec![0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        )
+        .unwrap();
+        let pilatus = GenericImage::<u8, 3>::new_vec(
+            image.clone().into_vec(),
+            2.try_into().unwrap(),
+            2.try_into().unwrap(),
+        );
+        let dynamic: DynamicImage = PackedGenericImage(pilatus).into();
+        let png = dynamic.encode_png().unwrap();
+        let image::DynamicImage::ImageRgb8(reloaded) = image::load_from_memory(&png).unwrap()
+        else {
+            panic!("Buffer contains rgb-image");
+        };
+        assert_eq!(reloaded, image);
+    }
 
     #[test]
     fn miri_create_and_clear_vec_image() {
