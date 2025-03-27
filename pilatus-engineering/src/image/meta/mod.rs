@@ -5,18 +5,21 @@ use serde::{Deserialize, Serialize};
 
 use super::StableHash;
 
+mod any_multimap;
 mod error;
 mod keys;
 
+pub use any_multimap::*;
 pub use error::*;
 pub use keys::*;
 
 #[non_exhaustive]
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Debug, Clone)]
 pub struct ImageWithMeta<T> {
     pub image: T,
     pub meta: ImageMeta,
     pub other: HashMap<SpecificImageKey, T>,
+    pub extensions: AnyMultiMap,
 }
 
 impl<T> ImageWithMeta<T> {
@@ -25,6 +28,7 @@ impl<T> ImageWithMeta<T> {
             image,
             meta,
             other: Default::default(),
+            extensions: Default::default(),
         }
     }
 
@@ -33,15 +37,22 @@ impl<T> ImageWithMeta<T> {
             image,
             meta: ImageMeta { hash },
             other: Default::default(),
+            extensions: Default::default(),
         }
     }
 
+    #[deprecated = "Image with Meta got plugins which should also be forwarded. Dont destruct this object, but instead modify it"]
     pub fn with_meta_and_others(
         image: T,
         meta: ImageMeta,
         other: HashMap<SpecificImageKey, T>,
     ) -> Self {
-        Self { image, meta, other }
+        Self {
+            image,
+            meta,
+            other,
+            extensions: Default::default(),
+        }
     }
 
     /// Ok if the key is found or unspecified, Err if a key was specified but not found (returning the main image then)

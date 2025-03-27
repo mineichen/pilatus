@@ -314,11 +314,11 @@ impl<TMsg, TInputStream, TInputImage> ImageStreamer<TMsg, TInputStream, TInputIm
 impl<TMsg, TInputStream, TInputImage> ImageStreamer<TMsg, TInputStream, TInputImage>
 where
     TMsg: Default + ActorMessage<Output = TInputStream>,
-    TInputImage: Clone + Send + Sync + 'static,
+    TInputImage: Clone + Send + 'static,
     TInputStream: Into<BoxStream<'static, TInputImage>>,
 {
     pub async fn stream_image<
-        TImg: StreamableImage + Send + Sync + 'static,
+        TImg: StreamableImage + Send + 'static,
         TFn: Fn(TInputImage) -> TFut + 'static + Send + Sync,
         TFut: Future<Output = Result<TImg, ActorError<anyhow::Error>>> + 'static + Send,
     >(
@@ -333,7 +333,7 @@ where
         .await
     }
     pub async fn bidirectional_stream_image<
-        TImg: StreamableImage + Send + Sync + 'static,
+        TImg: StreamableImage + Send + 'static,
         TFn: Fn(TInputImage) -> TFut + 'static + Send + Sync,
         TFut: Future<Output = Result<TImg, ActorError<anyhow::Error>>> + 'static + Send,
         TMessageHandler: (Fn(Message) -> TMessageHandlerFuture) + Send + Sync + 'static,
@@ -356,7 +356,7 @@ where
         .map_err(|(_, r)| r)
     }
     pub async fn try_bidirectional_stream_image<
-        TImg: StreamableImage + Send + Sync + 'static,
+        TImg: StreamableImage + Send + 'static,
         TFn: Fn(TInputImage) -> TFut + 'static + Send + Sync,
         TFut: Future<Output = Result<TImg, ActorError<anyhow::Error>>> + 'static + Send,
         TMessageHandler: (Fn(Message) -> TMessageHandlerFuture) + Send + Sync + 'static,
@@ -386,7 +386,7 @@ where
     }
 
     async fn handle_socket<
-        TImg: StreamableImage + Send + Sync + 'static,
+        TImg: StreamableImage + Send + 'static,
         TFn: Fn(TInputImage) -> TFut + 'static + Send,
         TFut: Future<Output = Result<TImg, ActorError<anyhow::Error>>> + 'static + Send,
         TMessageHandler: (Fn(Message) -> TMessageHandlerFuture) + Send + 'static,

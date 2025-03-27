@@ -21,7 +21,7 @@ tokio = { workspace = true, features = [
     "tracing",
 ], optional = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
-smallvec = "1"
+smallvec = { workspace = true }
 indexmap = { version = "2", features = ["serde"] }
 
 # Unstable public

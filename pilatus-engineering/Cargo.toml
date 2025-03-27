@@ -17,6 +17,7 @@ sealedstruct = { git = "https://github.com/mineichen/sealedstruct.git", branch =
     "serde",
 ] }
 serde = { workspace = true, features = ["derive"] }
+smallvec = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync"], optional = true }
 tokio-stream = { version = "0.1", features = ["fs", "sync"], optional = true }

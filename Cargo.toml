@@ -24,6 +24,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 minfac = "0.1"
 serde = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
+smallvec = "1"
 thiserror = "2"
 tokio = "1"
 tracing = "0.1"
