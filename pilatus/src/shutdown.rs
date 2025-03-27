@@ -3,14 +3,15 @@
 /// For testing, the function `register_test_services` can be used.
 /// When register_test_services is used, SystemShutdown terminates too if SystemTerminator.shutdown() is called
 use std::{
+    future::Future,
     pin::Pin,
     task::{self, Poll},
 };
 
-use futures::{future::Shared, stream::AbortHandle, Future, FutureExt};
+use futures_util::{future::Shared, stream::AbortHandle, FutureExt};
 
 type InnerPrivateState =
-    Shared<Pin<std::boxed::Box<(dyn futures::Future<Output = ()> + 'static + Send + Sync)>>>;
+    Shared<Pin<std::boxed::Box<(dyn Future<Output = ()> + 'static + Send + Sync)>>>;
 
 // Should be used rather than ctrl_c to allow stopping during tests
 #[derive(Clone)]

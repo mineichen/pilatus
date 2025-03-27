@@ -1,6 +1,7 @@
 use std::{borrow::Cow, collections::HashSet, fmt::Debug};
 
-use futures::{channel::oneshot, stream::Aborted};
+use futures_channel::oneshot;
+use futures_util::stream::Aborted;
 
 use crate::{device::DeviceId, Name};
 

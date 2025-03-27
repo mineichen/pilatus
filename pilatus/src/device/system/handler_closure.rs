@@ -1,8 +1,8 @@
 use std::future::Ready;
 
-use futures::{
-    channel::oneshot,
-    future::{BoxFuture, Either, Join, Map},
+use futures_channel::oneshot;
+use futures_util::{
+    future::{join, select, BoxFuture, Either, Join, Map},
     stream::{AbortHandle, AbortRegistration},
     Future, FutureExt,
 };
@@ -50,7 +50,7 @@ where
         response_channel: HandlerClosureContext<TMsg>,
     ) -> Self::FinalFut {
         let result = (self)(state, msg);
-        futures::future::join(result, std::future::ready(response_channel))
+        join(result, std::future::ready(response_channel))
             .map(|(x, response_channel)| x.handle_as_result(response_channel))
     }
 }
@@ -89,7 +89,7 @@ where
         let future = self.0(state, msg, abort_registration).fuse();
 
         async move {
-            futures::future::select(std::pin::pin!(future), ctx.response_channel.cancellation())
+            select(std::pin::pin!(future), ctx.response_channel.cancellation())
                 .then(move |r| match r {
                     Either::Left((x, _)) => std::future::ready(x).left_future(),
                     Either::Right((_, other)) => {

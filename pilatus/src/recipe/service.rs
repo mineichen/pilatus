@@ -5,7 +5,7 @@ use std::io::{self};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use futures::stream::BoxStream;
+use futures_util::stream::BoxStream;
 
 use serde::Deserialize;
 

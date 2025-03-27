@@ -9,7 +9,7 @@ use std::{
 };
 
 pub use device::*;
-use futures::{future::BoxFuture, stream::BoxStream, FutureExt};
+use futures_util::{future::BoxFuture, stream::BoxStream, FutureExt};
 use tracing::trace;
 
 use crate::{

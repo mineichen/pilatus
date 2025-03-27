@@ -1,7 +1,7 @@
 use std::{any::Any, fmt::Debug, future::Future, sync::Arc};
 
 use async_trait::async_trait;
-use futures::{future::BoxFuture, FutureExt};
+use futures_util::{future::BoxFuture, FutureExt};
 use minfac::{Resolvable, ServiceCollection, WeakServiceProvider};
 use tokio::task::JoinHandle;
 use tracing::error;

@@ -2,15 +2,15 @@
 resolver = "2"
 
 members = [
-  "pilatus",
-  "pilatus-axum",
-  "pilatus-axum-rt",
-  "pilatus-engineering",
-  "pilatus-rt",
-  "examples/stream",
-  "pilatus-engineering-camera-rt", 
-  "pilatus-engineering-camera", 
-  "pilatus-engineering-rt"
+    "pilatus",
+    "pilatus-axum",
+    "pilatus-axum-rt",
+    "pilatus-engineering",
+    "pilatus-rt",
+    "examples/stream",
+    "pilatus-engineering-camera-rt",
+    "pilatus-engineering-camera",
+    "pilatus-engineering-rt",
 ]
 
 [workspace.dependencies]
@@ -18,9 +18,9 @@ anyhow = "1"
 bytes = "1"
 chrono = "0.4"
 futures = "0.3"
-image = { version = "0.25", default-features = false, features = [
-  "png",
-]}
+futures-channel = "0.3"
+futures-util = "0.3"
+image = { version = "0.25", default-features = false, features = ["png"] }
 minfac = "0.1"
 serde = "1"
 serde_json = { version = "1", features = ["preserve_order"] }

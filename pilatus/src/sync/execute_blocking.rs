@@ -1,6 +1,7 @@
 use std::fmt::Debug;
+use std::future::Future;
 
-use futures::{Future, TryFutureExt};
+use futures_util::TryFutureExt;
 
 use crate::device::ActorError;
 
@@ -8,7 +9,7 @@ use crate::device::ActorError;
 pub fn execute_blocking<TOk: Send + 'static, TErr: Send + 'static + Debug>(
     f: impl FnOnce() -> Result<TOk, TErr> + Send + 'static,
 ) -> impl Future<Output = Result<TOk, ActorError<TErr>>> {
-    use futures::channel::oneshot;
+    use futures_channel::oneshot;
 
     let (tx, rx) = oneshot::channel();
     rayon::spawn(move || {
@@ -23,7 +24,7 @@ pub fn execute_blocking<TOk: Send + 'static, TErr: Send + 'static + Debug>(
 pub fn process_blocking<TOk: Send + 'static, TErr: Send + 'static + Debug>(
     f: impl FnOnce() -> Result<TOk, ActorError<TErr>> + Send + 'static,
 ) -> impl Future<Output = Result<TOk, ActorError<TErr>>> {
-    use futures::channel::oneshot;
+    use futures_channel::oneshot;
 
     let (tx, rx) = oneshot::channel();
     rayon::spawn(move || {
@@ -46,7 +47,7 @@ pub fn execute_blocking<TOk: Send + 'static, TErr: Send + 'static + Debug>(
 pub fn process_blocking<TOk: Send + 'static, TErr: Send + 'static + Debug>(
     f: impl FnOnce() -> Result<TOk, ActorError<TErr>> + Send + 'static,
 ) -> impl Future<Output = Result<TOk, ActorError<TErr>>> {
-    use futures::FutureExt;
+    use futures_util::FutureExt;
 
     tokio::task::spawn_blocking(f).map(|x| x?)
 }

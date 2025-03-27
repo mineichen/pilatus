@@ -14,11 +14,11 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = [
-  "fs",
-  "rt",
-  "sync",
-  "time",
-  "tracing",
+    "fs",
+    "rt",
+    "sync",
+    "time",
+    "tracing",
 ], optional = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
 smallvec = "1"
@@ -29,10 +29,11 @@ approx = "0.5"
 async-trait = "0.1"
 chrono = { workspace = true, features = ["serde"] }
 config = { version = "0.15", features = ["json"], default-features = false }
-futures = { workspace = true }
+futures-util = { workspace = true, features = ["io"] }
+futures-channel = { workspace = true }
 minfac = { workspace = true, optional = true }
 sealedstruct = { git = "https://github.com/mineichen/sealedstruct.git", branch = "main", features = [
-  "serde",
+    "serde",
 ] }
 tracing = { workspace = true }
 
@@ -43,12 +44,12 @@ stream-broadcast = { version = "0.3", optional = true }
 [dev-dependencies]
 tempfile = { version = "3" }
 tokio = { workspace = true, features = [
-  "fs",
-  "macros",
-  "rt",
-  "sync",
-  "time",
-  "tracing",
+    "fs",
+    "macros",
+    "rt",
+    "sync",
+    "time",
+    "tracing",
 ] }
 
 [lints.rust]
@@ -60,5 +61,5 @@ subscribe = ["stream-broadcast"]
 # Ok to depend during tests, as compile errors immediately show up in that project
 # When project which uses pilatus/unstable itself is referenced, it doesn't break if unstable features change
 # This feature should only be activated in tests and leaf-crates, on which noone depends
-# With these restrictions, we can avoid using a dedicated cfg (like 'tokio_unstable'). For tokio this doesn't work, as e.g. tracing-subscriber relies on unstable features 
+# With these restrictions, we can avoid using a dedicated cfg (like 'tokio_unstable'). For tokio this doesn't work, as e.g. tracing-subscriber relies on unstable features
 unstable = []

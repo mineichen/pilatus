@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use futures::{future::BoxFuture, FutureExt};
+use futures_util::{future::BoxFuture, FutureExt};
 use tokio::sync::{Mutex, MutexGuard};
 
 /// Used to extract a Variable which contains a subset of data

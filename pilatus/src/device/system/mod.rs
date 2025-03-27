@@ -7,11 +7,11 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
-use futures::{
-    channel::{mpsc, oneshot},
+use futures_channel::{mpsc, oneshot};
+use futures_util::{
     future::{BoxFuture, Either},
     pin_mut,
-    stream::FuturesUnordered,
+    stream::{self, FuturesUnordered},
     FutureExt, Stream, StreamExt,
 };
 use tracing::{trace, warn};
@@ -420,7 +420,7 @@ mod releaser {
 type Task = tokio::task::JoinHandle<()>;
 
 #[cfg(not(feature = "tokio"))]
-type Task = futures::future::BoxFuture<'static, ()>;
+type Task = futures_util::future::BoxFuture<'static, ()>;
 
 type HandlerClosureResponse = Option<Task>;
 
@@ -518,9 +518,9 @@ impl<TState: 'static + Send> ActorDevice<TState> {
         async fn blocking<TState, TMsg: ActorMessage>(
             _state: &mut TState,
             _msg: TMsg,
-            r: futures::stream::AbortRegistration,
+            r: stream::AbortRegistration,
         ) -> ActorResult<TMsg> {
-            futures::stream::Abortable::new(
+            stream::Abortable::new(
                 std::future::poll_fn::<(), _>(|_| std::task::Poll::Pending),
                 r,
             )
@@ -552,12 +552,11 @@ impl<TState: 'static + Send> ActorDevice<TState> {
                 let fut = strategy.execute(available_handler.as_ref(), state, untyped_message);
                 pin_mut!(fut);
 
-                let mut infinite_pending =
-                    (&mut self.pending_tasks).chain(futures::stream::pending());
+                let mut infinite_pending = (&mut self.pending_tasks).chain(stream::pending());
 
                 state = loop {
                     if let Either::Left(((state, maybe_task), _)) =
-                        futures::future::select(&mut fut, infinite_pending.next()).await
+                        futures_util::future::select(&mut fut, infinite_pending.next()).await
                     {
                         if let Some(task) = maybe_task {
                             self.pending_tasks.push(task);
@@ -584,8 +583,8 @@ impl<T> Drop for ActorDevicePostExecute<T> {
 mod tests {
     use std::{task::Poll, time::Duration};
 
-    use futures::{
-        future::{join_all, poll_fn},
+    use futures_util::{
+        future::{join, join_all, poll_fn},
         stream::{AbortRegistration, Abortable},
         FutureExt,
     };
@@ -624,7 +623,7 @@ mod tests {
         assert_eq!(
             tokio::time::timeout(
                 Duration::from_secs(10),
-                futures::future::join(system, async {
+                futures_util::future::join(system, async {
                     sleep(Duration::from_millis(1)).await;
                     {
                         let _aborted = abort_system.ask(id, I32Message(42));
@@ -726,7 +725,7 @@ mod tests {
 
         struct State(i32);
 
-        let (state, _) = futures::future::join(
+        let (state, _) = join(
             system.register(id).add_handler(handler).execute(State(0)),
             async move {
                 tokio::time::sleep(Duration::from_micros(10)).await;
@@ -757,7 +756,7 @@ mod tests {
 
         struct State(i32);
 
-        let (state, _) = futures::future::join(
+        let (state, _) = join(
             system
                 .register(id)
                 .add_sync_handler(handler)
@@ -786,7 +785,7 @@ mod tests {
 
         struct State;
 
-        futures::future::join(
+        join(
             system.register(id).add_handler(handler).execute(State),
             async move {
                 tokio::time::sleep(Duration::from_micros(10)).await;

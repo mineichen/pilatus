@@ -31,7 +31,7 @@ impl<TFut: Future<Output = ActorResult<TMsg>> + 'static + Send, TMsg: ActorMessa
         #[cfg(feature = "tokio")]
         let res = tokio::task::spawn(fut);
         #[cfg(not(feature = "tokio"))]
-        let res = futures::future::FutureExt::boxed(fut);
+        let res = futures_util::future::FutureExt::boxed(fut);
 
         Some(res)
     }

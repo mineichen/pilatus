@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use futures::{stream, Stream, StreamExt};
+use futures_util::{stream, Stream, StreamExt};
 use tokio::fs::{self, DirEntry};
 
 /// Recursively creates the target if it doesn't exist

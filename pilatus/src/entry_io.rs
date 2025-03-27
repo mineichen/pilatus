@@ -1,5 +1,5 @@
-use futures::future::BoxFuture;
-use futures::io::AsyncRead;
+use futures_util::future::BoxFuture;
+use futures_util::io::AsyncRead;
 
 pub trait PinReader: AsyncRead + Unpin + Send {}
 impl<T> PinReader for T where T: AsyncRead + Unpin + Send {}

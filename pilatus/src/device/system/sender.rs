@@ -1,6 +1,6 @@
 use std::{any::TypeId, borrow::Cow, fmt::Debug, marker::PhantomData, sync::Weak};
 
-use futures::channel::oneshot;
+use futures_channel::oneshot;
 
 use super::{
     ActorError, ActorErrorBusy, ActorMessage, ActorResult, ActorWeakTellError, BoxMessage,

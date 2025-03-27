@@ -1,6 +1,9 @@
 use std::{fmt::Debug, marker::PhantomData, num::Saturating};
 
-use futures::{stream::BoxStream, StreamExt};
+use futures_util::{
+    stream::{self, BoxStream},
+    StreamExt,
+};
 use serde::{Deserialize, Serialize};
 use stream_broadcast::StreamBroadcast;
 use tracing::{error, trace};
@@ -172,24 +175,24 @@ impl<TOutput: Send + 'static, EOutput: Send + Debug + 'static>
         this.pipeline = Box::new(move || {
             downgraded.re_subscribe().upgrade().map(|x| {
                 Box::pin(x.flat_map(|(missed, data)| {
-                    futures::stream::iter((missed > 0).then(|| {
+                    stream::iter((missed > 0).then(|| {
                         Err(MissedItemsError::new(std::num::Saturating(
                             missed.min(u16::MAX as u64) as u16,
                         ))
                         .into())
                     }))
-                    .chain(futures::stream::once(std::future::ready(data)))
+                    .chain(stream::once(std::future::ready(data)))
                 })) as _
             })
         });
         Ok(Box::pin(stream.flat_map(|(missed, data)| {
-            futures::stream::iter((missed > 0).then(|| {
+            stream::iter((missed > 0).then(|| {
                 Err(
                     MissedItemsError::new(std::num::Saturating(missed.min(u16::MAX as u64) as u16))
                         .into(),
                 )
             }))
-            .chain(futures::stream::once(std::future::ready(data)))
+            .chain(stream::once(std::future::ready(data)))
         })) as _)
     }
 }

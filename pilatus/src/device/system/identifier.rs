@@ -1,6 +1,6 @@
 use std::any::TypeId;
 
-use futures::channel::mpsc;
+use futures_channel::mpsc;
 use serde::Deserialize;
 
 use super::{

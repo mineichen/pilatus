@@ -2,7 +2,8 @@ use std::{fmt::Debug, sync::Arc};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use futures::{channel::oneshot, future::BoxFuture};
+use futures_channel::oneshot;
+use futures_util::future::BoxFuture;
 
 use crate::{RecipeId, UntypedDeviceParamsWithVariables, Variables};
 
