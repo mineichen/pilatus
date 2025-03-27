@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert::Infallible, fmt::Debug, sync::Arc};
+use std::{convert::Infallible, fmt::Debug, sync::Arc};
 
 use futures::stream::BoxStream;
 use pilatus::{
@@ -6,13 +6,7 @@ use pilatus::{
     MissedItemsError, SubscribeMessage,
 };
 
-use super::{
-    DynamicImage, DynamicPointProjector, ImageKey, LumaImage, SpecificImageKey, StableHash,
-};
-
-mod meta;
-
-pub use meta::*;
+use super::{DynamicImage, DynamicPointProjector, ImageWithMeta, LumaImage, StableHash};
 
 #[derive(Default)]
 #[non_exhaustive]
@@ -45,81 +39,6 @@ impl<T: Debug> From<ActorError<(T, anyhow::Error)>> for StreamImageError<T> {
 }
 
 pub type GetImageOk = ImageWithMeta<LumaImage>;
-
-impl<T> ImageWithMeta<T> {
-    pub fn with_meta(image: T, meta: ImageMeta) -> Self {
-        Self {
-            image,
-            meta,
-            other: Default::default(),
-        }
-    }
-
-    pub fn with_hash(image: T, hash: Option<StableHash>) -> Self {
-        Self {
-            image,
-            meta: ImageMeta { hash },
-            other: Default::default(),
-        }
-    }
-
-    pub fn with_meta_and_others(
-        image: T,
-        meta: ImageMeta,
-        other: HashMap<SpecificImageKey, T>,
-    ) -> Self {
-        Self { image, meta, other }
-    }
-
-    /// Ok if the key is found or unspecified, Err if a key was specified but not found (returning the main image then)
-    /// ```
-    /// use pilatus_engineering::image::{ImageWithMeta, ImageKey};
-    ///
-    /// let mut image = ImageWithMeta::with_hash((2,2), None);
-    /// let bar_key: ImageKey = "bar".try_into().unwrap();
-    /// image.insert(bar_key.clone(), (4,4));
-    /// assert_eq!(&(2,2), image.by_key(&ImageKey::unspecified()).unwrap());
-    /// assert_eq!(&(4,4), image.by_key(&bar_key).unwrap());
-    ///
-    /// image.image = (5, 5);
-    /// assert_eq!(&(5,5), image.by_key(&ImageKey::unspecified()).unwrap());
-    /// assert_eq!(Some((5,5)), image.insert(ImageKey::unspecified(), (6,6)));
-    /// assert_eq!(&(6,6), image.by_key(&ImageKey::unspecified()).unwrap());
-    /// ```
-    pub fn by_key<'a>(&'a self, search_key: &'a ImageKey) -> Result<&'a T, UnknownKeyError<'a, T>>
-    where
-        T: Debug,
-    {
-        search_key
-            .by_key_or(&self.other, &self.image)
-            .ok_or_else(|| UnknownKeyError {
-                main_image: &self.image,
-                search_key,
-                available_keys: self.other.keys(),
-            })
-    }
-
-    // Returns The old value
-    pub fn insert(&mut self, key: ImageKey, value: T) -> Option<T> {
-        key.insert_or(value, &mut self.other, &mut self.image)
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("Unknown image key: {search_key:?}. Available are {available_keys:?}")]
-pub struct UnknownKeyError<'a, T: Debug> {
-    pub main_image: &'a T,
-    pub search_key: &'a ImageKey,
-    pub available_keys: std::collections::hash_map::Keys<'a, SpecificImageKey, T>,
-}
-
-impl<T: Debug + Clone + Send + Sync> From<UnknownKeyError<'_, T>> for (T, anyhow::Error) {
-    fn from(val: UnknownKeyError<'_, T>) -> Self {
-        let image = val.main_image.clone();
-        let error = anyhow::anyhow!("{val:?}");
-        (image, error)
-    }
-}
 
 impl From<GetImageOk> for LumaImage {
     fn from(x: GetImageOk) -> Self {
