@@ -59,9 +59,9 @@ impl AnyMultiMap {
                                 .clone(),
                         );
                     }
-                    return Arc::get_mut(x)
+                    Arc::get_mut(x)
                         .expect("Created if empty")
-                        .downcast_mut::<T>();
+                        .downcast_mut::<T>()
                 })
                 .ok()
             }))
@@ -82,9 +82,9 @@ impl AnyMultiMap {
                                 .clone(),
                         );
                     }
-                    return Arc::get_mut(x)
+                    Arc::get_mut(x)
                         .expect("Created if empty")
-                        .downcast_mut::<T>();
+                        .downcast_mut::<T>()
                 })
                 .ok()
             })
