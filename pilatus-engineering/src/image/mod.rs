@@ -294,25 +294,27 @@ impl From<GenericImage<u16, 1>> for DynamicImage {
 }
 
 impl TryFrom<DynamicImage> for GenericImage<u16, 1> {
-    type Error = UnsupportedImageError;
+    type Error = UnsupportedImageError<DynamicImage>;
 
     fn try_from(value: DynamicImage) -> Result<Self, Self::Error> {
         if let DynamicImage::Luma16(x) = value {
             Ok(x)
         } else {
-            Err(UnsupportedImageError(format!("{value:?}").into()))
+            let msg = format!("{value:?}");
+            Err(UnsupportedImageError(value, msg.into()))
         }
     }
 }
 
 impl<'a> TryFrom<&'a DynamicImage> for &'a GenericImage<u16, 1> {
-    type Error = UnsupportedImageError;
+    type Error = UnsupportedImageError<&'a DynamicImage>;
 
     fn try_from(value: &'a DynamicImage) -> Result<Self, Self::Error> {
         if let DynamicImage::Luma16(x) = value {
             Ok(x)
         } else {
-            Err(UnsupportedImageError(format!("{value:?}").into()))
+            let msg = format!("{value:?}");
+            Err(UnsupportedImageError(value, msg.into()))
         }
     }
 }
@@ -328,8 +330,8 @@ impl DynamicImage {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("Unsupported format {0}")]
-pub struct UnsupportedImageError(Cow<'static, str>);
+#[error("Unsupported format {1}")]
+pub struct UnsupportedImageError<TIn>(TIn, Cow<'static, str>);
 
 #[derive(Debug, thiserror::Error)]
 pub enum ImageConversionError {
@@ -337,7 +339,7 @@ pub enum ImageConversionError {
     InvalidSize(#[from] TryFromIntError),
 
     #[error("{0}")]
-    Unsupported(#[from] UnsupportedImageError),
+    Unsupported(#[from] UnsupportedImageError<image::DynamicImage>),
 }
 
 impl TryFrom<image::DynamicImage> for DynamicImage {
@@ -376,7 +378,7 @@ impl TryFrom<image::DynamicImage> for DynamicImage {
             image::DynamicImage::ImageRgba32F(_) => "ImageRgba32F",
             _ => "Unknown",
         };
-        Err(UnsupportedImageError(Cow::Borrowed(invalid_format)).into())
+        Err(UnsupportedImageError(value, Cow::Borrowed(invalid_format)).into())
     }
 }
 

@@ -10,6 +10,7 @@ pub struct UnknownKeyError<'a, T: Debug> {
     pub available_keys: std::collections::hash_map::Keys<'a, SpecificImageKey, T>,
 }
 
+/// Allow convenience, as it is not relevant for production workloads
 impl<T: Debug + Clone + Send + Sync> From<UnknownKeyError<'_, T>> for (T, anyhow::Error) {
     fn from(val: UnknownKeyError<'_, T>) -> Self {
         let image = val.main_image.clone();

@@ -100,7 +100,10 @@ impl ImageWithMeta<super::DynamicImage> {
     ) -> Result<&'a T, ExtractWithFormatError<'b>>
     where
         T: Debug,
-        for<'c> &'c T: TryFrom<&'c super::DynamicImage, Error = UnsupportedImageError>,
+        for<'c> &'c T: TryFrom<
+            &'c super::DynamicImage,
+            Error = UnsupportedImageError<&'c super::DynamicImage>,
+        >,
     {
         let x = self.by_key(search_key)?;
         Ok(x.try_into().unwrap())
@@ -111,12 +114,26 @@ pub enum ExtractWithFormatError<'a> {
     #[error("{0:?}")]
     UnknownKey(UnknownKeyError<'a, super::DynamicImage>),
     #[error("{0:?}")]
-    Unsupported(UnsupportedImageError),
+    Unsupported(UnsupportedImageError<&'a super::DynamicImage>),
 }
 
 impl<'a> From<UnknownKeyError<'a, super::DynamicImage>> for ExtractWithFormatError<'a> {
     fn from(value: UnknownKeyError<'a, super::DynamicImage>) -> Self {
         Self::UnknownKey(value)
+    }
+}
+
+/// Allow convenience, as it is not relevant for production workloads
+impl<'a> From<ExtractWithFormatError<'a>> for (super::DynamicImage, anyhow::Error) {
+    fn from(val: ExtractWithFormatError<'a>) -> Self {
+        match val {
+            ExtractWithFormatError::UnknownKey(x) => x.into(),
+            ExtractWithFormatError::Unsupported(x) => {
+                let img = x.0.clone();
+                let unsup = UnsupportedImageError((), x.1);
+                (img, anyhow::Error::from(unsup))
+            }
+        }
     }
 }
 
