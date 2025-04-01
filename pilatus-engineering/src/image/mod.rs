@@ -281,6 +281,42 @@ pub enum DynamicImage {
     Rgb8Planar(GenericImage<u8, 3>),
 }
 
+impl From<LumaImage> for DynamicImage {
+    fn from(value: LumaImage) -> Self {
+        DynamicImage::Luma8(value)
+    }
+}
+
+impl From<GenericImage<u16, 1>> for DynamicImage {
+    fn from(value: GenericImage<u16, 1>) -> Self {
+        DynamicImage::Luma16(value)
+    }
+}
+
+impl TryFrom<DynamicImage> for GenericImage<u16, 1> {
+    type Error = UnsupportedImageError;
+
+    fn try_from(value: DynamicImage) -> Result<Self, Self::Error> {
+        if let DynamicImage::Luma16(x) = value {
+            Ok(x)
+        } else {
+            Err(UnsupportedImageError(format!("{value:?}").into()))
+        }
+    }
+}
+
+impl<'a> TryFrom<&'a DynamicImage> for &'a GenericImage<u16, 1> {
+    type Error = UnsupportedImageError;
+
+    fn try_from(value: &'a DynamicImage) -> Result<Self, Self::Error> {
+        if let DynamicImage::Luma16(x) = value {
+            Ok(x)
+        } else {
+            Err(UnsupportedImageError(format!("{value:?}").into()))
+        }
+    }
+}
+
 impl DynamicImage {
     pub fn dimensions(&self) -> (NonZero<u32>, NonZero<u32>) {
         match self {
@@ -292,12 +328,16 @@ impl DynamicImage {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[error("Unsupported format {0}")]
+pub struct UnsupportedImageError(Cow<'static, str>);
+
+#[derive(Debug, thiserror::Error)]
 pub enum ImageConversionError {
     #[error("Dimensions mustn't be 0")]
     InvalidSize(#[from] TryFromIntError),
 
-    #[error("Unsupported format {0}")]
-    Unsupported(Cow<'static, str>),
+    #[error("{0}")]
+    Unsupported(#[from] UnsupportedImageError),
 }
 
 impl TryFrom<image::DynamicImage> for DynamicImage {
@@ -306,46 +346,37 @@ impl TryFrom<image::DynamicImage> for DynamicImage {
     fn try_from(value: image::DynamicImage) -> Result<Self, Self::Error> {
         let (width, height) = value.dimensions();
         let (width, height) = (width.try_into()?, height.try_into()?);
-        match value {
-            image::DynamicImage::ImageLuma8(x) => Ok(DynamicImage::Luma8(GenericImage::new_vec(
-                x.into_vec(),
-                width,
-                height,
-            ))),
-            image::DynamicImage::ImageLuma16(x) => Ok(DynamicImage::Luma16(GenericImage::new_vec(
-                x.into_vec(),
-                width,
-                height,
-            ))),
-            image::DynamicImage::ImageLumaA8(_) => Err(ImageConversionError::Unsupported(
-                Cow::Borrowed("ImageLumaA8"),
-            )),
+        let invalid_format = match value {
+            image::DynamicImage::ImageLuma8(x) => {
+                return Ok(DynamicImage::Luma8(GenericImage::new_vec(
+                    x.into_vec(),
+                    width,
+                    height,
+                )))
+            }
+            image::DynamicImage::ImageLuma16(x) => {
+                return Ok(DynamicImage::Luma16(GenericImage::new_vec(
+                    x.into_vec(),
+                    width,
+                    height,
+                )))
+            }
+            image::DynamicImage::ImageLumaA8(_) => "ImageLumaA8",
             image::DynamicImage::ImageRgb8(x) => {
                 let unpacked = UnpackedGenericImage::from_packed_image(&PackedGenericImage(
                     GenericImage::new_vec(x.into_vec(), width, height),
                 ));
-                Ok(DynamicImage::Rgb8Planar(unpacked.0))
+                return Ok(DynamicImage::Rgb8Planar(unpacked.0));
             }
-            image::DynamicImage::ImageRgba8(_) => Err(ImageConversionError::Unsupported(
-                Cow::Borrowed("ImageRgba8"),
-            )),
-            image::DynamicImage::ImageLumaA16(_) => Err(ImageConversionError::Unsupported(
-                Cow::Borrowed("ImageLumaA16"),
-            )),
-            image::DynamicImage::ImageRgb16(_) => Err(ImageConversionError::Unsupported(
-                Cow::Borrowed("ImageRgb16"),
-            )),
-            image::DynamicImage::ImageRgba16(_) => Err(ImageConversionError::Unsupported(
-                Cow::Borrowed("ImageRgba16"),
-            )),
-            image::DynamicImage::ImageRgb32F(_) => Err(ImageConversionError::Unsupported(
-                Cow::Borrowed("ImageRgb32F"),
-            )),
-            image::DynamicImage::ImageRgba32F(_) => Err(ImageConversionError::Unsupported(
-                Cow::Borrowed("ImageRgba32F"),
-            )),
-            _ => Err(ImageConversionError::Unsupported(Cow::Borrowed("Unknown"))),
-        }
+            image::DynamicImage::ImageRgba8(_) => "ImageRgba8",
+            image::DynamicImage::ImageLumaA16(_) => "ImageLumaA16",
+            image::DynamicImage::ImageRgb16(_) => "ImageRgb16",
+            image::DynamicImage::ImageRgba16(_) => "ImageRgba16",
+            image::DynamicImage::ImageRgb32F(_) => "ImageRgb32F",
+            image::DynamicImage::ImageRgba32F(_) => "ImageRgba32F",
+            _ => "Unknown",
+        };
+        Err(UnsupportedImageError(Cow::Borrowed(invalid_format)).into())
     }
 }
 

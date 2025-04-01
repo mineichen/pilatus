@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
+use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 
-use super::StableHash;
+use super::{StableHash, UnsupportedImageError};
 
 mod any_multimap;
 mod error;
@@ -70,7 +71,10 @@ impl<T> ImageWithMeta<T> {
     /// assert_eq!(Some((5,5)), image.insert(ImageKey::unspecified(), (6,6)));
     /// assert_eq!(&(6,6), image.by_key(&ImageKey::unspecified()).unwrap());
     /// ```
-    pub fn by_key<'a>(&'a self, search_key: &'a ImageKey) -> Result<&'a T, UnknownKeyError<'a, T>>
+    pub fn by_key<'a: 'b, 'b>(
+        &'a self,
+        search_key: &'b ImageKey,
+    ) -> Result<&'a T, UnknownKeyError<'b, T>>
     where
         T: Debug,
     {
@@ -86,6 +90,33 @@ impl<T> ImageWithMeta<T> {
     // Returns The old value
     pub fn insert(&mut self, key: ImageKey, value: T) -> Option<T> {
         key.insert_or(value, &mut self.other, &mut self.image)
+    }
+}
+
+impl ImageWithMeta<super::DynamicImage> {
+    pub fn with_format_by_key<'a: 'b, 'b, T>(
+        &'a self,
+        search_key: &'b ImageKey,
+    ) -> Result<&'a T, ExtractWithFormatError<'b>>
+    where
+        T: Debug,
+        for<'c> &'c T: TryFrom<&'c super::DynamicImage, Error = UnsupportedImageError>,
+    {
+        let x = self.by_key(search_key)?;
+        Ok(x.try_into().unwrap())
+    }
+}
+#[derive(Debug, thiserror::Error)]
+pub enum ExtractWithFormatError<'a> {
+    #[error("{0:?}")]
+    UnknownKey(UnknownKeyError<'a, super::DynamicImage>),
+    #[error("{0:?}")]
+    Unsupported(UnsupportedImageError),
+}
+
+impl<'a> From<UnknownKeyError<'a, super::DynamicImage>> for ExtractWithFormatError<'a> {
+    fn from(value: UnknownKeyError<'a, super::DynamicImage>) -> Self {
+        Self::UnknownKey(value)
     }
 }
 
@@ -132,4 +163,23 @@ impl<T> std::ops::DerefMut for ImageWithMeta<T> {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ImageMeta {
     pub hash: Option<StableHash>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroU32;
+
+    use crate::image::{DynamicImage, GenericImage};
+
+    use super::*;
+
+    #[test]
+    fn insert_and_extract_image_luma16() {
+        let image = GenericImage::<u16, 1>::new_vec(vec![1], NonZeroU32::MIN, NonZeroU32::MIN);
+        let dynamic: DynamicImage = image.into();
+        let meta = ImageWithMeta::with_meta(dynamic, ImageMeta { hash: None });
+        let back: &GenericImage<u16, 1> =
+            meta.with_format_by_key(&ImageKey::unspecified()).unwrap();
+        assert_eq!((NonZeroU32::MIN, NonZeroU32::MIN), back.dimensions());
+    }
 }
