@@ -418,7 +418,7 @@ pub struct ImageVtable<T: 'static, const CHANNELS: usize> {
 extern "C" fn clear_vec<T, const CHANNELS: usize>(image: &mut GenericImage<T, CHANNELS>) {
     unsafe {
         Vec::from_raw_parts(
-            image.ptr as *mut u8,
+            image.ptr as *mut T,
             (image.width.get() * image.height.get()) as usize * CHANNELS,
             image.data,
         )
@@ -644,7 +644,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn load_and_save_dynamic_rgb_image() {
+    fn miri_load_and_save_dynamic_rgb_image() {
         let image = image::ImageBuffer::<Rgb<u8>, _>::from_vec(
             2,
             2,
@@ -763,5 +763,40 @@ mod tests {
         )));
         let packed = image.into_packed().into_vec();
         assert_eq!(packed.to_vec(), vec!(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3));
+    }
+
+    #[test]
+    fn miri_test_shared_arc_u16_luma() {
+        let arc: Arc<[u16]> = vec![1].into();
+        test_entire_vtable(GenericImage::<u16, 1>::new_arc(
+            arc,
+            NonZeroU32::MIN,
+            NonZeroU32::MIN,
+        ));
+    }
+    #[test]
+    fn miri_test_exclusive_arc_u16_luma() {
+        test_entire_vtable(GenericImage::<u16, 1>::new_arc(
+            vec![1].into(),
+            NonZeroU32::MIN,
+            NonZeroU32::MIN,
+        ));
+    }
+    #[test]
+    fn miri_test_vec_u16_luma() {
+        test_entire_vtable(GenericImage::<u16, 1>::new_vec(
+            vec![1],
+            NonZeroU32::MIN,
+            NonZeroU32::MIN,
+        ));
+    }
+
+    fn test_entire_vtable<T: 'static + Default + Eq, const SIZE: usize>(
+        mut image: GenericImage<T, SIZE>,
+    ) {
+        image.make_mut()[0] = T::default();
+        let mut clone = image.clone();
+        clone.make_mut()[0] = T::default();
+        assert_eq!(image, clone);
     }
 }
