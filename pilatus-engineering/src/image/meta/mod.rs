@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 
 use super::{StableHash, UnsupportedImageError};
@@ -191,7 +190,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn insert_and_extract_image_luma16() {
+    fn miri_insert_and_extract_image_luma16() {
         let image = GenericImage::<u16, 1>::new_vec(vec![1], NonZeroU32::MIN, NonZeroU32::MIN);
         let dynamic: DynamicImage = image.into();
         let meta = ImageWithMeta::with_meta(dynamic, ImageMeta { hash: None });

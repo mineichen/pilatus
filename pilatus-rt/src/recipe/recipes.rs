@@ -27,12 +27,10 @@ pub(super) async fn recipes_try_add_new_with_id(
             }
 
             Err(_) => {
-                drop(iter);
                 return Err(new_recipe);
             }
         };
     }
-    drop(iter);
     recipes.try_add(id, new_recipe)?;
     Ok(())
 }
