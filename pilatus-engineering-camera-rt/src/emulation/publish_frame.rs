@@ -170,11 +170,14 @@ impl PublisherState {
         let image_data = tokio::fs::read(&path.0).await?;
         let img =
             tokio::task::spawn_blocking(move || image::load_from_memory(&image_data)).await??;
+
+        let pilatus_image: PilatusDynamicImage = img.try_into()?;
         debug!(
-            "Publish '{:?}'",
-            &path.0.file_name().and_then(|x| x.to_str()).unwrap_or("")
+            "Publish '{:?}': {:?}",
+            &path.0.file_name().and_then(|x| x.to_str()).unwrap_or(""),
+            &pilatus_image
         );
-        Ok(Some(img.try_into()?))
+        Ok(Some(pilatus_image))
     }
 
     async fn load_collection(

@@ -105,7 +105,7 @@ impl ImageWithMeta<super::DynamicImage> {
         >,
     {
         let x = self.by_key(search_key)?;
-        Ok(x.try_into().unwrap())
+        Ok(x.try_into().map_err(ExtractWithFormatError::Unsupported)?)
     }
 }
 #[derive(Debug, thiserror::Error)]
