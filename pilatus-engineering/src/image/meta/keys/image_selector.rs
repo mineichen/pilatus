@@ -99,7 +99,9 @@ impl<'de> serde::de::Visitor<'de> for Visitor {
                 "image_input" => result.image_input = v,
                 "image_output" => result.image_output = ImageSelectorOutput::Selector(v),
                 _ => {
-                    println!("Unknown: {k}:{v:?}")
+                    return Err(<A::Error as serde::de::Error>::custom(format!(
+                        "Unknown key for ImageSelector: {k}:{v:?}"
+                    )))
                 }
             }
         }
