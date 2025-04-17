@@ -1,16 +1,13 @@
 use std::future::Future;
 
-use super::{ActorMessage, ActorResult, HandlerClosureContext, HandlerClosureResponse};
+use super::{responder::ActorRequestResponder, ActorMessage, ActorResult, HandlerClosureResponse};
 
 pub trait HandlerResult<TMsg: ActorMessage>: 'static + Send {
-    fn handle_as_result(
-        self,
-        response_channel: HandlerClosureContext<TMsg>,
-    ) -> HandlerClosureResponse;
+    fn handle_as_result(self, responder: ActorRequestResponder<TMsg>) -> HandlerClosureResponse;
 }
 
 impl<TMsg: ActorMessage> HandlerResult<TMsg> for ActorResult<TMsg> {
-    fn handle_as_result(self, ctx: HandlerClosureContext<TMsg>) -> HandlerClosureResponse {
+    fn handle_as_result(self, ctx: ActorRequestResponder<TMsg>) -> HandlerClosureResponse {
         ctx.respond(self);
         None
     }
@@ -23,7 +20,7 @@ pub struct Step2<T>(pub T);
 impl<TFut: Future<Output = ActorResult<TMsg>> + 'static + Send, TMsg: ActorMessage>
     HandlerResult<TMsg> for Step2<TFut>
 {
-    fn handle_as_result(self, ctx: HandlerClosureContext<TMsg>) -> HandlerClosureResponse {
+    fn handle_as_result(self, ctx: ActorRequestResponder<TMsg>) -> HandlerClosureResponse {
         let fut = async {
             ctx.respond(self.0.await);
         };

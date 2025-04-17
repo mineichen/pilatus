@@ -6,7 +6,9 @@ use futures_util::{
     Future, FutureExt,
 };
 
-use super::{ActorMessage, HandlerClosureResponse, HandlerResult, Task};
+use super::{
+    responder::ActorRequestResponder, ActorMessage, HandlerClosureResponse, HandlerResult, Task,
+};
 
 pub trait AsyncHandlerClosure<'a, TState, TMsg: ActorMessage> {
     type Fut: Future<Output = Self::Result> + 'a + Send;
@@ -19,49 +21,8 @@ pub trait AsyncHandlerClosure<'a, TState, TMsg: ActorMessage> {
         &self,
         state: &'a mut TState,
         msg: TMsg,
-        c: HandlerClosureContext<TMsg>,
+        c: ActorRequestResponder<TMsg>,
     ) -> Self::FinalFut;
-}
-
-pub use internal::HandlerClosureContext;
-mod internal {
-    use tracing::trace;
-
-    use crate::device::{ActorMessage, ActorResult};
-
-    pub struct HandlerClosureContext<TMsg: ActorMessage> {
-        start_time: std::time::Instant,
-        response_channel: futures_channel::oneshot::Sender<ActorResult<TMsg>>,
-    }
-
-    impl<TMsg: ActorMessage> HandlerClosureContext<TMsg> {
-        pub fn new(response_channel: futures_channel::oneshot::Sender<ActorResult<TMsg>>) -> Self {
-            Self {
-                response_channel,
-                start_time: std::time::Instant::now(),
-            }
-        }
-
-        pub fn respond(self, r: ActorResult<TMsg>) {
-            let r = self.response_channel.send(r);
-            trace!(
-                "Responding to {} after {:?}{}",
-                std::any::type_name::<TMsg>(),
-                self.start_time.elapsed(),
-                if r.is_err() {
-                    "(but listener was gone)"
-                } else {
-                    ""
-                }
-            );
-        }
-
-        pub fn cancellation(
-            &mut self,
-        ) -> futures_channel::oneshot::Cancellation<'_, ActorResult<TMsg>> {
-            self.response_channel.cancellation()
-        }
-    }
 }
 
 impl<'a, TState, TMsg, THandlerResult, TFut, TFn> AsyncHandlerClosure<'a, TState, TMsg> for TFn
@@ -75,15 +36,15 @@ where
     type Fut = TFut;
     type Result = THandlerResult;
     type FinalFut = Map<
-        Join<TFut, Ready<HandlerClosureContext<TMsg>>>,
-        fn((THandlerResult, HandlerClosureContext<TMsg>)) -> Option<Task>,
+        Join<TFut, Ready<ActorRequestResponder<TMsg>>>,
+        fn((THandlerResult, ActorRequestResponder<TMsg>)) -> Option<Task>,
     >;
 
     fn call(
         &self,
         state: &'a mut TState,
         msg: TMsg,
-        response_channel: HandlerClosureContext<TMsg>,
+        response_channel: ActorRequestResponder<TMsg>,
     ) -> Self::FinalFut {
         let result = (self)(state, msg);
         join(result, std::future::ready(response_channel))
@@ -119,7 +80,7 @@ where
         &self,
         state: &'a mut TState,
         msg: TMsg,
-        mut ctx: HandlerClosureContext<TMsg>,
+        mut ctx: ActorRequestResponder<TMsg>,
     ) -> BoxFuture<'a, HandlerClosureResponse> {
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let future = self.0(state, msg, abort_registration).fuse();

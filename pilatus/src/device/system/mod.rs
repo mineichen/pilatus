@@ -14,7 +14,8 @@ use futures_util::{
     stream::{self, FuturesUnordered},
     FutureExt, Stream, StreamExt,
 };
-use tracing::{trace, warn};
+use responder::ActorRequestResponder;
+use tracing::warn;
 
 use self::identifier::ActorSystemIdentifier;
 
@@ -24,6 +25,7 @@ mod error;
 mod handler_closure;
 mod handler_result;
 mod identifier;
+mod responder;
 mod sender;
 
 pub use error::*;
@@ -228,17 +230,14 @@ struct ActorSystemState {
     messages: HashMap<TypeId, HashSet<DeviceId>>,
 }
 
-struct MessageWithResponse<TMsg: ActorMessage> {
+struct MessageWithResponder<TMsg: ActorMessage> {
     msg: TMsg,
-    response_channel: oneshot::Sender<ActorResult<TMsg>>,
+    responder: ActorRequestResponder<TMsg>,
 }
 
-impl<TMsg: ActorMessage> MessageWithResponse<TMsg> {
-    fn new(msg: TMsg, response_channel: oneshot::Sender<ActorResult<TMsg>>) -> Self {
-        Self {
-            msg,
-            response_channel,
-        }
+impl<TMsg: ActorMessage> MessageWithResponder<TMsg> {
+    fn new(msg: TMsg, responder: ActorRequestResponder<TMsg>) -> Self {
+        Self { msg, responder }
     }
 }
 
@@ -273,12 +272,9 @@ where
         mut state: TState,
         boxed_msg: BoxMessage,
     ) -> BoxFuture<'static, (TState, HandlerClosureResponse)> {
-        let MessageWithResponse {
-            msg,
-            response_channel,
-        } = *boxed_msg
+        let MessageWithResponder { msg, responder } = *boxed_msg
             .0
-            .downcast::<MessageWithResponse<TMsg>>()
+            .downcast::<MessageWithResponder<TMsg>>()
             .expect("Must be castable. This is most likely an internal bug of the ActorSystem");
         let func = self.0;
 
@@ -292,7 +288,7 @@ where
                 )
                 .await
                 .expect("Can't fail here, otherwise state is gone");
-            response_channel.send(r).ok();
+            responder.respond(r);
 
             (state, None)
         }
@@ -328,22 +324,13 @@ where
     ) -> BoxFuture<'static, (TState, HandlerClosureResponse)> {
         let h_cloned = self.closure.clone();
         let h_cloned: THandlerClosure = h_cloned;
-        let MessageWithResponse {
-            msg,
-            response_channel,
-        } = *boxed_msg
+        let MessageWithResponder { msg, responder } = *boxed_msg
             .0
-            .downcast::<MessageWithResponse<TMsg>>()
+            .downcast::<MessageWithResponder<TMsg>>()
             .expect("Must be castable. This is most likely an internal bug of the ActorSystem");
 
         async move {
-            let r = h_cloned
-                .call(
-                    &mut state,
-                    msg,
-                    HandlerClosureContext::new(response_channel),
-                )
-                .await;
+            let r = h_cloned.call(&mut state, msg, responder).await;
             (state, r)
         }
         .boxed()
@@ -363,14 +350,15 @@ fn respond_with_unknown_device<TMsg: ActorMessage>(
     boxed_msg: BoxMessage,
     details: Cow<'static, str>,
 ) {
-    let MessageWithResponse {
-        response_channel, ..
+    let MessageWithResponder {
+        responder: response_channel,
+        ..
     } = *boxed_msg
         .0
-        .downcast::<MessageWithResponse<TMsg>>()
+        .downcast::<MessageWithResponder<TMsg>>()
         .expect("Must be castable. This is most likely an internal bug of the ActorSystem");
     let _ignore_not_consumed =
-        response_channel.send(Err(ActorErrorUnknownDevice::UnknownDeviceId {
+        response_channel.respond(Err(ActorErrorUnknownDevice::UnknownDeviceId {
             device_id: DeviceId::nil(),
             details,
         }
