@@ -254,6 +254,7 @@ pub trait MessageHandler<TState>: Send {
         boxed_msg: BoxMessage,
         detail: Cow<'static, str>,
     );
+    fn get_msg_type(&self) -> &'static str;
 }
 
 #[cfg(any(feature = "tokio", feature = "rayon", test))]
@@ -307,6 +308,10 @@ where
     ) {
         respond_with_unknown_device::<TMsg>(boxed_msg, detail)
     }
+
+    fn get_msg_type(&self) -> &'static str {
+        std::any::type_name::<TMsg>()
+    }
 }
 
 struct AsyncMessageHandler<THandlerClosure: Send, TState, TMsg> {
@@ -356,6 +361,10 @@ where
         detail: Cow<'static, str>,
     ) {
         respond_with_unknown_device::<TMsg>(boxed_msg, detail)
+    }
+
+    fn get_msg_type(&self) -> &'static str {
+        std::any::type_name::<TMsg>()
     }
 }
 
@@ -549,7 +558,14 @@ impl<TState: 'static + Send> ActorDevice<TState> {
     ) -> TState {
         while let Some((typeid, untyped_message)) = self.receiver.next().await {
             if let Some(available_handler) = self.post.handlers.get(&typeid) {
+                let msg_typename = available_handler.get_msg_type();
                 let fut = strategy.execute(available_handler.as_ref(), state, untyped_message);
+                let fut = async {
+                    let time = std::time::Instant::now();
+                    let r = fut.await;
+                    trace!("It took {:?} to process {}", time.elapsed(), msg_typename);
+                    r
+                };
                 pin_mut!(fut);
 
                 let mut infinite_pending = (&mut self.pending_tasks).chain(stream::pending());
