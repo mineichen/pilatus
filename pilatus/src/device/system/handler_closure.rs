@@ -1,13 +1,12 @@
 use std::future::Ready;
 
-use futures_channel::oneshot;
 use futures_util::{
     future::{join, select, BoxFuture, Either, Join, Map},
     stream::{AbortHandle, AbortRegistration},
     Future, FutureExt,
 };
 
-use super::{ActorMessage, ActorResult, HandlerClosureResponse, HandlerResult, Task};
+use super::{ActorMessage, HandlerClosureResponse, HandlerResult, Task};
 
 pub trait AsyncHandlerClosure<'a, TState, TMsg: ActorMessage> {
     type Fut: Future<Output = Self::Result> + 'a + Send;
@@ -24,8 +23,45 @@ pub trait AsyncHandlerClosure<'a, TState, TMsg: ActorMessage> {
     ) -> Self::FinalFut;
 }
 
-pub struct HandlerClosureContext<TMsg: ActorMessage> {
-    pub(super) response_channel: oneshot::Sender<ActorResult<TMsg>>,
+pub use internal::HandlerClosureContext;
+mod internal {
+    use tracing::trace;
+
+    use crate::device::{ActorMessage, ActorResult};
+
+    pub struct HandlerClosureContext<TMsg: ActorMessage> {
+        start_time: std::time::Instant,
+        response_channel: futures_channel::oneshot::Sender<ActorResult<TMsg>>,
+    }
+
+    impl<TMsg: ActorMessage> HandlerClosureContext<TMsg> {
+        pub fn new(response_channel: futures_channel::oneshot::Sender<ActorResult<TMsg>>) -> Self {
+            Self {
+                response_channel,
+                start_time: std::time::Instant::now(),
+            }
+        }
+
+        pub fn respond(self, r: ActorResult<TMsg>) {
+            let r = self.response_channel.send(r);
+            trace!(
+                "Responding to {} after {:?}{}",
+                std::any::type_name::<TMsg>(),
+                self.start_time.elapsed(),
+                if r.is_err() {
+                    "(but listener was gone)"
+                } else {
+                    ""
+                }
+            );
+        }
+
+        pub fn cancellation(
+            &mut self,
+        ) -> futures_channel::oneshot::Cancellation<'_, ActorResult<TMsg>> {
+            self.response_channel.cancellation()
+        }
+    }
 }
 
 impl<'a, TState, TMsg, THandlerResult, TFut, TFn> AsyncHandlerClosure<'a, TState, TMsg> for TFn
@@ -89,7 +125,7 @@ where
         let future = self.0(state, msg, abort_registration).fuse();
 
         async move {
-            select(std::pin::pin!(future), ctx.response_channel.cancellation())
+            select(std::pin::pin!(future), ctx.cancellation())
                 .then(move |r| match r {
                     Either::Left((x, _)) => std::future::ready(x).left_future(),
                     Either::Right((_, other)) => {

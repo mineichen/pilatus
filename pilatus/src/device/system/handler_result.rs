@@ -11,7 +11,7 @@ pub trait HandlerResult<TMsg: ActorMessage>: 'static + Send {
 
 impl<TMsg: ActorMessage> HandlerResult<TMsg> for ActorResult<TMsg> {
     fn handle_as_result(self, ctx: HandlerClosureContext<TMsg>) -> HandlerClosureResponse {
-        let _ignore_not_consumed = ctx.response_channel.send(self);
+        ctx.respond(self);
         None
     }
 }
@@ -25,7 +25,7 @@ impl<TFut: Future<Output = ActorResult<TMsg>> + 'static + Send, TMsg: ActorMessa
 {
     fn handle_as_result(self, ctx: HandlerClosureContext<TMsg>) -> HandlerClosureResponse {
         let fut = async {
-            ctx.response_channel.send(self.0.await).ok();
+            ctx.respond(self.0.await);
         };
 
         #[cfg(feature = "tokio")]
