@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, Mutex, RwLock},
 };
 
-use futures_channel::{mpsc, oneshot};
+use futures_channel::mpsc;
 use futures_util::{
     future::{BoxFuture, Either},
     pin_mut,

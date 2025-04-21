@@ -7,7 +7,6 @@ version = "0.1.0"
 
 [dependencies]
 anyhow = { workspace = true }
-async-stream = "0.3"
 async_zip = { version = "0.0.17", default-features = false, features = [
   "deflate",
   "tokio",
