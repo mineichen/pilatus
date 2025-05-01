@@ -36,7 +36,7 @@ pub use sender::*;
 
 #[cfg(feature = "minfac")]
 pub(super) fn register_services(c: &mut minfac::ServiceCollection) {
-    c.register_shared::<RwLock<ActorSystemState>>(Default::default);
+    c.register_shared(|| Arc::new(RwLock::<ActorSystemState>::default()));
     c.with::<minfac::Registered<Arc<RwLock<ActorSystemState>>>>()
         .register(|state| ActorSystem { state });
 }
