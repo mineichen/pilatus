@@ -65,7 +65,11 @@ async fn device(
     let (recording_sender, permanent_recording_task) =
         permanent_recording::setup_permanent_recording(
             actor_system.get_weak_untyped_sender(id)?,
-            &params.permanent_recording,
+            if params.mode == EmulationMode::File {
+                &params.permanent_recording
+            } else {
+                &None
+            },
         );
 
     futures::future::join(
@@ -144,7 +148,7 @@ pub struct Params {
     permanent_recording: Option<permanent_recording::PermanentRecordingConfig>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 enum EmulationMode {
     #[default]
