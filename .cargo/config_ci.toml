@@ -1,0 +1,6 @@
+# Using mold under linux decreased total compilation time from 1m35s to 1m28s
+# but increased a incremental time when changeing only main.rs from 18.6s to 2.1s
+# Tested with Rust-Version 1.68.2
+
+[build]
+rustflags = ["--cfg", "tokio_unstable"]
