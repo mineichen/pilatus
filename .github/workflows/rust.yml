@@ -10,9 +10,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
       - name: Use CI-Config
@@ -21,6 +20,10 @@ jobs:
         run: cargo test
       - name: Test with all features
         run: cargo test --all-features
+  test_miri:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Install Rust with Miri
         run: |
           rustup install nightly
