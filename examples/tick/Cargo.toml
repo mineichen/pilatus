@@ -1,0 +1,17 @@
+[package]
+name = "tick"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { workspace = true }
+futures = { workspace = true }
+minfac = { workspace = true }
+pilatus = { path = "../../pilatus" }
+pilatus-axum = { path = "../../pilatus-axum" }
+pilatus-axum-rt = { path = "../../pilatus-axum-rt" }
+pilatus-rt = { path = "../../pilatus-rt" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = "1"
+tracing = { workspace = true }

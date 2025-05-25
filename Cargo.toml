@@ -8,6 +8,7 @@ members = [
     "pilatus-engineering",
     "pilatus-rt",
     "examples/stream",
+    "examples/tick",
     "pilatus-engineering-camera-rt",
     "pilatus-engineering-camera",
     "pilatus-engineering-rt",
