@@ -8,8 +8,8 @@ version = "0.1.0"
 [dependencies]
 anyhow = { workspace = true }
 async_zip = { version = "0.0.17", default-features = false, features = [
-  "deflate",
-  "tokio",
+    "deflate",
+    "tokio",
 ] }
 axum = { version = "0.8", features = ["ws", "macros"] }
 bytes = { workspace = true }
@@ -21,9 +21,11 @@ image = { workspace = true, optional = true }
 minfac = { workspace = true }
 pilatus = { path = "../pilatus", features = ["tokio"] }
 pilatus-axum = { path = "../pilatus-axum" }
-pilatus-engineering = { path = "../pilatus-engineering", features = ["image-algorithm"], optional = true }
+pilatus-engineering = { path = "../pilatus-engineering", features = [
+    "image-algorithm",
+], optional = true }
 sealedstruct = { git = "https://github.com/mineichen/sealedstruct.git", branch = "main", features = [
-  "serde",
+    "serde",
 ] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -39,7 +41,7 @@ pilatus = { path = "../pilatus", features = ["unstable"] }
 pilatus-rt = { path = "../pilatus-rt", features = ["unstable"] }
 reqwest = "0.12.5"
 tempfile = "3"
-tokio-tungstenite = "0.26"
+tokio-tungstenite = "0.27"
 
 [features]
 default = ["engineering"]
