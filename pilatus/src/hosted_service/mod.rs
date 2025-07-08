@@ -23,7 +23,7 @@ pub trait ServiceBuilderExtensions {
 
 impl<TDep> ServiceBuilderExtensions for ServiceBuilder<'_, TDep>
 where
-    TDep: Resolvable + Send + 'static,
+    TDep: Resolvable + 'static,
     TDep::ItemPreChecked: Send,
 {
     type Dependency = TDep::ItemPreChecked;

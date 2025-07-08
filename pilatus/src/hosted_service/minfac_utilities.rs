@@ -82,7 +82,7 @@ where
 impl<T: 'static + Send, TDep, TFut> ServiceProviderHandler<T>
     for DepServiceProviderHandler<T, TDep, TFut>
 where
-    TDep: Resolvable + Send + 'static,
+    TDep: Resolvable + 'static,
     TDep::ItemPreChecked: Send,
     TFut: Future<Output = T> + Send + 'static,
 {
