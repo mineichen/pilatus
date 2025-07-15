@@ -1,9 +1,12 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::{fs::File, io::Write, sync::Arc};
 
 use bytes::Bytes;
 use futures::{sink::SinkExt, StreamExt};
 use minfac::{Registered, ServiceCollection};
+use pilatus::device::DeviceId;
+use pilatus::Recipe;
 use pilatus::{
     device::{ActorSystem, DeviceContext, DeviceResult, DeviceValidationContext},
     prelude::*,
@@ -64,19 +67,24 @@ fn upload_zip() -> anyhow::Result<()> {
         .configure();
 
     let web_stats: pilatus_axum::Stats = rt.provider.get().unwrap();
-    let recipe_service = rt.provider.get().unwrap();
-    rt.run_until_finished(async {
+    let recipe_service: Arc<RecipeServiceFassade> = rt.provider.get().unwrap();
+    rt.run_until_finished(async move {
         let port = web_stats.socket_addr().await.port();
         assert_ne!(port, 80);
         let base = format!("http://127.0.0.1:{port}/api");
         let client = reqwest::Client::new();
-        let (clone_id, data) = generate_zip(&base, &client, recipe_service).await.unwrap();
+        let (clone_id, data) = generate_zip(&base, &client, &recipe_service).await.unwrap();
+        let mut existing = Recipe::default();
+        existing.add_device(DeviceConfig::mock(1));
+        recipe_service
+            .add_recipe_with_id(RecipeId::from_str("Test2").unwrap(), existing)
+            .await
+            .unwrap();
 
         let (mut sock, _response) =
             connect_async(format!("ws://127.0.0.1:{port}/api/recipe/import"))
                 .await
                 .unwrap();
-
         sock.send(tokio_tungstenite::tungstenite::Message::Binary(
             Bytes::copy_from_slice((data.len() as u64).to_le_bytes().as_slice()),
         ))
@@ -91,7 +99,6 @@ fn upload_zip() -> anyhow::Result<()> {
         }
         let answer = sock.next().await;
         let Some(Ok(Message::Text(msg))) = answer else {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             panic!("Expected text response {answer:?}");
         };
         assert_eq!(msg, "\"Success\"");
@@ -107,7 +114,7 @@ fn upload_zip() -> anyhow::Result<()> {
 async fn generate_zip(
     base: &str,
     client: &reqwest::Client,
-    s: Arc<RecipeServiceFassade>,
+    s: &RecipeServiceFassade,
 ) -> anyhow::Result<(RecipeId, Vec<u8>)> {
     let (active_id, _) = get_current(base, client).await?;
     let clone_response_body = client
@@ -116,31 +123,27 @@ async fn generate_zip(
         .await?
         .bytes()
         .await?;
-
-    let clone_id: RecipeId = serde_json::from_value(
-        serde_json::from_slice::<serde_json::Value>(&clone_response_body[..])?
-            .get(0)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Unknown index '0' in {}",
-                    String::from_utf8_lossy(&clone_response_body[..])
-                )
-            })?
-            .clone(),
-    )?;
+    #[derive(serde::Deserialize)]
+    #[allow(dead_code)]
+    struct CloneResponse(RecipeId, CloneResponseDetails);
+    #[derive(serde::Deserialize)]
+    #[allow(dead_code)]
+    struct CloneResponseDetails {
+        created: String,
+        tags: Vec<String>,
+        devices: HashMap<DeviceId, serde_json::Value>,
+    }
+    let clone_id: RecipeId = serde_json::from_slice::<CloneResponse>(&clone_response_body[..])?.0;
 
     // Execute with http is not yet implemented
     s.add_device_to_recipe(clone_id.clone(), DeviceConfig::mock(42))
         .await?;
-
-    let export_response_body = client
+    let export_response = client
         .get(format!("{base}/recipe/{}/export", clone_id))
         .send()
-        .await?
-        .bytes()
-        .await?
-        .to_vec();
-
+        .await?;
+    assert!(export_response.status().is_success());
+    let export_response_body = export_response.bytes().await?.to_vec();
     assert!(!export_response_body.is_empty());
 
     let delete_response_status = client

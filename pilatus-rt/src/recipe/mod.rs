@@ -35,6 +35,7 @@ mod actions;
 mod export;
 mod fassade;
 mod file;
+mod has_same_content;
 mod import;
 mod parameters;
 mod recipes;
@@ -155,7 +156,11 @@ impl<T: Deref<Target = Recipes>> RecipeDataService<'_, T> {
                 });
 
                 if relative_a != relative_b
-                    || !is_content_equal(File::open(&a).await?, File::open(&b).await?).await?
+                    || !has_same_content::has_same_content(
+                        File::open(&a).await?,
+                        File::open(&b).await?,
+                    )
+                    .await?
                 {
                     Err(UncommittedChangesError)?;
                 }
@@ -511,10 +516,7 @@ pub(crate) mod unstable {
         ) -> Result<(), TransactionError> {
             recipes_try_add_new_with_id(&mut self.recipes, id.clone(), recipe, self.device_actions)
                 .await
-                .map_err(|_| {
-                    TransactionError::Other(anyhow::anyhow!("Recipe {id} already exists "))
-                })?;
-            Ok(())
+                .map_err(|(_, e)| e)
         }
 
         /// Has no duplication Detection for Device-IDs yet
@@ -558,34 +560,6 @@ pub(crate) mod unstable {
     }
 }
 
-async fn is_content_equal(a: impl AsyncRead, b: impl AsyncRead) -> std::io::Result<bool> {
-    let mut a = std::pin::pin!(a);
-    let mut b = std::pin::pin!(b);
-    let mut remaining_a = 0;
-    let mut remaining_b = 0;
-    let mut buf_a = [0; 4096];
-    let mut buf_b = [0; 4096];
-
-    loop {
-        let (a_bytes, b_bytes) = futures::future::join(
-            a.read(&mut buf_a[remaining_a..]),
-            b.read(&mut buf_b[remaining_b..]),
-        )
-        .await;
-        let a_bytes = a_bytes? + remaining_a;
-        let b_bytes = b_bytes? + remaining_b;
-        let min = a_bytes.min(b_bytes);
-        if min == 0 {
-            return Ok(a_bytes == b_bytes);
-        } else if buf_a[..min] != buf_b[..min] {
-            return Ok(false);
-        } else {
-            remaining_a = a_bytes - min;
-            remaining_b = b_bytes - min;
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
 
@@ -595,39 +569,6 @@ mod tests {
     use pilatus::{RecipeServiceTrait, RelativeFilePath, UpdateParamsMessageError};
 
     use super::*;
-
-    #[tokio::test]
-    async fn with_multiple_lengths() {
-        let a = [0; 4098];
-        let b = [0; 4097];
-        assert!(
-            !is_content_equal(std::io::Cursor::new(a), std::io::Cursor::new(b))
-                .await
-                .unwrap()
-        );
-    }
-
-    #[tokio::test]
-    async fn with_multiple_pages() {
-        let a = [0; 4098];
-        let mut b = [0; 4098];
-        *b.last_mut().unwrap() = 1;
-        assert!(
-            !is_content_equal(std::io::Cursor::new(a), std::io::Cursor::new(b))
-                .await
-                .unwrap()
-        );
-    }
-    #[tokio::test]
-    async fn with_multiple_same_pages() {
-        let a = [0; 4098];
-        let b = [0; 4098];
-        assert!(
-            is_content_equal(std::io::Cursor::new(a), std::io::Cursor::new(b))
-                .await
-                .unwrap()
-        );
-    }
 
     #[tokio::test]
     async fn change_to_new_variable() -> anyhow::Result<()> {
@@ -866,10 +807,10 @@ mod tests {
     async fn test_add_device_and_recipe() -> anyhow::Result<()> {
         let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
         let rs = rsb.build();
-        
+
         #[derive(Debug,  serde::Serialize, serde::Deserialize, PartialEq, Eq)]
         struct SampleParams {foo: u32, bar: String}
-        
+
         let device = DeviceConfig::mock(SampleParams {foo: 12, bar: "Hallo".to_string()});
         let device2 = DeviceConfig::new_unchecked(
             "testdevice2","testdevice2name",SampleParams {foo: 14, bar: "Hi".to_string()});
@@ -880,7 +821,7 @@ mod tests {
         drop(rs); //all data should be saved to file at this point
 
         //try to read data from from file
-        
+
         let rs = RecipeServiceFassadeBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok()))
         .build();
         let dev = rs.device_config(recipe_id.clone(), device_in_other_recipe_id).await?;
@@ -907,19 +848,19 @@ mod tests {
 
         #[derive(Debug,  serde::Serialize, serde::Deserialize, PartialEq, Eq)]
         struct SampleParams {foo: u32, reference: DeviceId}
-                
+
         let device = DeviceConfig::mock(SampleParams {foo: 12, reference: DeviceId::new_v4()});
         let device_in_active_recipe_id = rs.add_device_to_active_recipe(device).await.unwrap();
 
         let device2 = DeviceConfig::new_unchecked(
             "testdevice2", "testdevice2name", SampleParams {foo: 14, reference: device_in_active_recipe_id});
         let device_in_other_recipe_id = rs.add_device_to_active_recipe(device2).await.unwrap();
-        
+
         rs.create_device_file(device_in_active_recipe_id, "my_file.txt", b"test").await;
 
         let (new_recipe_id, new_device_config) = rs.duplicate_recipe(rs.get_active_id().await).await.unwrap();
         assert!(!new_device_config.devices.contains_key(&device_in_other_recipe_id), "Clone contains device with the same id as in the original");
-        
+
         let new_device_path_with_file = 'outer: {
             for device_id in new_device_config.devices.keys() {
                 let device_path = rs.device_dir(device_id);
@@ -948,10 +889,10 @@ mod tests {
         struct SampleParams {foo: u32, bar: String}
 
         let initial_params = SampleParams {foo: 12, bar: "Hallo".to_string()};
-        
+
         let mut device = DeviceConfig::mock(&initial_params);
         let device_id = rs.add_device_to_active_recipe(device.clone()).await.unwrap();
-        
+
         let new_params = SampleParams { foo: 42, ..initial_params};
         device.params = UntypedDeviceParamsWithVariables::from_serializable(&new_params)?;
         rs.update_device_params(recipe_id.clone(), device_id, ParameterUpdate {
@@ -960,7 +901,7 @@ mod tests {
         }).await.unwrap();
         drop(rs); //all data should be saved to file at this point
 
-       
+
         let rs = RecipeServiceFassadeBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok())).build();
         let s = rs.device_config(recipe_id, device_id).await.unwrap();
         assert_eq!(device.params, s.params);
@@ -983,10 +924,10 @@ mod tests {
         }
         let device = DeviceConfig::mock(SampleParams {foo: 12, bar: "Hallo".to_string()});
         let dev_uuid = rs.add_device_to_active_recipe(device.clone()).await?;
- 
+
         //update params
         let params = SampleParams{foo: 234, bar: "huhu".to_string()};
-      
+
         rs.update_device_params(recipe_id.clone(), dev_uuid, ParameterUpdate {
             parameters: UntypedDeviceParamsWithVariables::from_serializable(&params)?,
             variables: Default::default(),

@@ -11,7 +11,7 @@ pub(super) async fn recipes_try_add_new_with_id(
     id: RecipeId,
     mut new_recipe: Recipe,
     device_actions: &dyn DeviceActions,
-) -> Result<(), Recipe> {
+) -> Result<(), (Recipe, TransactionError)> {
     let vars: &Variables = recipes.as_ref();
     let mut iter = new_recipe.devices.iter_mut();
     while let Some((&id, device)) = iter.next() {
@@ -26,13 +26,17 @@ pub(super) async fn recipes_try_add_new_with_id(
                 device.apply(changes).await;
             }
 
-            Err(_) => {
-                return Err(new_recipe);
+            Err(e) => {
+                return Err((new_recipe, e));
             }
         };
     }
-    recipes.try_add(id, new_recipe)?;
-    Ok(())
+    recipes.try_add(id.clone(), new_recipe).map_err(|r| {
+        (
+            r,
+            TransactionError::Other(anyhow::anyhow!("Recipe {id} already exists ")),
+        )
+    })
 }
 
 pub(super) trait RecipesExt {

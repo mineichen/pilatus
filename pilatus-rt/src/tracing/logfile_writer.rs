@@ -58,7 +58,7 @@ mod tests {
     #[tokio::test]
     async fn keep_newest_files() {
         let tmpdir = tempfile::tempdir().unwrap();
-        let tmppath = tmpdir.into_path();
+        let tmppath = tmpdir.path();
 
         File::create(tmppath.join("file1.log")).await.unwrap();
         tokio::time::sleep(Duration::from_millis(10)).await;
