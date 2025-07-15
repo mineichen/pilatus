@@ -263,13 +263,14 @@ fn error_for_duplicate_device(r: &Recipes) -> Result<(), ImportRecipeError> {
 
     for (did, rid) in r.recipeid_per_deviceid() {
         match known.entry(did) {
-            Entry::Occupied(x) => {
+            Entry::Occupied(x) if x.get() != &rid => {
                 return Err(ImportRecipeError::ExistingDeviceInOtherRecipe(
                     did,
                     rid,
                     x.remove(),
                 ));
             }
+            Entry::Occupied(_) => {}
             Entry::Vacant(x) => {
                 x.insert(rid);
             }

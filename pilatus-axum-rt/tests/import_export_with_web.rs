@@ -1,12 +1,10 @@
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::{fs::File, io::Write, sync::Arc};
 
 use bytes::Bytes;
 use futures::{sink::SinkExt, StreamExt};
 use minfac::{Registered, ServiceCollection};
 use pilatus::device::DeviceId;
-use pilatus::Recipe;
 use pilatus::{
     device::{ActorSystem, DeviceContext, DeviceResult, DeviceValidationContext},
     prelude::*,
@@ -59,6 +57,11 @@ fn upload_zip() -> anyhow::Result<()> {
         }
         c.with::<Registered<ActorSystem>>()
             .register_device("testdevice", validator, device);
+        c.register(|| {
+            pilatus::InitRecipeListener::new(move |r| {
+                r.add_device(DeviceConfig::mock(1));
+            })
+        });
     }
 
     let rt = Runtime::with_root(dir.path())
@@ -74,12 +77,10 @@ fn upload_zip() -> anyhow::Result<()> {
         let base = format!("http://127.0.0.1:{port}/api");
         let client = reqwest::Client::new();
         let (clone_id, data) = generate_zip(&base, &client, &recipe_service).await.unwrap();
-        let mut existing = Recipe::default();
-        existing.add_device(DeviceConfig::mock(1));
-        recipe_service
-            .add_recipe_with_id(RecipeId::from_str("Test2").unwrap(), existing)
-            .await
-            .unwrap();
+        // recipe_service
+        //     .add_recipe_with_id(RecipeId::from_str("Test2").unwrap(), Recipe::default())
+        //     .await
+        //     .unwrap();
 
         let (mut sock, _response) =
             connect_async(format!("ws://127.0.0.1:{port}/api/recipe/import"))
@@ -117,11 +118,11 @@ async fn generate_zip(
     s: &RecipeServiceFassade,
 ) -> anyhow::Result<(RecipeId, Vec<u8>)> {
     let (active_id, _) = get_current(base, client).await?;
-    let clone_response_body = client
+    let clone_response = client
         .put(format!("{base}/recipe/{}/clone", active_id))
         .send()
         .await?
-        .bytes()
+        .json::<CloneResponse>()
         .await?;
     #[derive(serde::Deserialize)]
     #[allow(dead_code)]
@@ -133,7 +134,7 @@ async fn generate_zip(
         tags: Vec<String>,
         devices: HashMap<DeviceId, serde_json::Value>,
     }
-    let clone_id: RecipeId = serde_json::from_slice::<CloneResponse>(&clone_response_body[..])?.0;
+    let clone_id = clone_response.0;
 
     // Execute with http is not yet implemented
     s.add_device_to_recipe(clone_id.clone(), DeviceConfig::mock(42))
@@ -145,6 +146,15 @@ async fn generate_zip(
     assert!(export_response.status().is_success());
     let export_response_body = export_response.bytes().await?.to_vec();
     assert!(!export_response_body.is_empty());
+
+    dbg!(client
+        .get(format!("{base}/recipe/get_all"))
+        .send()
+        .await
+        .unwrap()
+        .json::<serde_json::Value>()
+        .await
+        .unwrap());
 
     let delete_response_status = client
         .delete(format!("{base}/recipe/{}", clone_id))

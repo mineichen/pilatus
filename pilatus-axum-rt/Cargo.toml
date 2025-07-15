@@ -39,7 +39,7 @@ uuid = { workspace = true, features = ["serde", "v4"] }
 [dev-dependencies]
 pilatus = { path = "../pilatus", features = ["unstable"] }
 pilatus-rt = { path = "../pilatus-rt", features = ["unstable"] }
-reqwest = "0.12.5"
+reqwest = { version = "0.12.5", features = ["json"] }
 tempfile = "3"
 tokio-tungstenite = "0.27"
 

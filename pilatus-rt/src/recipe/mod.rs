@@ -19,11 +19,10 @@ use pilatus::{
 };
 use pilatus::{RelativeDirectoryPath, UncommittedChangesError, UnknownDeviceError};
 use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use tokio::{
     fs,
-    io::AsyncRead,
     sync::{broadcast, RwLock},
 };
 use tracing::{debug, error, trace};

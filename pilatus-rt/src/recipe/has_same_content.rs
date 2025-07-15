@@ -1,7 +1,6 @@
 use std::pin::pin;
 
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
-use tokio_util::bytes::BytesMut;
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 
 pub(super) async fn has_same_content(
     a: impl AsyncRead,
@@ -13,24 +12,17 @@ pub(super) async fn has_same_content(
     loop {
         let (buf_a, buf_b) =
             futures::future::try_join(reader_a.fill_buf(), reader_b.fill_buf()).await?;
-        // If both buffers are empty, we've reached EOF on both streams
-        if buf_a.is_empty() && buf_b.is_empty() {
-            return Ok(true);
-        }
 
-        // If only one buffer is empty, streams have different lengths
         if buf_a.is_empty() || buf_b.is_empty() {
-            return Ok(false);
+            return Ok(buf_a.is_empty() && buf_b.is_empty());
         }
 
-        // Compare the minimum available data
         let compare_len = buf_a.len().min(buf_b.len());
 
         if buf_a[..compare_len] != buf_b[..compare_len] {
             return Ok(false);
         }
 
-        // Consume the compared data from both readers
         reader_a.consume(compare_len);
         reader_b.consume(compare_len);
     }
@@ -93,7 +85,7 @@ mod tests {
                 _cx: &mut std::task::Context<'_>,
                 buf: &mut tokio::io::ReadBuf<'_>,
             ) -> std::task::Poll<std::io::Result<()>> {
-                let this: &mut Self = std::pin::Pin::into_inner(self);
+                let this = std::pin::Pin::into_inner(self);
                 let (before, after) = this
                     .1
                     .split_at(this.0.min(buf.remaining()).min(this.1.len()));
