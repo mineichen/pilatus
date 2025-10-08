@@ -327,22 +327,31 @@ mod tests {
         let dir = tempfile::tempdir()?;
         let device_id = DeviceId::new_v4();
         let svc = TokioFileService::builder(dir.path()).build(device_id);
+        let base = std::path::Path::new("foo").join("baz");
+        let png_path = base.join("bar.png");
+        let jpg_path = base.join("bar.jpg");
 
         svc.add_file_unchecked(&RelativeFilePath::new("foo/bar/baz.jpg")?, &[0u8])
             .await?;
-        svc.add_file_unchecked(&RelativeFilePath::new("foo/baz/bar.png")?, &[0u8])
+        svc.add_file_unchecked(&RelativeFilePath::new(&png_path)?, &[0u8])
             .await?;
-        svc.add_file_unchecked(&RelativeFilePath::new("foo/baz/bar.jpg")?, &[0u8])
+        svc.add_file_unchecked(&RelativeFilePath::new(&jpg_path)?, &[0u8])
             .await?;
 
         let mut baz = svc
-            .stream_files_recursive(RelativeDirectoryPath::new("foo/baz")?)
+            .stream_files_recursive(RelativeDirectoryPath::new(&base)?)
             .map_ok(|x| x.as_os_str().to_string_lossy().to_string())
             .try_collect::<Vec<_>>()
             .await?;
 
         baz.sort_unstable();
-        assert_eq!(baz, vec!["foo/baz/bar.jpg", "foo/baz/bar.png"]);
+        assert_eq!(
+            baz,
+            vec![
+                jpg_path.to_str().unwrap().to_string(),
+                png_path.to_str().unwrap().to_string()
+            ]
+        );
 
         Ok(())
     }
