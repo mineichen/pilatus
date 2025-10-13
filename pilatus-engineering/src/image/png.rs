@@ -47,11 +47,11 @@ impl crate::image::DynamicImage {
             }
             Self::Rgb8Planar(i) => {
                 let (width, height) = i.dimensions();
-                let packed = PackedGenericImage::from_unpacked_image(i);
+                let packed: PackedGenericImage = PackedGenericImage::from_planar_image(i);
                 let img = image::ImageBuffer::<image::Rgb<_>, _>::from_raw(
                     width.get(),
                     height.get(),
-                    crate::image::PackedRgbImage::flat_buffer(&packed),
+                    crate::image::InterleavedRgbImage::flat_buffer(&packed),
                 )
                 .expect("u8 Color Buffer always matches");
                 let mut buf = Vec::with_capacity(

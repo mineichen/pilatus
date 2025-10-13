@@ -21,9 +21,9 @@ use futures::{
 use jpeg_encoder::{ColorType, Encoder};
 use pilatus::device::{ActorError, ActorMessage, ActorSystem, DeviceId};
 use pilatus_engineering::image::{
-    BroadcastImage, DynamicImage, ImageWithMeta, LocalizableBroadcastImage, LumaImage,
-    PackedGenericImage, RgbImage, StreamImageError, SubscribeImageMessage, SubscribeImageOk,
-    SubscribeLocalizableImageMessage, SubscribeLocalizableImageOk,
+    BroadcastImage, DynamicImage, GenericImage, ImageWithMeta, LocalizableBroadcastImage,
+    LumaImage, PackedGenericImage, RgbImage, StreamImageError, SubscribeImageMessage,
+    SubscribeImageOk, SubscribeLocalizableImageMessage, SubscribeLocalizableImageOk,
 };
 use serde::Serialize;
 use tracing::{debug, trace};
@@ -174,10 +174,10 @@ fn encode_dynamic_jpeg_image<T: Serialize>(
             dims,
         ),
         DynamicImage::Rgb8Planar(i) => {
-            let packed: PackedGenericImage = i.into();
+            let packed: PackedGenericImage = GenericImage::<[u8; 3], 1>::from_planar_image(&i);
             encode_jpeg(
                 buf,
-                pilatus_engineering::image::PackedRgbImage::flat_buffer(&packed),
+                pilatus_engineering::image::InterleavedRgbImage::flat_buffer(&packed),
                 ColorType::Rgb,
                 dims,
             )
