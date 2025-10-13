@@ -51,7 +51,7 @@ impl crate::image::DynamicImage {
                 let img = image::ImageBuffer::<image::Rgb<_>, _>::from_raw(
                     width.get(),
                     height.get(),
-                    packed.buffer(),
+                    crate::image::PackedRgbImage::flat_buffer(&packed),
                 )
                 .expect("u8 Color Buffer always matches");
                 let mut buf = Vec::with_capacity(

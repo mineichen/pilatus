@@ -23,7 +23,7 @@ use pilatus::device::{ActorError, ActorMessage, ActorSystem, DeviceId};
 use pilatus_engineering::image::{
     BroadcastImage, DynamicImage, ImageWithMeta, LocalizableBroadcastImage, LumaImage,
     PackedGenericImage, RgbImage, StreamImageError, SubscribeImageMessage, SubscribeImageOk,
-    SubscribeLocalizableImageMessage, SubscribeLocalizableImageOk, UnpackedGenericImage,
+    SubscribeLocalizableImageMessage, SubscribeLocalizableImageOk,
 };
 use serde::Serialize;
 use tracing::{debug, trace};
@@ -174,8 +174,13 @@ fn encode_dynamic_jpeg_image<T: Serialize>(
             dims,
         ),
         DynamicImage::Rgb8Planar(i) => {
-            let packed: PackedGenericImage = UnpackedGenericImage::new(i).into();
-            encode_jpeg(buf, packed.buffer(), ColorType::Rgb, dims)
+            let packed: PackedGenericImage = i.into();
+            encode_jpeg(
+                buf,
+                pilatus_engineering::image::PackedRgbImage::flat_buffer(&packed),
+                ColorType::Rgb,
+                dims,
+            )
         }
         _ => Err(anyhow!("Unsupported image format: {:?}", image)),
     }
@@ -213,7 +218,7 @@ impl<T: Serialize> StreamableImage for RgbImageWithMetadata<T> {
     fn encode(self) -> anyhow::Result<Vec<u8>> {
         let dims = self.0.size();
         let packed = self.0.into_packed();
-        encode_legacy(packed.buffer(), ColorType::Rgb, dims, |b| {
+        encode_legacy(packed.flat_buffer(), ColorType::Rgb, dims, |b| {
             serde_json::to_writer(b, &self.1).map_err(Into::into)
         })
     }

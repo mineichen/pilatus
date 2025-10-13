@@ -21,5 +21,8 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
 
+[dev-dependencies]
+pilatus-axum = { path = ".", features = ["engineering"] }
+
 [features]
 engineering = ["pilatus-engineering", "jpeg-encoder"]

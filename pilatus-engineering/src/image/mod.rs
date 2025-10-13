@@ -22,7 +22,6 @@ use std::{
     fmt::{self, Debug, Formatter},
     mem::ManuallyDrop,
     num::{NonZero, NonZeroU32, TryFromIntError},
-    ops::Deref,
     sync::Arc,
 };
 
@@ -72,8 +71,8 @@ pub trait RgbImage: Debug {
 
 /// All bytes are stored in a continuous buffer (y:x:channel)
 pub trait PackedRgbImage: RgbImage {
-    fn buffer(&self) -> &[u8];
-    fn into_vec(self: Arc<Self>) -> Vec<u8>;
+    fn flat_buffer(&self) -> &[u8];
+    //fn into_flat_vec(self: Arc<Self>) -> Vec<u8>;
 }
 
 /// Image consists of one image per channel (channel:y:x)
@@ -82,21 +81,10 @@ pub trait UnpackedRgbImage {
     fn get_channels(&self) -> [&[u8]; 3];
 }
 
-#[derive(Debug)]
-pub struct PackedGenericImage(GenericImage<u8, 3>);
-impl Deref for PackedGenericImage {
-    type Target = GenericImage<u8, 3>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+pub type PackedGenericImage = GenericImage<[u8; 3], 1>;
 
 impl PackedGenericImage {
-    pub fn new(i: GenericImage<u8, 3>) -> Self {
-        Self(i)
-    }
-    fn from_unpacked_image(i: &GenericImage<u8, 3>) -> Self {
+    pub fn from_unpacked_image(i: &GenericImage<u8, 3>) -> Self {
         let (width, height) = i.dimensions();
         let area = (width.get() * height.get()) as usize;
         let (r, rest) = i.buffer().split_at(area);
@@ -110,29 +98,15 @@ impl PackedGenericImage {
         assert_eq!(len, g.len());
         assert_eq!(len, b.len());
 
-        let mut write_buf_container = Arc::new_uninit_slice(len * 3);
-        let write_buf = Arc::get_mut(&mut write_buf_container).unwrap();
-        let mut next_write = 0;
-
-        for channel in 0..len {
-            unsafe {
-                write_buf
-                    .get_unchecked_mut(next_write)
-                    .write(*r.get_unchecked(channel));
-                write_buf
-                    .get_unchecked_mut(next_write + 1)
-                    .write(*g.get_unchecked(channel));
-                write_buf
-                    .get_unchecked_mut(next_write + 2)
-                    .write(*b.get_unchecked(channel));
-            }
-            next_write += 3;
-        }
-        PackedGenericImage(GenericImage::<u8, 3>::new_arc(
-            unsafe { write_buf_container.assume_init() },
+        GenericImage::<[u8; 3], 1>::new_arc(
+            r.iter()
+                .zip(g)
+                .zip(b)
+                .map(|((&r, &g), &b)| [r, g, b])
+                .collect(),
             width,
             height,
-        ))
+        )
     }
 }
 
@@ -154,46 +128,35 @@ impl RgbImage for PackedGenericImage {
     }
 }
 
-impl PackedRgbImage for PackedGenericImage {
-    fn into_vec(self: Arc<Self>) -> Vec<u8> {
-        match Arc::try_unwrap(self) {
-            Ok(inner) => inner.0.into_vec(),
-            Err(shared_self) => shared_self.buffer().to_vec(),
-        }
-    }
-
-    fn buffer(&self) -> &[u8] {
-        self.0.buffer()
+impl PackedRgbImage for GenericImage<[u8; 3], 1> {
+    fn flat_buffer(&self) -> &[u8] {
+        // SAFETY: [u8; 3] has the same layout as 3 consecutive u8 values
+        unsafe { std::slice::from_raw_parts(self.buffer().as_ptr() as *const u8, self.len() * 3) }
     }
 }
 
-#[derive(Debug)]
-pub struct UnpackedGenericImage(GenericImage<u8, 3>);
+pub type UnpackedGenericImage = GenericImage<u8, 3>;
 
 impl From<UnpackedGenericImage> for PackedGenericImage {
     fn from(value: UnpackedGenericImage) -> Self {
-        PackedGenericImage::from_unpacked_image(&value.0)
+        PackedGenericImage::from_unpacked_image(&value)
     }
 }
 
 impl From<PackedGenericImage> for DynamicImage {
     fn from(value: PackedGenericImage) -> Self {
-        let planar = UnpackedGenericImage::from_packed_image(&value.0);
-        DynamicImage::Rgb8Planar(planar.0)
+        let planar = UnpackedGenericImage::from_packed_image(&value);
+        DynamicImage::Rgb8Planar(planar)
     }
 }
 
 impl UnpackedGenericImage {
-    pub fn new(i: GenericImage<u8, 3>) -> Self {
-        Self(i)
-    }
-
-    fn from_packed_image(i: &GenericImage<u8, 3>) -> Self {
+    fn from_packed_image(i: &GenericImage<[u8; 3], 1>) -> Self {
         let (width, height) = i.dimensions();
-        Self::from_packed(i.buffer(), (width, height))
+        Self::from_flat_packed(i.flat_buffer(), (width, height))
     }
 
-    pub fn from_packed(v: &[u8], (width, height): (NonZeroU32, NonZeroU32)) -> Self {
+    pub fn from_flat_packed(v: &[u8], (width, height): (NonZeroU32, NonZeroU32)) -> Self {
         let len = width.get() as usize * height.get() as usize;
         let mut write_buf_container = Arc::new_uninit_slice(len * 3);
         let write_buf = Arc::get_mut(&mut write_buf_container).unwrap();
@@ -216,19 +179,7 @@ impl UnpackedGenericImage {
             }
             next_read += 3;
         }
-        UnpackedGenericImage(GenericImage::<u8, 3>::new_arc(
-            unsafe { write_buf_container.assume_init() },
-            width,
-            height,
-        ))
-    }
-}
-
-impl Deref for UnpackedGenericImage {
-    type Target = GenericImage<u8, 3>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+        GenericImage::<u8, 3>::new_arc(unsafe { write_buf_container.assume_init() }, width, height)
     }
 }
 
@@ -252,13 +203,13 @@ impl RgbImage for UnpackedGenericImage {
 
 impl UnpackedRgbImage for UnpackedGenericImage {
     fn get_channels(&self) -> [&[u8]; 3] {
-        let offset = (self.0 .0.width.get() * self.0 .0.height.get()) as isize;
+        let offset = (self.0.width.get() * self.0.height.get()) as isize;
 
         unsafe {
             [
-                std::slice::from_raw_parts(self.0 .0.ptr, offset as usize),
-                std::slice::from_raw_parts(self.0 .0.ptr.offset(offset), offset as usize),
-                std::slice::from_raw_parts(self.0 .0.ptr.offset(offset * 2), offset as usize),
+                std::slice::from_raw_parts(self.0.ptr, offset as usize),
+                std::slice::from_raw_parts(self.0.ptr.offset(offset), offset as usize),
+                std::slice::from_raw_parts(self.0.ptr.offset(offset * 2), offset as usize),
             ]
         }
     }
@@ -266,9 +217,8 @@ impl UnpackedRgbImage for UnpackedGenericImage {
 
 impl From<&GenericImage<u8, 1>> for PackedGenericImage {
     fn from(input: &GenericImage<u8, 1>) -> Self {
-        let data = input.buffer().iter().flat_map(|&i| [i, i, i]).collect();
-        let inner = GenericImage::<u8, 3>::new_arc(data, input.0.width, input.0.height);
-        PackedGenericImage(inner)
+        let data = input.buffer().iter().map(|&i| [i, i, i]).collect();
+        GenericImage::<[u8; 3], 1>::new_arc(data, input.0.width, input.0.height)
     }
 }
 
@@ -365,10 +315,9 @@ impl TryFrom<image::DynamicImage> for DynamicImage {
             }
             image::DynamicImage::ImageLumaA8(_) => "ImageLumaA8",
             image::DynamicImage::ImageRgb8(x) => {
-                let unpacked = UnpackedGenericImage::from_packed_image(&PackedGenericImage(
-                    GenericImage::new_vec(x.into_vec(), width, height),
-                ));
-                return Ok(DynamicImage::Rgb8Planar(unpacked.0));
+                let vec_u8 = x.into_vec();
+                let unpacked = UnpackedGenericImage::from_flat_packed(&vec_u8, (width, height));
+                return Ok(DynamicImage::Rgb8Planar(unpacked));
             }
             image::DynamicImage::ImageRgba8(_) => "ImageRgba8",
             image::DynamicImage::ImageLumaA16(_) => "ImageLumaA16",
@@ -694,12 +643,23 @@ mod tests {
             vec![0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
         )
         .unwrap();
-        let pilatus = GenericImage::<u8, 3>::new_vec(
-            image.clone().into_vec(),
+        let vec_u8 = image.clone().into_vec();
+        let vec_rgb: Vec<[u8; 3]> = vec_u8
+            .chunks_exact(3)
+            .map(|chunk| [chunk[0], chunk[1], chunk[2]])
+            .collect();
+        let pilatus = GenericImage::<[u8; 3], 1>::new_vec(
+            vec_rgb,
             2.try_into().unwrap(),
             2.try_into().unwrap(),
         );
-        let dynamic: DynamicImage = PackedGenericImage(pilatus).into();
+        let dynamic: DynamicImage = pilatus.into();
+
+        let DynamicImage::Rgb8Planar(rgb) = &dynamic else {
+            panic!("Buffer contains no rgb-image");
+        };
+
+        assert_eq!([0, 3, 6, 9, 1, 4, 7, 10, 2, 5, 8, 11], rgb.buffer());
         let png = dynamic.encode_png().unwrap();
         let image::DynamicImage::ImageRgb8(reloaded) = image::load_from_memory(&png).unwrap()
         else {
@@ -799,13 +759,16 @@ mod tests {
     #[test]
     fn miri_test_into_packed() {
         let size = 2.try_into().unwrap();
-        let image = Arc::new(UnpackedGenericImage(GenericImage::<u8, 3>::new_vec(
+        let image = Arc::new(GenericImage::<u8, 3>::new_vec(
             vec![1u8, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3],
             size,
             size,
-        )));
-        let packed = image.into_packed().into_vec();
-        assert_eq!(packed.to_vec(), vec!(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3));
+        ));
+        let packed = image.into_packed();
+        assert_eq!(
+            packed.flat_buffer(),
+            vec!(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3)
+        );
     }
 
     #[test]
