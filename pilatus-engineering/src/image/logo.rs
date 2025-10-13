@@ -5,7 +5,7 @@ use pilatus::LogoQuery;
 use super::GenericImage;
 
 pub trait ImageLogoServiceTrait {
-    fn get_logo(&self, query: LogoQuery) -> GenericImage<u8, 4>;
+    fn get_logo(&self, query: LogoQuery) -> GenericImage<[u8; 4], 1>;
 }
 
 #[derive(Clone)]

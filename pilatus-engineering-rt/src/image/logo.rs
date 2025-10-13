@@ -18,7 +18,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 type Age = u64;
 
 struct ImageLogoServiceImpl {
-    cache: RwLock<HashMap<LogoQuery, (Age, GenericImage<u8, 4>)>>,
+    cache: RwLock<HashMap<LogoQuery, (Age, GenericImage<[u8; 4], 1>)>>,
     logo_service: LogoService,
 }
 
@@ -34,8 +34,7 @@ impl ImageLogoServiceImpl {
 const CACHE_CAPACITY: usize = 10;
 
 impl ImageLogoServiceTrait for ImageLogoServiceImpl {
-    /// Panics: GenericImage<4> with packed pixels (rgbargbargbargba, not rrrrggggbbbbaaaa)
-    fn get_logo(&self, query: LogoQuery) -> GenericImage<u8, 4> {
+    fn get_logo(&self, query: LogoQuery) -> GenericImage<[u8; 4], 1> {
         let lock = self.cache.read().unwrap();
         if let Some((_, cached)) = lock.get(&query) {
             return cached.clone();
@@ -94,7 +93,14 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 isize.1.try_into().expect("Input image has height=0"),
             );
 
-            GenericImage::<u8, 4>::new_arc(rgba.into_vec().into(), iwidth, iheight)
+            GenericImage::<[u8; 4], 1>::new_arc(
+                rgba.into_vec()
+                    .chunks_exact(4)
+                    .map(|x| [x[0], x[1], x[2], x[3]])
+                    .collect(),
+                iwidth,
+                iheight,
+            )
         } else if let Ok(svg) = resvg::usvg::Tree::from_data(&logo.0, &Default::default()) {
             let x = svg;
             let size = x.size();
@@ -138,16 +144,22 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 .try_into()
                 .expect("Generated Image has height=0");
 
-            GenericImage::<u8, 4>::new_arc(pixmap.take().into(), out_width, out_height)
+            GenericImage::<[u8; 4], 1>::new_arc(
+                pixmap
+                    .take()
+                    .chunks_exact(4)
+                    .map(|x| [x[0], x[1], x[2], x[3]])
+                    .collect(),
+                out_width,
+                out_height,
+            )
         } else {
             let width = query.width.get();
             let height = query.height.get();
 
             warn!("The logo is not loadable. Therefore a red surface of the size {width}x{height} was returned");
-            GenericImage::new_arc(
-                (0..(width * height))
-                    .flat_map(|_| [255, 0, 0, 255])
-                    .collect(),
+            GenericImage::<[u8; 4], 1>::new_arc(
+                (0..(width * height)).map(|_| [255, 0, 0, 255]).collect(),
                 NonZeroU32::from(*query.width),
                 NonZeroU32::from(*query.height),
             )
@@ -216,24 +228,14 @@ mod tests {
         let logo = get_logo(LogoService::new(raw_service));
         let (width, height) = logo.dimensions();
         assert_eq!((width.get(), height.get()), (100, 100));
-        let last_row_col = 4 * (100 * 100 - 1);
+        let last_row_col = 100 * 100 - 1;
 
-        assert_eq!(
-            &logo.buffer()[last_row_col..(last_row_col + 4)],
-            &[0, 0, 0, 0]
-        );
-        let diag_left = last_row_col - 4 * 101;
-        assert_eq!(
-            &logo.buffer()[diag_left..(diag_left + 4)],
-            &[255, 0, 0, 255]
-        );
-        assert_eq!(
-            &logo.buffer()[(diag_left + 4)..(diag_left + 8)],
-            &[0, 0, 0, 0]
-        );
+        assert_eq!(&logo.buffer()[last_row_col], &[0, 0, 0, 0]);
+        assert_eq!(&logo.buffer()[last_row_col - 101], &[255, 0, 0, 255]);
+        assert_eq!(&logo.buffer()[last_row_col - 100], &[0, 0, 0, 0]);
     }
 
-    fn get_logo(s: LogoService) -> GenericImage<u8, 4> {
+    fn get_logo(s: LogoService) -> GenericImage<[u8; 4], 1> {
         let service = ImageLogoServiceImpl::new(s);
         let query = LogoQuery {
             width: 200.try_into().unwrap(),

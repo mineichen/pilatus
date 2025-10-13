@@ -9,7 +9,7 @@ use minfac::{Registered, ServiceCollection};
 use pilatus::{SystemShutdown, SystemTerminator};
 
 type InnerPrivateState =
-    Shared<Pin<std::boxed::Box<(dyn futures::Future<Output = ()> + 'static + Send + Sync)>>>;
+    Shared<Pin<std::boxed::Box<dyn futures::Future<Output = ()> + 'static + Send + Sync>>>;
 
 pub fn register_services(c: &mut ServiceCollection) {
     c.register_shared(|| {

@@ -132,11 +132,11 @@ fn encode_dynamic_raw_image<T: Serialize>(
     let buf =
         prepare_dynamic_image_buf(flag, meta, width.get() as usize * height.get() as usize / 2)?;
     match image {
-        DynamicImage::Luma8(i) => encode_raw(buf, i.buffer(), DataType::U8, 1, dims),
+        DynamicImage::Luma8(i) => encode_raw(buf, &i.buffers(), DataType::U8, dims),
         DynamicImage::Luma16(i) => {
-            encode_raw(buf, bytes_from_u16(i.buffer())?, DataType::U16, 1, dims)
+            encode_raw(buf, &[bytes_from_u16(&i.buffer())?], DataType::U16, dims)
         }
-        DynamicImage::Rgb8Planar(i) => encode_raw(buf, i.buffer(), DataType::U8, 3, dims),
+        DynamicImage::Rgb8Planar(i) => encode_raw(buf, &i.buffers(), DataType::U8, dims),
         _ => Err(anyhow!("Unsupported image format: {:?}", image)),
     }
 }
@@ -265,9 +265,8 @@ enum DataType {
 
 fn encode_raw(
     mut buf: Vec<u8>,
-    image: &[u8],
+    channels: &[&[u8]],
     pixel_kind: DataType,
-    channels: u16,
     (width, height): (NonZeroU32, NonZeroU32),
 ) -> anyhow::Result<Vec<u8>> {
     // https://stackoverflow.com/questions/45213511/formula-for-memory-alignment
@@ -275,14 +274,23 @@ fn encode_raw(
     let alignment_bytes = (((unaligned_pixel_start + 7) & !7) - unaligned_pixel_start) as u32;
 
     const HEADER_BYTE_SIZE: u32 = 8;
-    buf.extend_from_slice(&(image.len() as u32 + HEADER_BYTE_SIZE + alignment_bytes).to_le_bytes());
+    anyhow::ensure!(
+        channels.iter().all(|c| c.len() <= u32::MAX as usize),
+        "Too many channels"
+    );
+    let image_total_buf_len: u32 = channels.iter().map(|c| c.len() as u32).sum();
+    buf.extend_from_slice(
+        &(image_total_buf_len + HEADER_BYTE_SIZE + alignment_bytes).to_le_bytes(),
+    );
 
     buf.extend((0..alignment_bytes).map(|_| 0)); // Guarantee 8Byte aligned
     buf.push(0u8); // reserved
     buf.push(pixel_kind as u8);
-    buf.put_slice(&channels.to_le_bytes());
+    buf.put_slice(&u16::try_from(channels.len())?.to_le_bytes());
     buf.put_slice(&width.get().to_le_bytes());
-    buf.put_slice(image);
+    for channel in channels {
+        buf.put_slice(channel);
+    }
     trace!(
         "Encoded raw: {:?}, width: {width}, height: {height}",
         &buf[0..buf.len().min(10)]

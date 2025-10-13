@@ -90,6 +90,6 @@ mod tests {
         let crate::image::DynamicImage::Rgb8Planar(dynamic) = decoded.try_into().unwrap() else {
             panic!("Should be a RGB image");
         };
-        assert_eq!(dynamic, rgb, "{:?} {:?}", dynamic.buffer(), rgb.buffer());
+        assert_eq!(dynamic, rgb, "{:?} {:?}", dynamic.buffers(), rgb.buffers());
     }
 }
