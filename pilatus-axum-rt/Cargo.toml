@@ -7,7 +7,7 @@ version = "0.1.0"
 
 [dependencies]
 anyhow = { workspace = true }
-async_zip = { version = "0.0.17", default-features = false, features = [
+async_zip = { version = "0.0.18", default-features = false, features = [
     "deflate",
     "tokio",
 ] }
@@ -41,7 +41,7 @@ pilatus = { path = "../pilatus", features = ["unstable"] }
 pilatus-rt = { path = "../pilatus-rt", features = ["unstable"] }
 reqwest = { version = "0.12.5", features = ["json"] }
 tempfile = "3"
-tokio-tungstenite = "0.27"
+tokio-tungstenite = "0.28"
 
 [features]
 default = ["engineering"]
