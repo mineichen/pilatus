@@ -3,7 +3,7 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use anyhow::{Context, Result};
 use axum::routing::get_service;
 use futures::{channel::oneshot, FutureExt};
-use minfac::{Registered, ServiceCollection, WeakServiceProvider};
+use minfac::{AllRegistered, Registered, ServiceCollection, WeakServiceProvider};
 use pilatus::{prelude::*, GenericConfig, OnceExtractor, SystemShutdown, TracingTopic};
 use pilatus_axum::MinfacRouter;
 use serde::Deserialize;
@@ -13,7 +13,7 @@ use tracing::{debug, info};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<(
-        WeakServiceProvider,
+        (WeakServiceProvider, Registered<PrivateRouter>),
         Registered<GenericConfig>,
         Registered<SystemShutdown>,
         Registered<Arc<PrivateState>>,
@@ -21,6 +21,18 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
     .register_hosted_service("Main Webserver", axum_service);
     c.register(|| TracingTopic::new("tower_http", tracing::Level::INFO));
     c.register(|| TracingTopic::new("tungstenite::protocol", tracing::Level::INFO));
+    c.with::<(
+        AllRegistered<MinfacRouter>,
+        AllRegistered<Box<dyn FnOnce(axum::Router) -> axum::Router>>,
+    )>()
+    .register(|(routes, raw)| {
+        PrivateRouter(raw.fold(axum::Router::new(), |acc, r| r(acc)).nest(
+            "/api",
+            routes.fold(axum::Router::new(), |acc, n| {
+                acc.merge(n.extract_unchecked())
+            }),
+        ))
+    });
     c.register_shared(|| {
         let (tx, rx) = oneshot::channel();
         Arc::new(PrivateState(tx.into(), rx.shared()))
@@ -28,13 +40,15 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
     .alias(|s| pilatus_axum::Stats::new(s.1.clone()));
 }
 
+struct PrivateRouter(axum::Router);
+
 #[derive(Debug, Deserialize, serde::Serialize)]
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 struct WebConfig {
     socket: SocketAddr,
-    frontend: PathBuf,
     body_limit: usize,
+    fallback_path: Option<PathBuf>,
 }
 
 struct PrivateState(
@@ -46,15 +60,15 @@ impl Default for WebConfig {
     fn default() -> Self {
         Self {
             socket: SocketAddr::from(([0, 0, 0, 0], 80)),
-            frontend: "dist".into(),
             body_limit: 8 * 1024 * 1024,
+            fallback_path: None,
         }
     }
 }
 
 async fn axum_service(
-    (provider, config, shutdown, private_state): (
-        WeakServiceProvider,
+    ((provider, private_router), config, shutdown, private_state): (
+        (WeakServiceProvider, PrivateRouter),
         GenericConfig,
         SystemShutdown,
         Arc<PrivateState>,
@@ -67,8 +81,13 @@ async fn axum_service(
         &config
     );
     info!(
-        "Starting axum on port {} with frontend on path {:?}",
-        web_config.socket, web_config.frontend
+        "Starting axum on port {} {}",
+        web_config.socket,
+        if let Some(x) = &web_config.fallback_path {
+            format!("with static files on path {x:?}")
+        } else {
+            "without fallback to static files".to_string()
+        }
     );
 
     let listener = TcpListener::bind(&web_config.socket)
@@ -80,16 +99,14 @@ async fn axum_service(
         .send(listener.local_addr()?)
         .expect("Receiver is stored within DI-Container");
 
-    let router = axum::Router::new()
-        .nest(
-            "/api",
-            provider
-                .get_all::<MinfacRouter>()
-                .fold(axum::Router::new(), |acc, n| {
-                    acc.merge(n.extract_unchecked())
-                }),
-        )
-        .fallback_service(get_service(ServeDir::new(web_config.frontend)))
+    let router = if let Some(x) = &web_config.fallback_path {
+        private_router
+            .0
+            .fallback_service(get_service(ServeDir::new(x)))
+    } else {
+        private_router.0
+    };
+    let router = router
         .layer(super::inject::InjectLayer(provider))
         .layer(
             CorsLayer::new()
@@ -120,6 +137,6 @@ mod tests {
         }"#;
         let adr: WebConfig = serde_json::from_str(raw).unwrap();
         assert_eq!(adr.socket.ip().to_string(), "0.0.0.0");
-        assert_eq!(adr.frontend, WebConfig::default().frontend);
+        assert_eq!(adr.fallback_path, None);
     }
 }
