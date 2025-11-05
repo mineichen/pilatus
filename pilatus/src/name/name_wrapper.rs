@@ -11,6 +11,14 @@ macro_rules! wrapped_name {
             }
         }
 
+        impl std::ops::Deref for $name {
+            type Target = str;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+
         impl From<$name> for std::sync::Arc<crate::Name> {
             fn from(other: $name) -> Self {
                 other.0

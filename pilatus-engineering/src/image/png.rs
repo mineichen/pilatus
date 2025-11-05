@@ -73,7 +73,7 @@ mod tests {
     use crate::image::GenericImage;
 
     #[test]
-    fn miri_encode_color_image() {
+    fn encode_color_image() {
         let raw = vec![0, 0, 0, 0, 128, 128, 128, 128, 255, 255, 255, 255];
         let non_zero_two = NonZeroU32::try_from(2).unwrap();
         let rgb = GenericImage::<u8, 3>::new_vec(raw.clone(), non_zero_two, non_zero_two);

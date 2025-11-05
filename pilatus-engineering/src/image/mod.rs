@@ -256,7 +256,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn miri_load_and_save_dynamic_rgb_image() {
+    fn load_and_save_dynamic_rgb_image() {
         let image = image::ImageBuffer::<Rgb<u8>, _>::from_vec(
             2,
             2,
@@ -292,7 +292,7 @@ mod tests {
     }
 
     #[test]
-    fn miri_test_into_packed() {
+    fn test_into_packed() {
         let size = 2.try_into().unwrap();
         let image = Arc::new(GenericImage::<u8, 3>::new_vec(
             vec![1u8, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3],

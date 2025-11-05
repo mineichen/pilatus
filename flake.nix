@@ -13,7 +13,6 @@
         pkgs = import nixpkgs { inherit system; };
         rust = with fenix.packages.${system}; combine [
           stable.toolchain
-          targets.wasm32-unknown-unknown.stable.rust-std
         ];
       in
       {
@@ -21,15 +20,12 @@
           buildInputs = [
             rust
             pkgs.pkg-config
-            pkgs.cmake
-            pkgs.clang
-            pkgs.stdenv.cc.cc.lib
             pkgs.bashInteractive
+            pkgs.openssl
+            pkgs.mdbook
           ];
 
-          LIBCLANG_PATH = "${pkgs.clang.cc.lib}/lib";
-          PKG_CONFIG_PATH = "${pkgs.opencv}/lib/pkgconfig";
-          LD_LIBRARY_PATH = "${pkgs.clang.cc.lib}/lib:${pkgs.stdenv.cc.cc.lib}/lib";
+          LD_LIBRARY_PATH = "${pkgs.openssl.out}/lib";
 
           shellHook = ''
             echo "===================================="
@@ -39,17 +35,10 @@
             rustc --version
             echo "Cargo version:"
             cargo --version
-            echo "LIBCLANG_PATH: $LIBCLANG_PATH"
             echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
             echo "===================================="
             echo "Ready to develop! 🦀"
           '';
         };
-
-        packages.miri-test = pkgs.writeShellScriptBin "miri-test" ''
-          set -e
-          echo "Running Miri tests..."
-          cargo miri test simd_utils
-        '';
       });
 }
