@@ -1,6 +1,6 @@
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
-    UpdateParamsMessageError,
+    UpdateParamsMessage, UpdateParamsMessageError,
     device::{
         ActorMessage, ActorResult, ActorSystem, DeviceContext, DeviceResult,
         DeviceValidationContext, DynamicIdentifier, ServiceBuilderExtensions,
@@ -21,16 +21,25 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
     c.register_web("manual", |r| r.http("/increment", |f| f.put(increment_web)));
 }
 
-async fn validator(_ctx: DeviceValidationContext<'_>) -> Result<(), UpdateParamsMessageError> {
-    Ok(())
+async fn validator(ctx: DeviceValidationContext<'_>) -> Result<Params, UpdateParamsMessageError> {
+    ctx.params_as()
 }
 
-async fn device(ctx: DeviceContext, (): (), actor_system: ActorSystem) -> DeviceResult {
+#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
+#[serde(default)]
+struct Params {
+    initial_count: u32,
+}
+
+async fn device(ctx: DeviceContext, params: Params, actor_system: ActorSystem) -> DeviceResult {
     actor_system
         .register(ctx.id)
         .add_handler(State::increment_tick)
         .add_handler(State::get_tick)
-        .execute(State { count: 0 })
+        .add_handler(State::update_params)
+        .execute(State {
+            count: params.initial_count,
+        })
         .await;
 
     Ok(())
@@ -49,6 +58,12 @@ impl State {
         _msg: IncrementTickMessage,
     ) -> ActorResult<IncrementTickMessage> {
         self.count += 1;
+        Ok(())
+    }
+    async fn update_params(
+        &mut self,
+        _msg: UpdateParamsMessage<Params>,
+    ) -> ActorResult<UpdateParamsMessage<Params>> {
         Ok(())
     }
 }
