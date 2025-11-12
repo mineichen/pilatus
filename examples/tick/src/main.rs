@@ -5,7 +5,7 @@ use pilatus_rt::Runtime;
 fn main() {
     Runtime::default()
         .register(pilatus_axum_rt::register)
-        .register(tick::register)
+        .register(pilatus_tick::register)
         .register(register)
         .run();
 }
@@ -15,15 +15,15 @@ extern "C" fn register(c: &mut ServiceCollection) {
         // Defines the default actor configuration
         pilatus::InitRecipeListener::new(move |r| {
             r.add_device(
-                tick::create_default_timer_tick_device_config()
+                pilatus_tick::create_default_timer_tick_device_config()
                     .with_name(Name::new("Timer").unwrap()),
             );
             r.add_device(
-                tick::create_default_manual_tick_device_config()
+                pilatus_tick::create_default_manual_tick_device_config()
                     .with_name(Name::new("Manual").unwrap()),
             );
             r.add_device(
-                tick::create_default_greeter_device_config()
+                pilatus_tick::create_default_greeter_device_config()
                     .with_name(Name::new("Greeter").unwrap()),
             );
         })
