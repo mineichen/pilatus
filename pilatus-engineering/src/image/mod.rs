@@ -29,7 +29,6 @@ pub use image_buffer::GenericImage;
 
 #[cfg(feature = "tokio")]
 mod broadcaster;
-#[cfg(feature = "image-algorithm")]
 mod logo;
 mod message;
 mod meta;
@@ -40,7 +39,6 @@ mod stable_hash;
 #[cfg(feature = "tokio")]
 pub use broadcaster::*;
 use image::GenericImageView;
-#[cfg(feature = "image-algorithm")]
 pub use logo::*;
 pub use meta::*;
 

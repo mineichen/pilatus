@@ -1,13 +1,13 @@
 use std::{future::Future, num::NonZeroU32, time::Duration};
 
 use futures::{
+    StreamExt,
     channel::mpsc::{self, Sender},
     future::Either,
-    StreamExt,
 };
 use pilatus::{
-    device::{ActorError, DeviceId, WeakUntypedActorMessageSender},
     Name,
+    device::{ActorError, DeviceId, WeakUntypedActorMessageSender},
 };
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
@@ -29,7 +29,7 @@ pub(super) fn setup_permanent_recording(
     params: &Option<PermanentRecordingConfig>,
 ) -> (
     Sender<Option<PermanentRecordingConfig>>,
-    impl Future<Output = ()>,
+    impl Future<Output = ()> + 'static,
 ) {
     let (mut recording_sender, recording_receiver) = mpsc::channel(2);
     recording_sender
@@ -55,7 +55,7 @@ async fn handle_background_permanent_recording(
                 break;
             }
             let record_task = std::pin::pin!(self_sender.ask(
-                pilatus_engineering_camera::RecordMessage::with_max_size(
+                pilatus_engineering::camera::RecordMessage::with_max_size(
                     config.source_id,
                     config.collection_name.clone(),
                     NonZeroU32::MAX,

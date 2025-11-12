@@ -5,16 +5,16 @@ use chrono::{DateTime, Utc};
 use futures::{StreamExt, TryStreamExt};
 use minfac::ServiceCollection;
 use pilatus::{
-    device::{ActorErrorResultExtensions, ActorSystem, DeviceId, HandlerResult, Step2},
     FileService, Name, RelativeFilePath,
+    device::{ActorErrorResultExtensions, ActorSystem, DeviceId, HandlerResult, Step2},
 };
 use pilatus_axum::{
+    ServiceCollectionExtensions,
     extract::{InjectRegistered, Json, Path},
     http::StatusCode,
-    ServiceCollectionExtensions,
 };
+use pilatus_engineering::camera::RecordMessage;
 use pilatus_engineering::image::{ImageKey, ImageWithMeta, SubscribeDynamicImageMessage};
-use pilatus_engineering_camera::RecordMessage;
 use serde::Deserialize;
 use tracing::debug;
 
@@ -127,6 +127,7 @@ struct RecordBody {
     source_id: DeviceId,
     max_size_mb: Option<NonZeroU32>,
 }
+
 #[derive(Deserialize)]
 struct RecordPath {
     collection_name: Name,
@@ -144,6 +145,15 @@ async fn record_web(
         max_size_mb,
     }): Json<RecordBody>,
 ) -> Result<(), (StatusCode, String)> {
+    if let Some(x) = max_size_mb
+        && x.get() > 100_000
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "max_size_mb mut be <= 100_000".into(),
+        ));
+    }
+
     let msg = RecordMessage::with_option_max_size(source_id, collection_name, max_size_mb)
         .map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()))?;
 
