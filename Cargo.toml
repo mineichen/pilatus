@@ -5,13 +5,13 @@ members = [
     "pilatus",
     "pilatus-axum",
     "pilatus-axum-rt",
+    "pilatus-emulation-camera-rt",
     "pilatus-engineering",
+    "pilatus-engineering-rt",
     "pilatus-rt",
     "examples/stream",
     "examples/tick",
     "examples/tick-egui",
-    "pilatus-emulation-camera-rt",
-    "pilatus-engineering-rt",
 ]
 
 [workspace.dependencies]
