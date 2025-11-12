@@ -1,5 +1,5 @@
 [package]
-name = "pilatus-engineering-camera-rt"
+name = "pilatus-emulation-camera-rt"
 version = "0.1.0"
 edition = "2024"
 
