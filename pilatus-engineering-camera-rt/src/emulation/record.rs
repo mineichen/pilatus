@@ -48,8 +48,7 @@ impl DeviceState {
                 .buffer_unordered(8);
             let abortable_stream = futures::stream::Abortable::new(encoded_stream, reg);
 
-            let mut size_budget =
-                msg.max_size_mb.map(NonZeroU32::get).unwrap_or(100) as u64 * 1_000_000;
+            let mut size_budget = msg.max_size_mb.get() as u64 * 1_000_000;
 
             let collection_dir = std::path::Path::new(msg.collection_name.as_str());
             abortable_stream
@@ -154,8 +153,11 @@ async fn record_web(
         ));
     }
 
-    let msg = RecordMessage::with_option_max_size(source_id, collection_name, max_size_mb)
-        .map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()))?;
+    let msg = RecordMessage::with_max_size(
+        source_id,
+        collection_name,
+        max_size_mb.unwrap_or(const { NonZeroU32::new(100).unwrap() }),
+    );
 
     actor_system
         .ask(device_id, msg)
