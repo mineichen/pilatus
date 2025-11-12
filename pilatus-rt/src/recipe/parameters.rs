@@ -34,7 +34,7 @@ impl DeviceActions for DeviceSpawnerService {
         &self,
         device_type: &str,
         ctx: DeviceContext,
-    ) -> BoxFuture<Result<WithInfallibleParamUpdate<()>, TransactionError>> {
+    ) -> BoxFuture<'_, Result<WithInfallibleParamUpdate<()>, TransactionError>> {
         let spawner = self.get_spawner(device_type);
         async move { spawner?.validate(ctx).await.map_err(Into::into) }.boxed()
     }
@@ -42,7 +42,7 @@ impl DeviceActions for DeviceSpawnerService {
         &self,
         device_type: &str,
         ctx: DeviceContext,
-    ) -> BoxFuture<Result<(), TransactionError>> {
+    ) -> BoxFuture<'_, Result<(), TransactionError>> {
         let spawner = self.get_spawner(device_type);
         async move {
             spawner?
@@ -93,7 +93,7 @@ impl DeviceSpawnerService {
         device_type: &str,
         ctx: DeviceContext,
         provider: WeakServiceProvider,
-    ) -> BoxFuture<Result<WithInfallibleParamUpdate<JoinHandle<DeviceResult>>, StartDeviceError>>
+    ) -> BoxFuture<'_, Result<WithInfallibleParamUpdate<JoinHandle<DeviceResult>>, StartDeviceError>>
     {
         let x = self
             .get_spawner(device_type)
@@ -214,15 +214,17 @@ mod testutil {
             &self,
             _device_type: &str,
             _ctx: DeviceContext,
-        ) -> BoxFuture<Result<WithInfallibleParamUpdate<()>, super::TransactionError>> {
-            async { (self.validator)() }.boxed()
+        ) -> BoxFuture<'static, Result<WithInfallibleParamUpdate<()>, super::TransactionError>>
+        {
+            let result = (self.validator)();
+            std::future::ready(result).boxed()
         }
         fn try_apply(
             &self,
             _device_type: &str,
             _ctx: DeviceContext,
-        ) -> BoxFuture<Result<(), TransactionError>> {
-            futures::future::ready(Ok(())).boxed()
+        ) -> BoxFuture<'static, Result<(), TransactionError>> {
+            std::future::ready(Ok(())).boxed()
         }
     }
 }

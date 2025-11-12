@@ -18,8 +18,7 @@ pub async fn clone_directory_deep(
     while let Some(e) = errors.next().await {
         let source_path = e?.path();
         let relative_path = source_path.strip_prefix(&source).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 anyhow::anyhow!("strip should always work: {e}"),
             )
         })?;

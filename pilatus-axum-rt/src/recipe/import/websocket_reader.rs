@@ -151,7 +151,7 @@ impl<T: Stream<Item = Result<Message, axum::Error>> + Unpin + Debug> AsyncRead
                         "Stream ended before enought data was received",
                     ))),
                     Poll::Ready(Some(Err(e))) => {
-                        Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)))
+                        Poll::Ready(Err(io::Error::other(e)))
                     }
                     Poll::Pending => Poll::Pending,
                 },

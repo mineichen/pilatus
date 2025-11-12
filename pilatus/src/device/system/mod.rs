@@ -357,8 +357,7 @@ fn respond_with_unknown_device<TMsg: ActorMessage>(
         .0
         .downcast::<MessageWithResponder<TMsg>>()
         .expect("Must be castable. This is most likely an internal bug of the ActorSystem");
-    let _ignore_not_consumed =
-        response_channel.respond(Err(ActorErrorUnknownDevice::UnknownDeviceId {
+    response_channel.respond(Err(ActorErrorUnknownDevice::UnknownDeviceId {
             device_id: DeviceId::nil(),
             details,
         }

@@ -246,7 +246,8 @@ where
         &self,
         ctx: DeviceContext,
         provider: WeakServiceProvider,
-    ) -> BoxFuture<Result<WithInfallibleParamUpdate<JoinHandle<DeviceResult>>, SpawnError>> {
+    ) -> BoxFuture<'_, Result<WithInfallibleParamUpdate<JoinHandle<DeviceResult>>, SpawnError>>
+    {
         async move {
             let validation = (self.validator)
                 .call(DeviceValidationContext {
@@ -284,7 +285,7 @@ where
     fn validate(
         &self,
         ctx: DeviceContext,
-    ) -> BoxFuture<Result<WithInfallibleParamUpdate<()>, UpdateParamsMessageError>> {
+    ) -> BoxFuture<'_, Result<WithInfallibleParamUpdate<()>, UpdateParamsMessageError>> {
         async move {
             let r = self
                 .validator
@@ -306,7 +307,7 @@ where
         &self,
         ctx: DeviceContext,
         actor_system: ActorSystem,
-    ) -> BoxFuture<Result<(), UpdateDeviceError>> {
+    ) -> BoxFuture<'_, Result<(), UpdateDeviceError>> {
         async move {
             let typed_params = self
                 .validator

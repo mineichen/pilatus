@@ -104,14 +104,13 @@ impl DeviceState {
     ) -> impl HandlerResult<UpdateParamsMessage<Params>> {
         match params.mode {
             EmulationMode::File => {
-                if self.publisher.params.permanent_recording != params.permanent_recording {
-                    if let Err(e) = self
+                if self.publisher.params.permanent_recording != params.permanent_recording
+                    && let Err(e) = self
                         .recording_sender
                         .try_send(params.permanent_recording.clone())
                     {
                         tracing::error!("Couldn't send recording task: {e}")
                     };
-                }
                 match Arc::get_mut(&mut self.publisher) {
                     Some(old)
                         if old.params.file.active == params.file.active

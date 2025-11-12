@@ -12,12 +12,12 @@ pub trait DeviceActions: Debug + Send + Sync {
         &self,
         device_type: &str,
         ctx: DeviceContext,
-    ) -> BoxFuture<Result<WithInfallibleParamUpdate<()>, TransactionError>>;
+    ) -> BoxFuture<'_, Result<WithInfallibleParamUpdate<()>, TransactionError>>;
     fn try_apply(
         &self,
         device_type: &str,
         ctx: DeviceContext,
-    ) -> BoxFuture<Result<(), TransactionError>>;
+    ) -> BoxFuture<'_, Result<(), TransactionError>>;
 }
 
 #[derive(Debug, thiserror::Error)]

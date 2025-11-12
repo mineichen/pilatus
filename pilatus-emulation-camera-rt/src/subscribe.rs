@@ -60,8 +60,8 @@ impl DeviceState {
                         async move {
                             let ok = x?;
                             let time = std::time::SystemTime::now();
-                            if let Some(collection_dir) = collection_dir {
-                                if let Err(e) = super::record::encode_all(ok.clone())
+                            if let Some(collection_dir) = collection_dir
+                                && let Err(e) = super::record::encode_all(ok.clone())
                                     .and_then(|x| {
                                         super::record::save_encoded(
                                             (time, x),
@@ -73,7 +73,6 @@ impl DeviceState {
                                 {
                                     warn!("Couldn't save streaming image {e}.");
                                 }
-                            }
                             Ok(ok)
                         }
                     })

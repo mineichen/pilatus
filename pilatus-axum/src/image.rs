@@ -134,7 +134,7 @@ fn encode_dynamic_raw_image<T: Serialize>(
     match image {
         DynamicImage::Luma8(i) => encode_raw(buf, &i.buffers(), DataType::U8, dims),
         DynamicImage::Luma16(i) => {
-            encode_raw(buf, &[bytes_from_u16(&i.buffer())?], DataType::U16, dims)
+            encode_raw(buf, &[bytes_from_u16(i.buffer())?], DataType::U16, dims)
         }
         DynamicImage::Rgb8Planar(i) => encode_raw(buf, &i.buffers(), DataType::U8, dims),
         _ => Err(anyhow!("Unsupported image format: {:?}", image)),

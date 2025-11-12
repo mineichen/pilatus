@@ -12,7 +12,7 @@ impl RecipeSelector {
             recipes: None,
         }
     }
-    pub(super) fn select_ui(&mut self, ui: &mut egui::Ui) -> Option<Recipes> {
+    pub(super) fn select_ui(&mut self, _ui: &mut egui::Ui) -> Option<Recipes> {
         let list_request = ehttp::Request::get(&self.base_url);
         ehttp::fetch(
             list_request,

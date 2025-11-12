@@ -14,7 +14,7 @@ pub trait EntryWriter: Send {
 }
 
 pub trait EntryReader: Send {
-    fn next(&mut self) -> BoxFuture<'_, Option<std::io::Result<EntryItem>>>;
+    fn next(&mut self) -> BoxFuture<'_, Option<std::io::Result<EntryItem<'_>>>>;
 }
 
 pub struct EntryItem<'a> {

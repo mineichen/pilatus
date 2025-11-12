@@ -461,7 +461,7 @@ impl Debug for RecipeServiceAccessor {
 }
 
 impl RecipeServiceAccessor {
-    async fn write(&self) -> RecipeDataService<RwLockWriteGuard<'_, Recipes>> {
+    async fn write(&self) -> RecipeDataService<'_, RwLockWriteGuard<'_, Recipes>> {
         RecipeDataService {
             path: &self.path,
             recipes: self.recipes.write().await,
@@ -471,7 +471,7 @@ impl RecipeServiceAccessor {
             change_strategies: &self.change_strategies,
         }
     }
-    async fn read(&self) -> RecipeDataService<RwLockReadGuard<'_, Recipes>> {
+    async fn read(&self) -> RecipeDataService<'_, RwLockReadGuard<'_, Recipes>> {
         RecipeDataService {
             path: &self.path,
             recipes: self.recipes.read().await,

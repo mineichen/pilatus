@@ -22,7 +22,7 @@ enum ZipStates<'a, T> {
 }
 
 impl<T: AsyncBufRead + Unpin + Send> EntryReader for ZipReaderWrapper<'_, T> {
-    fn next(&mut self) -> BoxFuture<'_, Option<std::io::Result<EntryItem>>> {
+    fn next(&mut self) -> BoxFuture<'_, Option<std::io::Result<EntryItem<'_>>>> {
         let mut current = ZipStates::Finished;
         std::mem::swap(&mut self.0, &mut current);
         async move {

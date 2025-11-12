@@ -13,9 +13,8 @@ use pilatus::{FileServiceBuilder, RecipeExporter, RecipeImporter};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use uuid::Uuid;
 
-use crate::TokioFileService;
-
 use super::{RecipeDataService, RecipeImporterImpl, RecipeServiceAccessor};
+use crate::TokioFileService;
 
 mod builder;
 
@@ -43,13 +42,13 @@ impl RecipeServiceFassade {
     }
     pub async fn recipe_service_read(
         &self,
-    ) -> RecipeDataService<RwLockReadGuard<pilatus::Recipes>> {
+    ) -> RecipeDataService<'_, RwLockReadGuard<'_, pilatus::Recipes>> {
         self.recipe_service.read().await
     }
 
     pub async fn recipe_service_write(
         &self,
-    ) -> RecipeDataService<RwLockWriteGuard<pilatus::Recipes>> {
+    ) -> RecipeDataService<'_, RwLockWriteGuard<'_, pilatus::Recipes>> {
         self.recipe_service.write().await
     }
     pub fn recipe_dir_path(&self) -> &Path {
@@ -193,9 +192,9 @@ impl RecipeServiceTrait for RecipeServiceFassade {
 
 #[cfg(any(test, feature = "unstable"))]
 pub(crate) mod unstable {
-    use pilatus::{DeviceConfig, FileService, RecipeImporter};
-
+    use super::builder::RecipeServiceFassadeBuilder;
     use crate::recipe::{RecipeImporterImpl, RecipeServiceBuilder};
+    use pilatus::{DeviceConfig, FileService, RecipeImporter};
 
     use super::*;
     use std::{path::PathBuf, sync::Arc};

@@ -46,7 +46,7 @@ impl RecipeRunner {
         Self(inner)
     }
 
-    pub fn select_recipe(&self, recipe_id: RecipeId) -> BoxFuture<anyhow::Result<()>> {
+    pub fn select_recipe(&self, recipe_id: RecipeId) -> BoxFuture<'_, anyhow::Result<()>> {
         self.0.select_recipe(recipe_id)
     }
 }
