@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::{device_config::DeviceConfig, duplicate_recipe::DuplicateRecipe};
 use crate::{device::DeviceId, Name, RecipeId, UntypedDeviceParamsWithVariables};
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Seal)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Seal, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecipeMetadataRaw {
     pub new_id: RecipeId,

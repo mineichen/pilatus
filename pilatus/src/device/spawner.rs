@@ -66,16 +66,16 @@ pub trait DeviceHandler: Send + Sync {
         &self,
         ctx: DeviceContext,
         provider: WeakServiceProvider,
-    ) -> BoxFuture<Result<WithInfallibleParamUpdate<JoinHandle<DeviceResult>>, SpawnError>>;
+    ) -> BoxFuture<'_, Result<WithInfallibleParamUpdate<JoinHandle<DeviceResult>>, SpawnError>>;
     fn validate(
         &self,
         ctx: DeviceContext,
-    ) -> BoxFuture<Result<WithInfallibleParamUpdate<()>, UpdateParamsMessageError>>;
+    ) -> BoxFuture<'_, Result<WithInfallibleParamUpdate<()>, UpdateParamsMessageError>>;
     fn update(
         &self,
         ctx: DeviceContext,
         actor_system: ActorSystem,
-    ) -> BoxFuture<Result<(), UpdateDeviceError>>;
+    ) -> BoxFuture<'_, Result<(), UpdateDeviceError>>;
     fn get_device_type(&self) -> &'static str;
     fn register_dummy_dependency(&self, col: &mut ServiceCollection);
 }
