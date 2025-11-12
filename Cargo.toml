@@ -10,7 +10,7 @@ members = [
     "examples/stream",
     "examples/tick",
     "examples/tick-egui",
-    "pilatus-engineering-camera-rt",
+    "pilatus-emulation-camera-rt",
     "pilatus-engineering-rt",
 ]
 

@@ -26,7 +26,7 @@ mod subscribe;
 
 pub const DEVICE_TYPE: &str = "engineering-emulation-camera";
 
-pub(super) fn register_services(c: &mut ServiceCollection) {
+pub extern "C" fn register(c: &mut ServiceCollection) {
     record::register_services(c);
     pause::register_services(c);
     c.with::<(Registered<ActorSystem>, Registered<FileServiceBuilder>)>()
