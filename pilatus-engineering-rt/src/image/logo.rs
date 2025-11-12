@@ -170,7 +170,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
     }
 }
 
-#[cfg(feature = "unstable")]
+#[cfg(all(feature = "unstable", feature = "integration"))]
 pub fn create_default_image_logo_service() -> ImageLogoService {
     ImageLogoService::new(Arc::new(ImageLogoServiceImpl::new(
         pilatus_rt::create_default_logo_service(),
@@ -199,6 +199,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "integration")]
     fn get_default_vector_logo() {
         let image = get_logo(pilatus_rt::create_default_logo_service());
         let (width, _) = image.dimensions();

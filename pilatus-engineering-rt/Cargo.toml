@@ -7,14 +7,13 @@ edition = "2021"
 minfac.workspace = true
 pilatus.workspace = true
 pilatus-engineering.workspace = true
-pilatus-rt = { workspace = true, optional = true }                       # Must remain an internal dependency
 image.workspace = true                    # Must remain an internal dependency
 resvg = { version = "0.45.0" }
 tracing.workspace = true
 
-
-[dev-dependencies]
-pilatus-rt = { workspace = true, features = ["unstable"] }
+# Dev dependencies cannot be optonal
+pilatus-rt = { workspace = true, features = ["unstable"], optional = true }
 
 [features]
-unstable = ["pilatus-rt/unstable"]
+unstable = []
+integration = ["dep:pilatus-rt"]
