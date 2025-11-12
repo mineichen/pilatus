@@ -4,21 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = { workspace = true }
-chrono = { workspace = true }
-futures = { workspace = true }
-image = { workspace = true }
-minfac = { workspace = true }
-pilatus = { path = "../pilatus" }
+anyhow.workspace = true
+chrono.workspace = true
+futures.workspace = true
+image.workspace = true
+minfac.workspace = true
+pilatus.workspace = true
 pilatus-engineering = { path = "../pilatus-engineering", features = ["image-algorithm"] }
-pilatus-axum = { path = "../pilatus-axum" }
-serde = { workspace = true }
+pilatus-axum.workspace = true
+serde.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 tokio-stream = { version = "0.1", features = ["fs", "sync"] }
-tracing = { workspace = true }
+tracing.workspace = true
 
 tempfile = { version = "3", optional = true }
-pilatus-rt = { path = "../pilatus-rt", features = ["unstable"], optional = true }
+pilatus-rt = { workspace = true, features = ["unstable"], optional = true }
 serde_json = { version = "1", optional = true }
 
 [dev-dependencies]

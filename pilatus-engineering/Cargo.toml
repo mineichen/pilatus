@@ -6,27 +6,27 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = { workspace = true }
+anyhow.workspace = true
 approx = "0.5"
-futures = { workspace = true }
+futures.workspace = true
 image = { workspace = true, optional = true }
 nalgebra = { version = "0.34", optional = true }
-pilatus = { path = "../pilatus", features = ["subscribe"] }
+pilatus = { workspace = true, features = ["subscribe"] }
 seahash = "4.1"
 sealedstruct = { git = "https://github.com/mineichen/sealedstruct.git", branch = "main", features = [
     "serde",
 ] }
 serde = { workspace = true, features = ["derive"] }
-smallvec = { workspace = true }
-thiserror = { workspace = true }
+smallvec.workspace = true
+thiserror.workspace = true
 tokio = { workspace = true, features = ["sync"], optional = true }
 tokio-stream = { version = "0.1", features = ["fs", "sync"], optional = true }
-tracing = { workspace = true }
+tracing.workspace = true
 image-buffer = { git = "https://github.com/mineichen/image-buffer.git" }
 
 [dev-dependencies]
 nalgebra = "0.34"
-serde_json = { workspace = true }
+serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 
 

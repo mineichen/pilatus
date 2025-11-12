@@ -6,18 +6,18 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = { workspace = true }
+anyhow.workspace = true
 coinbase-pro-rs = "0.8.1"
-futures = { workspace = true }
-minfac = { workspace = true }
-pilatus = { path = "../../pilatus" }
-pilatus-axum = { path = "../../pilatus-axum" }
-pilatus-axum-rt = { path = "../../pilatus-axum-rt" }
-pilatus-rt = { path = "../../pilatus-rt" }
-serde = { workspace = true }
-serde_json = { workspace = true }
+futures.workspace = true
+minfac.workspace = true
+pilatus.workspace = true
+pilatus-axum.workspace = true
+pilatus-axum-rt.workspace = true
+pilatus-rt.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tokio = { workspace = true, features = ["sync"] }
-tracing = { workspace = true }
+tracing.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["sync", "macros"]}

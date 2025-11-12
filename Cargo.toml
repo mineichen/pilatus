@@ -23,6 +23,13 @@ futures-channel = "0.3"
 futures-util = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
 minfac = "0.1"
+pilatus = { path = "pilatus" }
+pilatus-rt = { path = "pilatus-rt" }
+pilatus-axum = { path = "pilatus-axum" }
+pilatus-axum-rt = { path = "pilatus-axum-rt" }
+pilatus-emulation-camera-rt = { path = "pilatus-emulation-camera-rt" }
+pilatus-engineering = { path = "pilatus-engineering" }
+pilatus-engineering-rt = { path = "pilatus-engineering-rt" }
 serde = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 smallvec = "1"

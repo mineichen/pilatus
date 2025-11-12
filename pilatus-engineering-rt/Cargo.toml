@@ -4,17 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-minfac = { workspace = true }
-pilatus = { path = "../pilatus" }
-pilatus-engineering = { path = "../pilatus-engineering" }
-pilatus-rt = { path = "../pilatus-rt", optional = true }                       # Must remain an internal dependency
-image = { workspace = true }                    # Must remain an internal dependency
+minfac.workspace = true
+pilatus.workspace = true
+pilatus-engineering.workspace = true
+pilatus-rt = { workspace = true, optional = true }                       # Must remain an internal dependency
+image.workspace = true                    # Must remain an internal dependency
 resvg = { version = "0.45.0" }
-tracing = { workspace = true }
+tracing.workspace = true
 
 
 [dev-dependencies]
-pilatus-rt = { path = "../pilatus-rt", features = ["unstable"] }
+pilatus-rt = { workspace = true, features = ["unstable"] }
 
 [features]
 unstable = ["pilatus-rt/unstable"]

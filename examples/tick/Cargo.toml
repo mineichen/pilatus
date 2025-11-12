@@ -4,14 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = { workspace = true }
-futures = { workspace = true }
-minfac = { workspace = true }
-pilatus = { path = "../../pilatus" }
-pilatus-axum = { path = "../../pilatus-axum" }
-pilatus-axum-rt = { path = "../../pilatus-axum-rt" }
-pilatus-rt = { path = "../../pilatus-rt" }
-serde = { workspace = true }
-serde_json = { workspace = true }
+anyhow.workspace = true
+futures.workspace = true
+minfac.workspace = true
+pilatus.workspace = true
+pilatus-axum.workspace = true
+pilatus-axum-rt.workspace = true
+pilatus-rt.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tokio = "1"
-tracing = { workspace = true }
+tracing.workspace = true
