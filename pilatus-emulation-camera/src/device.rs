@@ -1,47 +1,44 @@
-use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 
-use futures::channel::mpsc;
 use futures::FutureExt;
+use futures::channel::mpsc;
 use minfac::{Registered, ServiceCollection};
-use pilatus::device::{DeviceId, HandlerResult, Step2, WithAbort};
+use pilatus::device::{HandlerResult, Step2, WithAbort};
+use pilatus::{FileService, FileServiceBuilder};
 use pilatus::{
+    UpdateParamsMessage, UpdateParamsMessageError,
     device::{ActorSystem, DeviceContext, DeviceResult, DeviceValidationContext},
     prelude::*,
-    UpdateParamsMessage, UpdateParamsMessageError,
 };
-use pilatus::{FileService, FileServiceBuilder, Name};
 use pilatus_engineering::image::{DynamicImage, ImageWithMeta, StreamImageError};
-use publish_frame::PublisherState;
-use serde::{Deserialize, Serialize};
 use tracing::warn;
 
-mod list_collections;
-mod pause;
-mod permanent_recording;
-mod publish_frame;
-mod record;
-mod subscribe;
+use crate::publish_frame::PublisherState;
+use crate::{EmulationMode, Params};
 
-pub const DEVICE_TYPE: &str = "engineering-emulation-camera";
-
-pub extern "C" fn register(c: &mut ServiceCollection) {
-    record::register_services(c);
-    pause::register_services(c);
+pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<(Registered<ActorSystem>, Registered<FileServiceBuilder>)>()
         .register_device(DEVICE_TYPE, validator, device);
 }
 
-struct DeviceState {
-    paused: bool,
-    stream: tokio::sync::broadcast::Sender<
+pub const DEVICE_TYPE: &str = "engineering-emulation-camera";
+
+pub extern "C" fn register(c: &mut ServiceCollection) {
+    crate::record::register_services(c);
+    crate::device::register_services(c);
+    crate::pause::register_services(c);
+}
+
+pub(super) struct DeviceState {
+    pub(crate) paused: bool,
+    pub(crate) stream: tokio::sync::broadcast::Sender<
         Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
     >,
-    file_service: Arc<FileService<()>>,
-    publisher: Arc<PublisherState>,
-    actor_system: ActorSystem,
-    recording_sender: mpsc::Sender<Option<permanent_recording::PermanentRecordingConfig>>,
+    pub(crate) file_service: Arc<FileService<()>>,
+    pub(crate) publisher: Arc<PublisherState>,
+    pub(crate) actor_system: ActorSystem,
+    pub(crate) recording_sender:
+        mpsc::Sender<Option<crate::permanent_recording::PermanentRecordingConfig>>,
 }
 
 async fn validator(ctx: DeviceValidationContext<'_>) -> Result<Params, UpdateParamsMessageError> {
@@ -63,7 +60,7 @@ async fn device(
         .add_handler(DeviceState::list_collections)
         .add_handler(DeviceState::toggle_pause);
     let (recording_sender, permanent_recording_task) =
-        permanent_recording::setup_permanent_recording(
+        crate::permanent_recording::setup_permanent_recording(
             actor_system.get_weak_untyped_sender(id)?,
             if params.mode == EmulationMode::File {
                 &params.permanent_recording
@@ -108,9 +105,9 @@ impl DeviceState {
                     && let Err(e) = self
                         .recording_sender
                         .try_send(params.permanent_recording.clone())
-                    {
-                        tracing::error!("Couldn't send recording task: {e}")
-                    };
+                {
+                    tracing::error!("Couldn't send recording task: {e}")
+                };
                 match Arc::get_mut(&mut self.publisher) {
                     Some(old)
                         if old.params.file.active == params.file.active
@@ -134,86 +131,6 @@ impl DeviceState {
                 warn!("Updating Stream params not yet supported. Update is ignored");
                 Step2(std::future::ready(Ok(())).boxed())
             }
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
-#[serde(deny_unknown_fields, default)]
-pub struct Params {
-    mode: EmulationMode,
-    file: FileParams,
-    streaming: StreamingParams,
-    permanent_recording: Option<permanent_recording::PermanentRecordingConfig>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-enum EmulationMode {
-    #[default]
-    File,
-    Streaming,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(deny_unknown_fields, default)]
-struct FileParams {
-    active: ActiveRecipe,
-    auto_restart: bool,
-    file_ending: String,
-    interval: u64,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
-#[serde(deny_unknown_fields, default)]
-struct StreamingParams {
-    source_device_id: Option<DeviceId>,
-}
-
-impl Default for FileParams {
-    fn default() -> Self {
-        Self {
-            active: Default::default(),
-            auto_restart: true,
-            file_ending: "png".into(),
-            interval: 500,
-        }
-    }
-}
-
-/// Strings which are valid Names, so don't contain any slashes/backward-slashes, are interpreted as recorded collections. Otherwise it's assumed to be a path. Use ./foo if you want a folder located in $PWD
-#[derive(Default, Debug, Clone, PartialEq)]
-enum ActiveRecipe {
-    #[default]
-    Undefined,
-    Named(Name),
-    External(PathBuf),
-}
-
-impl Serialize for ActiveRecipe {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            ActiveRecipe::Undefined => Option::<()>::None.serialize(serializer),
-            ActiveRecipe::Named(name_wrapper) => name_wrapper.as_str().serialize(serializer),
-            ActiveRecipe::External(path_buf) => path_buf.serialize(serializer),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for ActiveRecipe {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        match Option::<String>::deserialize(deserializer)? {
-            Some(x) => match Name::from_str(&x) {
-                Ok(x) => Ok(Self::Named(x)),
-                Err(_) => Ok(Self::External(PathBuf::from(x))),
-            },
-            None => Ok(Self::Undefined),
         }
     }
 }
