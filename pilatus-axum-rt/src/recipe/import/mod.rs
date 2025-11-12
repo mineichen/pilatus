@@ -24,7 +24,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
     );
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration"))]
 mod tests;
 mod websocket_reader;
 mod zip_reader_wrapper;

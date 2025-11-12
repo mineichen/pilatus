@@ -36,13 +36,13 @@ tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
 tracing.workspace = true
 uuid = { workspace = true, features = ["serde", "v4"] }
 
-[dev-dependencies]
-pilatus = { workspace = true, features = ["unstable"] }
-pilatus-rt = { workspace = true, features = ["unstable"] }
-reqwest = { version = "0.12.5", features = ["json"] }
-tempfile = "3"
-tokio-tungstenite = "0.28"
+# Dev dependencies cannot be optional
+pilatus-rt = { workspace = true, features = ["unstable"], optional = true }
+tokio-tungstenite = { version = "0.28", optional = true }
+tempfile = { version = "3", optional = true }
+reqwest = { version = "0.12.5", features = ["json"], optional = true }
 
 [features]
 default = ["engineering"]
 engineering = ["dep:pilatus-engineering", "pilatus-axum/engineering", "image"]
+integration = ["dep:reqwest", "dep:tempfile", "dep:tokio-tungstenite", "dep:pilatus-rt", "pilatus/unstable"]

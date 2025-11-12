@@ -1,3 +1,4 @@
+#![cfg(feature = "integration")]
 use std::collections::HashMap;
 use std::{fs::File, io::Write, sync::Arc};
 
@@ -16,6 +17,7 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
 #[test]
+//#[cfg(feature = "integration")]
 fn upload_zip() -> anyhow::Result<()> {
     let dir = tempfile::tempdir()?;
 
@@ -111,7 +113,7 @@ fn upload_zip() -> anyhow::Result<()> {
     });
     Ok(())
 }
-
+//#[cfg(feature = "integration")]
 async fn generate_zip(
     base: &str,
     client: &reqwest::Client,
@@ -166,6 +168,7 @@ async fn generate_zip(
     Ok((clone_id, export_response_body))
 }
 
+//#[cfg(feature = inte)]
 async fn get_current(
     base: &str,
     client: &reqwest::Client,

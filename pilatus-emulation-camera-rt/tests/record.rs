@@ -1,4 +1,4 @@
-#[cfg(feature = "integrationtest")]
+#[cfg(feature = "integration")]
 #[test]
 fn record_integration() -> anyhow::Result<()> {
     use futures::StreamExt;
