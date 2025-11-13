@@ -9,7 +9,7 @@ use pilatus_axum::{
 pub(super) fn register_services(c: &mut ServiceCollection) {
     #[rustfmt::skip]
     c.register_web("recipe", |r| r
-        .http("/start/{id}", |m| m.get(set_active))
+        .http("/start/{id}", |m| m.get(set_active).put(set_active))
     );
 }
 
