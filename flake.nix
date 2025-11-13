@@ -20,6 +20,7 @@
           buildInputs = [
             rust
             pkgs.pkg-config
+            pkgs.mold
             pkgs.bashInteractive
             pkgs.openssl
             pkgs.mdbook

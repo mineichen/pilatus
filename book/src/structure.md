@@ -41,3 +41,8 @@ To maintain these characteristics, follow these guidelines
  - RT-Crates are allowed to add `unstable` feature to their non-rt counterpart
  - Add rules for your editor, which enables your "integration" feature for rust-analyzer (see this project for zed and vscode)
  - Check, that `unstable` is not used in your project, by `cargo check` ing each project separately. If you run it on the workspace, tests or the executable might enable `unstable` features
+
+## Leptos UI
+The frontend code is deliberately developed under the MIT License in a separate repository. You are free to use it as a template for your own frontend and modify it without the need to publish your changes.
+
+The backend is licensed under the MPL-2.0. You may modify it for your own use, but any changes to the backend itself must be shared under the same license, promoting open collaboration and shared progress. The MPL-2.0 is a file-level copyleft license, which means you can combine the backend with proprietary code or extensions without affecting the license of your own proprietary components.
