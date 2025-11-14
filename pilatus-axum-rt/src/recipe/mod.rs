@@ -18,7 +18,7 @@ use pilatus_axum::{
     IntoResponse, ServiceCollectionExtensions,
 };
 use sealedstruct::ValidationErrors;
-use tracing::debug;
+use tracing::{debug, info};
 use uuid::Uuid;
 
 mod export;
@@ -86,29 +86,48 @@ async fn stream_recipe_update_handler(
 
 async fn handle_socket(socket: WebSocket, watcher: impl Stream<Item = Uuid>) {
     let (mut socket_tx, mut socket_rx) = socket.split();
+    let (read_down_tx, read_down_rx) = futures::channel::oneshot::channel::<()>();
     futures::pin_mut!(watcher);
     {
-        tokio::select!(
-            _ = async {
-                while let Some(data) = watcher.next().await {
-                    if socket_tx
-                        .send(Message::Text(data.to_string().into()))
-                        .await
-                        .is_err()
-                    {
-                        break;
+        futures::future::join(
+            async {
+                let mut read_down_rx = std::pin::pin!(read_down_rx);
+                loop {
+                    match futures::future::select(watcher.next(), &mut read_down_rx).await {
+                        futures::future::Either::Left((Some(data), _ignore_reader_not_down)) => {
+                            info!("Send data {data}");
+                            if socket_tx
+                                .send(Message::Text(data.to_string().into()))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                        futures::future::Either::Left((None, _ignore_reader_not_down)) => {
+                            info!("No more updates available from watcher")
+                        }
+                        futures::future::Either::Right(_) => {
+                            info!("Reader is down, so writer is exiting too");
+                            break;
+                        }
                     }
                 }
-            } => {},
-            _ = async {
+            },
+            async {
                 while let Some(r) = socket_rx.next().await {
-                    if r.is_err() {
+                    if let Err(e) = r {
+                        tracing::info!("Client sent error {e}");
                         break;
                     }
                 }
-            } => {}
-        );
-    };
+                info!("Receiver finished");
+                drop(read_down_tx);
+            },
+        )
+        .await;
+    }
+
     let _ignore_if_not_closeable = socket_rx
         .reunite(socket_tx)
         .expect("Guaranted to be same source")

@@ -193,6 +193,8 @@ pub trait RecipeServiceTrait {
             .await
     }
 
+    // Before having uncommitted recipes, devices were able to be uncommitted
+    // This feature became partially obsolete with uncommitted recipes feature.
     async fn restore_committed(
         &self,
         recipe_id: RecipeId,
