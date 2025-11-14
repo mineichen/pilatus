@@ -47,11 +47,11 @@ impl LogoServiceImpl {
 }
 
 fn create_fallback_logo() -> FallbackLogo {
-    const BRIGHT: &[u8] = include_bytes!("./pilatus_bright.svg");
+    const BRIGHT: &[u8] = include_bytes!("logo/pilatus_bright.svg");
     FallbackLogo::with_themes(
         BRIGHT,
         &[
-            ("dark", include_bytes!("./pilatus_dark.svg")),
+            ("dark", include_bytes!("logo/pilatus_dark.svg")),
             ("bright", BRIGHT),
         ],
     )
