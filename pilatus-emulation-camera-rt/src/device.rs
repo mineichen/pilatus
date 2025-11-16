@@ -14,7 +14,7 @@ use pilatus_engineering::image::{DynamicImage, ImageWithMeta, StreamImageError};
 use tracing::warn;
 
 use crate::publish_frame::PublisherState;
-use crate::{EmulationMode, Params};
+use pilatus_emulation_camera::{EmulationMode, Params};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<(Registered<ActorSystem>, Registered<FileServiceBuilder>)>()
@@ -38,7 +38,7 @@ pub(super) struct DeviceState {
     pub(crate) publisher: Arc<PublisherState>,
     pub(crate) actor_system: ActorSystem,
     pub(crate) recording_sender:
-        mpsc::Sender<Option<crate::permanent_recording::PermanentRecordingConfig>>,
+        mpsc::Sender<Option<pilatus_emulation_camera::PermanentRecordingConfig>>,
 }
 
 async fn validator(ctx: DeviceValidationContext<'_>) -> Result<Params, UpdateParamsMessageError> {

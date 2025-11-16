@@ -7,14 +7,15 @@ edition = "2024"
 anyhow.workspace = true
 chrono.workspace = true
 futures.workspace = true
-image = { workspace = true, optional = true }
-minfac = { workspace = true, optional = true }
+image.workspace = true
+minfac.workspace = true
 pilatus.workspace = true
+pilatus-emulation-camera = { workspace = true, features = ["unstable"] }
 pilatus-engineering = { path = "../pilatus-engineering", features = ["image-algorithm"] }
 pilatus-axum.workspace = true
 serde.workspace = true
-tokio = { workspace = true, features = ["sync"], optional = true }
-tokio-stream = { version = "0.1", features = ["fs", "sync"], optional = true }
+tokio = { workspace = true, features = ["sync"] }
+tokio-stream = { version = "0.1", features = ["fs", "sync"] }
 tracing.workspace = true
 
 # dev-dependencies cannot be optional
@@ -23,10 +24,7 @@ serde_json = { version = "1", optional = true }
 pilatus-rt = { workspace = true, features = ["unstable"], optional = true }
 
 [dev-dependencies]
-pilatus-emulation-camera-rt = { path = ".", features = ["rt"] }
 tokio = { workspace = true, features = ["sync", "macros"]}
 
 [features]
-rt = ["pilatus/tokio", "dep:image", "dep:minfac", "tokio", "tokio-stream"]
 integration = ["tempfile", "serde_json", "pilatus-rt"]
-unstable = []

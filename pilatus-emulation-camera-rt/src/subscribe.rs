@@ -6,7 +6,8 @@ use pilatus_engineering::image::{StreamImageError, SubscribeDynamicImageMessage}
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tracing::{debug, warn};
 
-use super::{DeviceState, EmulationMode};
+use super::DeviceState;
+use pilatus_emulation_camera::EmulationMode;
 
 impl DeviceState {
     pub(super) async fn subscribe(

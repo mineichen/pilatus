@@ -5,6 +5,7 @@ members = [
     "pilatus",
     "pilatus-axum",
     "pilatus-axum-rt",
+    "pilatus-emulation-camera",
     "pilatus-emulation-camera-rt",
     "pilatus-engineering",
     "pilatus-engineering-rt",
@@ -13,7 +14,7 @@ members = [
     "examples/tick",
     "examples/tick-app", 
     "examples/tick-egui", 
-    "examples/tick-rt",
+    "examples/tick-rt", 
 ]
 
 [workspace.dependencies]
@@ -30,6 +31,7 @@ pilatus = { path = "pilatus" }
 pilatus-rt = { path = "pilatus-rt" }
 pilatus-axum = { path = "pilatus-axum" }
 pilatus-axum-rt = { path = "pilatus-axum-rt" }
+pilatus-emulation-camera = { path = "pilatus-emulation-camera" }
 pilatus-emulation-camera-rt = { path = "pilatus-emulation-camera-rt" }
 pilatus-engineering = { path = "pilatus-engineering" }
 pilatus-engineering-rt = { path = "pilatus-engineering-rt" }

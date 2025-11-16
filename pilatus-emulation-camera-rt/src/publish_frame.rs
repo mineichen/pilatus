@@ -14,7 +14,8 @@ use pilatus::{
 use pilatus_engineering::image::{DynamicImage as PilatusDynamicImage, ImageWithMeta};
 use tracing::{debug, warn};
 
-use super::{ActiveRecipe, DeviceState, Params};
+use super::DeviceState;
+use pilatus_emulation_camera::{ActiveRecipe, Params};
 
 pub(super) struct PublishImageMessage(Weak<PublisherState>);
 
