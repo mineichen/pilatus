@@ -1,5 +1,5 @@
 [package]
-name = "pilatus-emulation-camera"
+name = "pilatus-emulation-camera-rt"
 version = "0.1.0"
 edition = "2024"
 
@@ -23,7 +23,7 @@ serde_json = { version = "1", optional = true }
 pilatus-rt = { workspace = true, features = ["unstable"], optional = true }
 
 [dev-dependencies]
-pilatus-emulation-camera = { path = ".", features = ["rt"] }
+pilatus-emulation-camera-rt = { path = ".", features = ["rt"] }
 tokio = { workspace = true, features = ["sync", "macros"]}
 
 [features]

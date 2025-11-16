@@ -15,15 +15,6 @@ pub use greeter::create_default_device_config as create_default_greeter_device_c
 pub use manual_tick::create_default_device_config as create_default_manual_tick_device_config;
 pub use timer_tick::create_default_device_config as create_default_timer_tick_device_config;
 
-#[cfg(feature = "unstable")]
-pub use greeter::Language as GreeterLanguage;
-#[cfg(feature = "unstable")]
-pub use greeter::Params as GreeterParams;
-#[cfg(feature = "unstable")]
-pub use manual_tick::Params as ManualTickParams;
-#[cfg(feature = "unstable")]
-pub use timer_tick::Params as TimerTickParams;
-
 struct GetTickMessage;
 impl ActorMessage for GetTickMessage {
     type Output = u32;
