@@ -18,7 +18,7 @@ use pilatus_axum::{
     IntoResponse, ServiceCollectionExtensions,
 };
 use sealedstruct::ValidationErrors;
-use tracing::{debug, info};
+use tracing::{debug, info, trace};
 use uuid::Uuid;
 
 mod export;
@@ -95,7 +95,7 @@ async fn handle_socket(socket: WebSocket, watcher: impl Stream<Item = Uuid>) {
                 loop {
                     match futures::future::select(watcher.next(), &mut read_down_rx).await {
                         futures::future::Either::Left((Some(data), _ignore_reader_not_down)) => {
-                            info!("Send data {data}");
+                            trace!("Send data {data}");
                             if socket_tx
                                 .send(Message::Text(data.to_string().into()))
                                 .await
@@ -105,10 +105,10 @@ async fn handle_socket(socket: WebSocket, watcher: impl Stream<Item = Uuid>) {
                             }
                         }
                         futures::future::Either::Left((None, _ignore_reader_not_down)) => {
-                            info!("No more updates available from watcher")
+                            trace!("No more updates available from watcher")
                         }
                         futures::future::Either::Right(_) => {
-                            info!("Reader is down, so writer is exiting too");
+                            trace!("Reader is down, so writer is exiting too");
                             break;
                         }
                     }
@@ -121,7 +121,7 @@ async fn handle_socket(socket: WebSocket, watcher: impl Stream<Item = Uuid>) {
                         break;
                     }
                 }
-                info!("Receiver finished");
+                trace!("Receiver finished");
                 drop(read_down_tx);
             },
         )
