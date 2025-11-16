@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::num::NonZeroU64;
 
 pilatus::unstable_pub!(
-    #[derive(Debug, Default, Deserialize, Serialize, impex::Impex)]
+    #[derive(Debug, Default, Deserialize, Serialize, PartialEq, impex::Impex)]
     #[serde(deny_unknown_fields)]
     struct GreeterParams {
         pub lang: GreeterLanguage,
@@ -10,7 +10,7 @@ pilatus::unstable_pub!(
 );
 
 pilatus::unstable_pub!(
-    #[derive(Debug, Default, Deserialize, Serialize, Clone)]
+    #[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
     enum GreeterLanguage {
         #[default]
         English,
@@ -21,7 +21,7 @@ pilatus::unstable_pub!(
 impl impex::ImpexPrimitive for GreeterLanguage {}
 
 pilatus::unstable_pub!(
-    #[derive(Serialize, Deserialize, Default, Debug, impex::Impex)]
+    #[derive(Serialize, Deserialize, Default, Debug, PartialEq, impex::Impex)]
     #[serde(default)]
     struct ManualTickParams {
         pub initial_count: u32,
@@ -29,7 +29,7 @@ pilatus::unstable_pub!(
 );
 
 pilatus::unstable_pub!(
-    #[derive(Debug, Clone, Deserialize, Serialize, impex::Impex)]
+    #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, impex::Impex)]
     #[serde(deny_unknown_fields)]
     struct TimerTickParams {
         pub milli_seconds_per_step: NonZeroU64,
