@@ -5,6 +5,6 @@
 Cargo.lock
 examples/stream/data/*
 !examples/stream/data/config.json
-examples/tick/data/*
-!examples/tick/data/config.json
+examples/tick-app/data/*
+!examples/tick-app/data/config.json
 .vscode

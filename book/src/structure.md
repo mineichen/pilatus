@@ -14,14 +14,14 @@ Many pilatus projects have a `unstable` feature. Code which is available behind 
    - It's ok if tests of your crate break due to breaking changes in e.g. `pilatus-rt/unstable`. If `unstable` is only in `[dev-dependencies]` and not `[dependencies]`, your crate remains stable for others to be used.
  - Allow for tightly bound crates.
    - The GUI will be tightly coupled to a specific backend version internally. But their interface to dependents is just a stable leptos-component.
-   - `{name}-rt` projects may depend on their `{name}` counterpart with active `unstable` feature.  Unstable can e.g. make {name}::DeviceParams available, which is a shining example of a unstable, ever evolving structures you shouldn't depend on in your project. But the UI and the `device` implementation in your `{name}-rt` project are allowed to rely on it.
+   - `{name}-rt` projects may depend on their `{name}` counterpart with active `unstable` feature.  Unstable can e.g. make {name}::DeviceParams available, which is a shining example of a unstable, ever evolving structures you shouldn't depend on in external code. But the UI and the `device` implementation in your `{name}-rt` project are allowed to rely on it.
 
 ## Why do we even have `-rt` projects?
 The biggest reason for having `*-rt` projects is compilation time. RT projects often have significant dependencies. `pilatus-axum-rt` contains heavy dependencies like `tokio`, `async-zip`, `image`, `tower` etc. If all this code lived in `pilatus-axum`, depending crates could only start compiling, when `pilatus-axum-rt` and all of its dependencies are ready, leading to long dependency chains. For crates on which noone depends on, you could also add a `rt` feature flag to your `{name}` project instead. This allows:
  + fine grained visibility (e.g. Params-fields are only visible in a submodule)
  + avoiding Orphan-Rule problems
 
-For device Extensions like `pilatus-emulation-camera` this might be the better option, because it will rarely be a dependency except in integration tests and executables.
+In the open source pilatus project, we don't do that, because the UI is always created in a different repo, so it doesn't make sense. The UI is external, so it can easily be published as MIT without any confusions and because we really want to be able to write a new UI with the same conveniences like the official one used. Furthermore, experiments showed, that most code suddenly was behind a `cfg(feature = "rt")` flag, which seemed off.
 
 
 ## Ignore executables

@@ -10,6 +10,7 @@ anyhow.workspace = true
 approx = "0.5"
 futures.workspace = true
 image = { workspace = true, optional = true }
+impex = { workspace = true, optional = true }
 nalgebra = { version = "0.34", optional = true }
 pilatus = { workspace = true, features = ["subscribe"] }
 seahash = "4.1"

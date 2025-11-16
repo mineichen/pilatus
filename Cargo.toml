@@ -11,7 +11,9 @@ members = [
     "pilatus-rt",
     "examples/stream",
     "examples/tick",
-    "examples/tick-egui",
+    "examples/tick-app", 
+    "examples/tick-egui", 
+    "examples/tick-rt",
 ]
 
 [workspace.dependencies]
@@ -22,6 +24,7 @@ futures = "0.3"
 futures-channel = "0.3"
 futures-util = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
+impex = { git = "https://github.com/mineichen/impex.git" }
 minfac = "0.1"
 pilatus = { path = "pilatus" }
 pilatus-rt = { path = "pilatus-rt" }
@@ -30,6 +33,8 @@ pilatus-axum-rt = { path = "pilatus-axum-rt" }
 pilatus-emulation-camera = { path = "pilatus-emulation-camera" }
 pilatus-engineering = { path = "pilatus-engineering" }
 pilatus-engineering-rt = { path = "pilatus-engineering-rt" }
+pilatus-tick = { path = "examples/tick" }
+pilatus-tick-rt = { path = "examples/tick-rt" }
 serde = "1"
 serde_json = { version = "1", features = ["preserve_order"] }
 smallvec = "1"

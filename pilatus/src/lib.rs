@@ -15,6 +15,7 @@ mod shutdown;
 mod subscribe;
 mod sync;
 mod tracing;
+mod unstable;
 mod uuid_wrapper;
 
 pub use crate::config::GenericConfig;

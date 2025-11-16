@@ -1,0 +1,11 @@
+[package]
+name = "tick-app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+minfac.workspace = true
+pilatus.workspace = true
+pilatus-axum-rt.workspace = true
+pilatus-rt.workspace = true
+pilatus-tick-rt.workspace = true
