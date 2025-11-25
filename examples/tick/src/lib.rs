@@ -18,7 +18,15 @@ pilatus::unstable_pub!(
         German,
     }
 );
-
+impl From<GreeterLanguage> for String {
+    fn from(value: GreeterLanguage) -> Self {
+        match value {
+            GreeterLanguage::English => "English",
+            GreeterLanguage::German => "German",
+        }
+        .into()
+    }
+}
 impl Display for GreeterLanguage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
