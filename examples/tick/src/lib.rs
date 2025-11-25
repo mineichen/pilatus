@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::num::NonZeroU64;
+use std::{fmt::Display, num::NonZeroU64};
 
 pilatus::unstable_pub!(
     #[derive(Debug, Default, Deserialize, Serialize, PartialEq, impex::Impex)]
@@ -18,6 +18,15 @@ pilatus::unstable_pub!(
         German,
     }
 );
+
+impl Display for GreeterLanguage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            GreeterLanguage::English => "English",
+            GreeterLanguage::German => "German",
+        })
+    }
+}
 
 impl impex::ImpexPrimitive for GreeterLanguage {}
 

@@ -17,11 +17,9 @@ pub async fn clone_directory_deep(
     let mut errors = std::pin::pin!(visit_directory_files(source.clone()));
     while let Some(e) = errors.next().await {
         let source_path = e?.path();
-        let relative_path = source_path.strip_prefix(&source).map_err(|e| {
-            io::Error::other(
-                anyhow::anyhow!("strip should always work: {e}"),
-            )
-        })?;
+        let relative_path = source_path
+            .strip_prefix(&source)
+            .map_err(|e| io::Error::other(anyhow::anyhow!("strip should always work: {e}")))?;
         let target_path = target.join(relative_path);
         tokio::fs::create_dir_all(target_path.parent().expect("File always has a parent")).await?;
         tokio::fs::copy(source_path, target_path).await?;

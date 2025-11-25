@@ -1,8 +1,8 @@
 use minfac::ServiceCollection;
 use pilatus::device::{ActorMessage, ActorResult, ActorSystem, DynamicIdentifier};
 use pilatus_axum::{
-    extract::{InjectRegistered, Query},
     DeviceResponse, IntoResponse, ServiceCollectionExtensions,
+    extract::{InjectRegistered, Query},
 };
 
 use super::DeviceState;

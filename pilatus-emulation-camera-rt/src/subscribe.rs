@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use futures::{StreamExt, TryFutureExt};
-use pilatus::{device::ActorResult, MissedItemsError};
+use pilatus::{MissedItemsError, device::ActorResult};
 use pilatus_engineering::image::{StreamImageError, SubscribeDynamicImageMessage};
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tracing::{debug, warn};
@@ -71,9 +71,9 @@ impl DeviceState {
                                         )
                                     })
                                     .await
-                                {
-                                    warn!("Couldn't save streaming image {e}.");
-                                }
+                            {
+                                warn!("Couldn't save streaming image {e}.");
+                            }
                             Ok(ok)
                         }
                     })

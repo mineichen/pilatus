@@ -1,7 +1,7 @@
 use futures::StreamExt;
 use pilatus::{
-    device::{ActorMessage, ActorResult},
     Name, RelativeDirectoryPath,
+    device::{ActorMessage, ActorResult},
 };
 
 use super::DeviceState;

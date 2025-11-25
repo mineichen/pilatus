@@ -8,8 +8,8 @@ use std::{
 
 use futures::{StreamExt, TryStreamExt};
 use pilatus::{
-    device::{ActorMessage, HandlerResult, Step2, WeakUntypedActorMessageSender},
     RelativeDirectoryPath, TransactionError,
+    device::{ActorMessage, HandlerResult, Step2, WeakUntypedActorMessageSender},
 };
 use pilatus_engineering::image::{DynamicImage as PilatusDynamicImage, ImageWithMeta};
 use tracing::{debug, warn};

@@ -358,10 +358,10 @@ fn respond_with_unknown_device<TMsg: ActorMessage>(
         .downcast::<MessageWithResponder<TMsg>>()
         .expect("Must be castable. This is most likely an internal bug of the ActorSystem");
     response_channel.respond(Err(ActorErrorUnknownDevice::UnknownDeviceId {
-            device_id: DeviceId::nil(),
-            details,
-        }
-        .into()));
+        device_id: DeviceId::nil(),
+        details,
+    }
+    .into()));
 }
 
 mod releaser {
