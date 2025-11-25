@@ -5,7 +5,7 @@ use pilatus::{Name, device::DeviceId, unstable_pub};
 use serde::{Deserialize, Serialize};
 
 mod permanent_recording;
-
+#[cfg(feature = "unstable")]
 pub use permanent_recording::*;
 
 unstable_pub!(
@@ -15,7 +15,7 @@ unstable_pub!(
         pub mode: EmulationMode,
         pub file: FileParams,
         pub streaming: StreamingParams,
-        pub permanent_recording: Option<PermanentRecordingConfig>,
+        pub permanent_recording: Option<permanent_recording::PermanentRecordingConfig>,
     }
 );
 

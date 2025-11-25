@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 unstable_pub!(
     #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-    struct PermanentRecordingConfig {
+    pub(crate) struct PermanentRecordingConfig {
         pub collection_name: Name,
         pub source_id: DeviceId,
     }

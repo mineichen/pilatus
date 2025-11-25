@@ -9,7 +9,7 @@ chrono.workspace = true
 futures.workspace = true
 image.workspace = true
 minfac.workspace = true
-pilatus.workspace = true
+pilatus = { workspace = true, features = ["minfac"] }
 pilatus-emulation-camera = { workspace = true, features = ["unstable"] }
 pilatus-engineering = { path = "../pilatus-engineering", features = ["image-algorithm"] }
 pilatus-axum.workspace = true

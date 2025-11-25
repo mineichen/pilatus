@@ -19,7 +19,7 @@ futures-lite = "2"
 hyper = { version = "1.1", features = ["client"] }
 image = { workspace = true, optional = true }
 minfac.workspace = true
-pilatus = { workspace = true, features = ["tokio"] }
+pilatus = { workspace = true, features = ["rt"] }
 pilatus-axum.workspace = true
 pilatus-engineering = { workspace = true, features = [
     "image-algorithm",
