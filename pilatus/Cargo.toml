@@ -57,7 +57,6 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 
 [features]
 subscribe = ["stream-broadcast"]
-rt = ["dep:minfac", "dep:tokio"]
 # Ok to depend during tests, as compile errors immediately show up in that project
 # When project which uses pilatus/unstable itself is referenced, it doesn't break if unstable features change
 # This feature should only be activated in tests and leaf-crates, on which noone depends

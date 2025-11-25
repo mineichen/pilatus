@@ -18,7 +18,7 @@ use pilatus_axum::{
     IntoResponse, ServiceCollectionExtensions,
 };
 use sealedstruct::ValidationErrors;
-use tracing::{debug, info, trace};
+use tracing::{debug, trace};
 use uuid::Uuid;
 
 mod export;
