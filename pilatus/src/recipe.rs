@@ -16,7 +16,7 @@ pub use error::*;
 pub use file::*;
 pub use recipe::*;
 pub use recipes::*;
-use serde::{Deserialize, Serialize};
+use serde::{de::Error, Deserialize, Serialize};
 pub use service::*;
 
 pub use variable::*;
@@ -98,13 +98,11 @@ impl UntypedDeviceParamsWithVariables {
     pub fn from_serializable(serializable: impl Serialize) -> serde_json::Result<Self> {
         let inner = serde_json::to_value(serializable)?;
 
-        // Makes sure that `serializable` doen't contain a field named `JSON_VAR_KEYWORD`
-        // This is just checked during development, as this would be a developer-mistake
-        debug_assert_eq!(Ok(()), check_recursive(&inner));
+        check_recursive(&inner).map_err(|e| serde_json::Error::custom(e))?;
         Ok(Self(inner))
     }
 }
-
+// Makes sure that `serializable` doesn't contain invalid variable declarations (multiple fields or str-len = 0)
 fn check_recursive(v: &serde_json::Value) -> Result<(), &serde_json::Value> {
     match v {
         serde_json::Value::Array(x) => x.iter().try_for_each(check_recursive),
