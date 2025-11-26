@@ -4,7 +4,7 @@ use std::{fmt::Display, num::NonZeroU64};
 pilatus::unstable_pub!(
     #[derive(Debug, Default, Deserialize, Serialize, PartialEq, impex::Impex)]
     #[impex(derive(PartialEq, Clone))]
-    #[serde(deny_unknown_fields)]
+    #[serde(deny_unknown_fields, default)]
     struct GreeterParams {
         pub lang: GreeterLanguage,
     }
