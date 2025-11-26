@@ -8,7 +8,7 @@ use serde::{de::DeserializeOwned, ser::SerializeStruct, Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::{
-    UntypedDeviceParamsWithVariables, UpdateParamsMessageError, Variables, VariablesPatch,
+    Name, UntypedDeviceParamsWithVariables, UpdateParamsMessageError, Variables, VariablesPatch,
 };
 
 #[derive(Debug)]
@@ -153,7 +153,7 @@ impl Variables {
                             .collect::<Result<_, _>>()?,
                     ));
                 };
-                let var_name = var_name.to_string();
+                let var_name = Name::new(var_name)?;
                 let Some(x) = o.remove("resolved") else {
                     return Err(anyhow!("Expected value 'resolved' in {o:?}"));
                 };
@@ -328,7 +328,7 @@ mod tests {
             json! ({"foo": 1,"bar":{"bar_inner": {"__var": "testvar"}}}),
         );
         let vars = Variables::new(
-            [("testvar".to_string(), Variable::from(42))]
+            [(Name::new("testvar").unwrap(), Variable::from(42))]
                 .into_iter()
                 .collect(),
         );

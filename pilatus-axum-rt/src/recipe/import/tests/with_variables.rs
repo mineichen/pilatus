@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use futures::io::Cursor;
 use pilatus::{
-    DeviceConfig, ImportRecipeError, ImportRecipesOptions, RecipeExporterTrait, RecipeServiceTrait,
+    DeviceConfig, ImportRecipeError, ImportRecipesOptions, Name, RecipeExporterTrait,
+    RecipeServiceTrait,
 };
 use pilatus::{ParameterUpdate, UntypedDeviceParamsWithVariables, VariableConflict};
 use pilatus_rt::RecipeServiceFassade;
@@ -46,8 +47,8 @@ async fn with_variables() {
         ParameterUpdate {
             parameters: var_json.clone(),
             variables: [
-                ("number1".into(), 1.into()),
-                ("text1".into(), "initial_text".into()),
+                (Name::new("number1").unwrap(), 1.into()),
+                (Name::new("text1").unwrap(), "initial_text".into()),
             ]
             .into_iter()
             .collect(),
@@ -75,7 +76,7 @@ async fn with_variables() {
         device_id,
         ParameterUpdate {
             parameters: var_json.clone(),
-            variables: [("text1".into(), "other_text".into())]
+            variables: [(Name::new("text1").unwrap(), "other_text".into())]
                 .into_iter()
                 .collect(),
         },
@@ -95,7 +96,7 @@ async fn with_variables() {
     let _importer = if let Err(ImportRecipeError::Conflicts(_, x, i)) = r {
         assert_eq!(
             vec![VariableConflict {
-                name: "text1".into(),
+                name: Name::new("text1").unwrap(),
                 existing: "initial_text".into(),
                 imported: "other_text".into()
             }],

@@ -35,36 +35,7 @@ impl Name {
 
         (base_number..).map(move |n| NameWrapper(NameRaw(format!("{base_name}_{n}"))))
     }
-}
-
-impl Display for Name {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-impl NameRaw {
-    pub fn new(value: impl Into<String>) -> NameRaw {
-        NameRaw(value.into())
-    }
-}
-
-impl std::ops::Deref for NameRaw {
-    type Target = String;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<NameRaw> for String {
-    fn from(n: NameRaw) -> Self {
-        n.0
-    }
-}
-
-impl sealedstruct::Validator for NameRaw {
-    fn check(&self) -> sealedstruct::Result<()> {
-        let name = &self.0;
+    pub fn check_str(name: &str) -> sealedstruct::Result<()> {
         let mut result: sealedstruct::Result<()> = Ok(());
         match name.len() {
             0 => {
@@ -99,7 +70,37 @@ impl sealedstruct::Validator for NameRaw {
                 }
             }
         }
-        result?;
-        Ok(())
+        result
+    }
+}
+
+impl Display for Name {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl NameRaw {
+    pub fn new(value: impl Into<String>) -> NameRaw {
+        NameRaw(value.into())
+    }
+}
+
+impl std::ops::Deref for NameRaw {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<NameRaw> for String {
+    fn from(n: NameRaw) -> Self {
+        n.0
+    }
+}
+
+impl sealedstruct::Validator for NameRaw {
+    fn check(&self) -> sealedstruct::Result<()> {
+        Name::check_str(&self.0)
     }
 }

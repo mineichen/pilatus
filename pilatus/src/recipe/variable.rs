@@ -11,7 +11,7 @@ use serde::{
 };
 use serde_json::Value;
 
-use crate::{recipe::UntypedDeviceParamsWithVariables, UpdateParamsMessageError};
+use crate::{recipe::UntypedDeviceParamsWithVariables, Name, UpdateParamsMessageError};
 
 pub(crate) const JSON_VAR_KEYWORD: &str = "__var";
 
@@ -21,7 +21,7 @@ pub use maybe::*;
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct VariableConflict {
-    pub name: String,
+    pub name: Name,
     pub existing: Variable,
     pub imported: Variable,
 }
@@ -67,15 +67,15 @@ impl<'de> Deserialize<'de> for Variable {
         v.try_into().map_err(<D::Error as serde::de::Error>::custom)
     }
 }
-pub type VariablesPatch = HashMap<String, Variable>;
+pub type VariablesPatch = HashMap<Name, Variable>;
 
 #[derive(Debug, Clone, Default)]
 pub struct Variables {
-    mappings: Arc<HashMap<String, Variable>>,
+    mappings: Arc<HashMap<Name, Variable>>,
 }
 
 impl Variables {
-    fn new(mappings: HashMap<String, Variable>) -> Self {
+    fn new(mappings: HashMap<Name, Variable>) -> Self {
         Self {
             mappings: Arc::new(mappings),
         }
@@ -86,9 +86,9 @@ impl Variables {
         other
             .mappings
             .iter()
-            .filter_map(|(k, other_value)| match mappings.entry(k.into()) {
+            .filter_map(|(k, other_value)| match mappings.entry(k.clone()) {
                 Entry::Occupied(o) => (other_value != o.get()).then(|| VariableConflict {
-                    name: o.key().into(),
+                    name: o.key().clone(),
                     existing: other_value.clone(),
                     imported: o.get().clone(),
                 }),
@@ -100,7 +100,7 @@ impl Variables {
             .collect()
     }
 
-    fn borrow_mappings(&mut self) -> &mut HashMap<String, Variable> {
+    fn borrow_mappings(&mut self) -> &mut HashMap<Name, Variable> {
         if Arc::get_mut(&mut self.mappings).is_none() {
             self.mappings = Arc::new(HashMap::clone(&self.mappings));
         }
@@ -158,7 +158,7 @@ impl Variables {
             .map(UntypedDeviceParamsWithoutVariables)
     }
 
-    pub fn resolve_key(&self, k: &str) -> Option<&Variable> {
+    pub fn resolve_key(&self, k: &Name) -> Option<&Variable> {
         self.mappings.get(k)
     }
 
@@ -188,13 +188,21 @@ impl Variables {
                                 )),
                             ))
                         } else if let Value::String(map_key) = v {
-                            if let Some(new_value) = self.mappings.get(map_key) {
-                                Ok((generator)(map_key, new_value.0.clone()))
-                            } else {
-                                Err(UpdateParamsMessageError::VariableError(format!(
-                                    "Unknown Variable: {map_key}"
-                                )))
-                            }
+                            Name::new(map_key)
+                                .map_err(|e| {
+                                    UpdateParamsMessageError::VariableError(format!(
+                                        "Invalid variable name: {e}"
+                                    ))
+                                })
+                                .and_then(|name| {
+                                    if let Some(new_value) = self.mappings.get(&name) {
+                                        Ok((generator)(map_key, new_value.0.clone()))
+                                    } else {
+                                        Err(UpdateParamsMessageError::VariableError(format!(
+                                            "Unknown Variable: {map_key}"
+                                        )))
+                                    }
+                                })
                         } else {
                             Err(UpdateParamsMessageError::VariableError(
                                 "Key starting with __var has to contain a string".into(),
@@ -243,7 +251,11 @@ mod tests {
             r#"{"_text": "value", "_number": 42, "placeholder": {"__var": "test"}}"#,
         )
         .unwrap();
-        let store = Variables::new([("test".into(), (42).into())].into_iter().collect());
+        let store = Variables::new(
+            [(Name::new("test").unwrap(), (42).into())]
+                .into_iter()
+                .collect(),
+        );
 
         #[derive(Deserialize)]
         struct Foo {

@@ -34,6 +34,8 @@ impl std::default::Default for RecipeId {
 pub struct UntypedDeviceParamsWithVariables(serde_json::Value);
 pub use UntypedDeviceParamsWithoutVariables;
 
+use crate::Name;
+
 #[derive(Deserialize, Serialize)]
 pub struct ParameterUpdate {
     pub parameters: UntypedDeviceParamsWithVariables,
@@ -74,19 +76,26 @@ impl UntypedDeviceParamsWithVariables {
     fn new(value: serde_json::Value) -> Self {
         Self(value)
     }
-    pub fn variables_names(&self) -> impl Iterator<Item = String> {
+    pub fn variables_names(&self) -> impl Iterator<Item = Name> {
         let mut result = Default::default();
         Self::add_variable_names(&self.0, &mut result);
         result.into_iter()
     }
-    fn add_variable_names(value: &serde_json::Value, found: &mut smallvec::SmallVec<[String; 8]>) {
+    fn add_variable_names(value: &serde_json::Value, found: &mut smallvec::SmallVec<[Name; 8]>) {
         match value {
             serde_json::Value::Array(list) => {
                 list.iter().for_each(|x| Self::add_variable_names(x, found))
             }
             serde_json::Value::Object(o) => {
                 if let Some(serde_json::Value::String(x)) = o.get(JSON_VAR_KEYWORD) {
-                    found.push(x.clone());
+                    match Name::new(x) {
+                        Ok(x) => found.push(x),
+                        Err(e) => {
+                            tracing::error!(
+                                "Contained invalid, which should have been checked! Skipping {e}"
+                            );
+                        }
+                    }
                 } else {
                     o.values().for_each(|x| Self::add_variable_names(x, found))
                 }
@@ -108,10 +117,9 @@ fn check_recursive(v: &serde_json::Value) -> Result<(), &serde_json::Value> {
         serde_json::Value::Array(x) => x.iter().try_for_each(check_recursive),
         serde_json::Value::Object(x) => {
             if let Some(var_name) = x.get(JSON_VAR_KEYWORD) {
-                if x.len() > 1 || !matches!(var_name, serde_json::Value::String(_)) {
-                    Err(v)
-                } else {
-                    Ok(())
+                match (x.len(), var_name) {
+                    (1, serde_json::Value::String(s)) if Name::check_str(s).is_ok() => Ok(()),
+                    _ => Err(v),
                 }
             } else {
                 x.values().try_for_each(check_recursive)

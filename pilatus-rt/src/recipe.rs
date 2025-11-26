@@ -597,7 +597,7 @@ mod tests {
             ParameterUpdate {
                 parameters: parameters.clone(),
                 variables: std::iter::once((
-                    "var1".to_string(),
+                    Name::new("var1").unwrap(),
                     serde_json::from_str("42").unwrap(),
                 ))
                 .collect(),
@@ -627,7 +627,7 @@ mod tests {
                 ParameterUpdate {
                     parameters: parameters.clone(),
                     variables: std::iter::once((
-                        "var1".to_string(),
+                        Name::new("var1").unwrap(),
                         serde_json::from_str("4242").unwrap(),
                     ))
                     .collect(),
