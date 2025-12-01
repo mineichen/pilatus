@@ -24,10 +24,13 @@ type InnerFactory = Arc<dyn Fn(DeviceId) -> InnerService + Send + Sync>;
 
 #[derive(Clone)]
 pub struct FileServiceBuilder {
-    pub inner_factory: InnerFactory,
+    inner_factory: InnerFactory,
 }
 
 impl FileServiceBuilder {
+    pub fn new(inner_factory: InnerFactory) -> Self {
+        Self { inner_factory }
+    }
     pub fn with_validator<T: 'static, TValidator: Validator<State = T> + 'static>(
         self,
         validator: TValidator,

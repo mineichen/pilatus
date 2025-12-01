@@ -187,13 +187,11 @@ pub struct TokioFileService {
 impl TokioFileService {
     pub fn builder(root: impl Into<PathBuf>) -> FileServiceBuilder {
         let root = root.into();
-        FileServiceBuilder {
-            inner_factory: Arc::new(move |device_id| {
-                Box::new(TokioFileService {
-                    root: root.join(device_id.to_string()),
-                })
-            }),
-        }
+        FileServiceBuilder::new(Arc::new(move |device_id| {
+            Box::new(TokioFileService {
+                root: root.join(device_id.to_string()),
+            })
+        }))
     }
 
     fn stream_files_internal<T: Send + 'static>(
