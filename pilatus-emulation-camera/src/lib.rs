@@ -69,7 +69,7 @@ impl Default for FileParams {
 
 unstable_pub!(
     /// Strings which are valid Names, so don't contain any slashes/backward-slashes, are interpreted as recorded collections. Otherwise it's assumed to be a path. Use ./foo if you want a folder located in $PWD
-    #[derive(Default, Debug, Clone, PartialEq)]
+    #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
     #[cfg_attr(feature = "impex", derive(impex::Impex))]
     #[cfg_attr(feature = "impex", impex(derive(PartialEq, Clone)))]
     enum ActiveRecipe {
@@ -79,30 +79,17 @@ unstable_pub!(
         External(PathBuf),
     }
 );
-impl Serialize for ActiveRecipe {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            ActiveRecipe::Undefined => Option::<()>::None.serialize(serializer),
-            ActiveRecipe::Named(name_wrapper) => name_wrapper.as_str().serialize(serializer),
-            ActiveRecipe::External(path_buf) => path_buf.serialize(serializer),
-        }
-    }
-}
 
-impl<'de> Deserialize<'de> for ActiveRecipe {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        match Option::<String>::deserialize(deserializer)? {
-            Some(x) => match Name::from_str(&x) {
-                Ok(x) => Ok(Self::Named(x)),
-                Err(_) => Ok(Self::External(PathBuf::from(x))),
-            },
-            None => Ok(Self::Undefined),
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(feature = "impex")]
+    fn parse_params() {
+        let params = Params::default();
+        let serialized = serde_json::to_string(&params).unwrap();
+        println!("serialized = {}", serialized);
+        let deserialized: ParamsImpex = serde_json::from_str(&serialized).unwrap();
     }
 }

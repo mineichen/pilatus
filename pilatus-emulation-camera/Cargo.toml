@@ -8,6 +8,9 @@ pilatus.workspace = true
 serde.workspace = true
 impex = { workspace = true, optional = true }
 
+[dev-dependencies]
+serde_json.workspace = true
+
 [features]
 unstable = []
 impex = ["dep:impex", "pilatus/impex"]
