@@ -10,8 +10,8 @@ use futures::{
 };
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
-    FileServiceBuilder, FileServiceTrait, RelativeDirectoryPath, RelativeDirectoryPathBuf,
-    RelativeFilePath, TransactionError,
+    DirectoryError, FileServiceBuilder, FileServiceTrait, RelativeDirectoryPath,
+    RelativeDirectoryPathBuf, RelativeFilePath, TransactionError,
 };
 use tokio::{fs, io::AsyncReadExt};
 use tracing::trace;
@@ -28,6 +28,26 @@ impl FileServiceTrait for TokioFileService {
     async fn has_file(&self, filename: &RelativeFilePath) -> Result<bool, TransactionError> {
         let s = self.get_filepath(filename);
         Ok(fs::metadata(s).await.is_ok())
+    }
+
+    async fn metadata_directory(
+        &self,
+        directory: &RelativeDirectoryPath,
+    ) -> Result<std::fs::Metadata, DirectoryError> {
+        let s = self.get_directory_path(directory);
+        fs::metadata(s)
+            .await
+            .map_err(|e| match e.kind() {
+                std::io::ErrorKind::NotFound => DirectoryError::NotFound(directory.to_owned()),
+                _ => DirectoryError::Io(e),
+            })
+            .and_then(|e| {
+                if e.is_dir() {
+                    Ok(e)
+                } else {
+                    Err(DirectoryError::NotADirectory(directory.to_owned()))
+                }
+            })
     }
 
     async fn list_recursive(&self, root: &RelativeDirectoryPath) -> std::io::Result<Vec<PathBuf>> {
@@ -83,6 +103,15 @@ impl FileServiceTrait for TokioFileService {
         }
 
         Ok(())
+    }
+
+    async fn remove_directory(
+        &self,
+        directory: &RelativeDirectoryPath,
+    ) -> Result<(), DirectoryError> {
+        self.metadata_directory(directory).await?;
+        let p = self.get_directory_path(directory);
+        fs::remove_dir_all(p).await.map_err(DirectoryError::Io)
     }
 
     async fn get_file(&self, filename: &RelativeFilePath) -> Result<Vec<u8>, TransactionError> {

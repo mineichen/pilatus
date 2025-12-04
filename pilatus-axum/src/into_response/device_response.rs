@@ -20,6 +20,23 @@ impl<T, TErr: Debug> From<Result<T, ActorError<TErr>>> for DeviceJsonResponse<T,
     }
 }
 
+#[derive(Debug)]
+pub struct DeviceJsonError<TErr: Debug> {
+    pub error: ActorError<TErr>,
+}
+
+impl<TErr: Debug> From<ActorError<TErr>> for DeviceJsonError<TErr> {
+    fn from(error: ActorError<TErr>) -> Self {
+        Self { error }
+    }
+}
+
+impl<TErr: Debug> IntoResponse for DeviceJsonError<TErr> {
+    fn into_response(self) -> axum::response::Response {
+        map_actor_error_to_status_text(self.error)
+    }
+}
+
 impl<T, TErr: Debug> From<Result<T, ActorError<TErr>>> for DeviceResponse<T, TErr> {
     fn from(r: Result<T, ActorError<TErr>>) -> Self {
         Self(r)

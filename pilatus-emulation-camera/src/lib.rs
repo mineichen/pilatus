@@ -9,7 +9,9 @@ mod permanent_recording;
 pub use permanent_recording::*;
 
 unstable_pub!(
-    #[derive(Debug, Deserialize, Serialize, Clone, Default)]
+    #[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq)]
+    #[cfg_attr(feature = "impex", derive(impex::Impex))]
+    #[cfg_attr(feature = "impex", impex(derive(PartialEq, Clone)))]
     #[serde(deny_unknown_fields, default)]
     struct Params {
         pub mode: EmulationMode,
@@ -21,6 +23,8 @@ unstable_pub!(
 
 unstable_pub!(
     #[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq, Eq)]
+    #[cfg_attr(feature = "impex", derive(impex::Impex))]
+    #[cfg_attr(feature = "impex", impex(derive(PartialEq, Clone)))]
     #[serde(deny_unknown_fields)]
     enum EmulationMode {
         #[default]
@@ -30,7 +34,9 @@ unstable_pub!(
 );
 
 unstable_pub!(
-    #[derive(Debug, Deserialize, Serialize, Clone)]
+    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+    #[cfg_attr(feature = "impex", derive(impex::Impex))]
+    #[cfg_attr(feature = "impex", impex(derive(PartialEq, Clone)))]
     #[serde(deny_unknown_fields, default)]
     struct FileParams {
         pub active: ActiveRecipe,
@@ -41,7 +47,9 @@ unstable_pub!(
 );
 
 unstable_pub!(
-    #[derive(Debug, Deserialize, Serialize, Clone, Default)]
+    #[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq)]
+    #[cfg_attr(feature = "impex", derive(impex::Impex))]
+    #[cfg_attr(feature = "impex", impex(derive(PartialEq, Clone)))]
     #[serde(deny_unknown_fields, default)]
     struct StreamingParams {
         pub source_device_id: Option<DeviceId>,
@@ -62,6 +70,8 @@ impl Default for FileParams {
 unstable_pub!(
     /// Strings which are valid Names, so don't contain any slashes/backward-slashes, are interpreted as recorded collections. Otherwise it's assumed to be a path. Use ./foo if you want a folder located in $PWD
     #[derive(Default, Debug, Clone, PartialEq)]
+    #[cfg_attr(feature = "impex", derive(impex::Impex))]
+    #[cfg_attr(feature = "impex", impex(derive(PartialEq, Clone)))]
     enum ActiveRecipe {
         #[default]
         Undefined,

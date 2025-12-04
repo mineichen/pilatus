@@ -33,6 +33,9 @@ pub(super) fn register_services(c: &mut minfac::ServiceCollection) {
 
 crate::uuid_wrapper::wrapped_uuid!(DeviceId);
 
+#[cfg(feature = "impex")]
+impl impex::ImpexPrimitive for DeviceId {}
+
 #[derive(Debug)]
 pub struct IgnoreNotSendableOneShotChannel<T> {
     one_shot: oneshot::Sender<T>,

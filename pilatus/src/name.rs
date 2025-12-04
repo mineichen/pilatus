@@ -10,6 +10,9 @@ pub(crate) mod name_wrapper;
 )]
 pub struct NameRaw(String);
 
+#[cfg(feature = "impex")]
+impl impex::ImpexPrimitive for Name {}
+
 impl std::str::FromStr for Name {
     type Err = ValidationErrors;
 

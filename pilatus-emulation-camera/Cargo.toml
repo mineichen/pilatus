@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 pilatus.workspace = true
 serde.workspace = true
+impex = { workspace = true, optional = true }
 
 [features]
 unstable = []
+impex = ["dep:impex", "pilatus/impex"]

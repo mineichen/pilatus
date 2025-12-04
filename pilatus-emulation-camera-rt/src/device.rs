@@ -23,12 +23,6 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 
 pub const DEVICE_TYPE: &str = "engineering-emulation-camera";
 
-pub extern "C" fn register(c: &mut ServiceCollection) {
-    crate::record::register_services(c);
-    crate::device::register_services(c);
-    crate::pause::register_services(c);
-}
-
 pub(super) struct DeviceState {
     pub(crate) paused: bool,
     pub(crate) stream: tokio::sync::broadcast::Sender<
@@ -58,6 +52,8 @@ async fn device(
         .add_handler(DeviceState::publish_frame)
         .add_handler(DeviceState::update_params)
         .add_handler(DeviceState::list_collections)
+        .add_handler(DeviceState::add_image)
+        .add_handler(DeviceState::delete_collection)
         .add_handler(DeviceState::toggle_pause);
     let (recording_sender, permanent_recording_task) =
         crate::permanent_recording::setup_permanent_recording(

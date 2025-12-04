@@ -9,6 +9,9 @@ unstable_pub!(
     }
 );
 
+#[cfg(feature = "impex")]
+impl impex::ImpexPrimitive for PermanentRecordingConfig {}
+
 impl PermanentRecordingConfig {
     pub fn collection_path(&self) -> &std::path::Path {
         std::path::Path::new(self.collection_name.as_str())

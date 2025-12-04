@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::{RecipeId, UnknownDeviceError, UpdateParamsMessageError};
+use crate::{RecipeId, RelativeDirectoryPathBuf, UnknownDeviceError, UpdateParamsMessageError};
 use sealedstruct::ValidationErrors;
 
 #[derive(thiserror::Error, Debug)]
@@ -76,4 +76,14 @@ impl From<VariableError> for TransactionError {
     fn from(e: VariableError) -> Self {
         TransactionError::InvalidVariable(e)
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum DirectoryError {
+    #[error("Directory {0} not found")]
+    NotFound(RelativeDirectoryPathBuf),
+    #[error("Directory {0} is not a directory")]
+    NotADirectory(RelativeDirectoryPathBuf),
+    #[error("Directory {0} is not a directory")]
+    Io(#[source] std::io::Error),
 }
