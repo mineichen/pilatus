@@ -25,7 +25,7 @@ use std::{
 };
 
 use crate::{InvertibleTransform, InvertibleTransform3d};
-pub use image_buffer::GenericImage;
+pub use image_buffer::Image;
 
 #[cfg(feature = "tokio")]
 mod broadcaster;
@@ -56,7 +56,7 @@ pub trait PointProjector {
 
 pub type DynamicPointProjector = Arc<dyn PointProjector + 'static + Send + Sync>;
 
-pub type LumaImage = GenericImage<u8, 1>;
+pub type LumaImage = Image<u8, 1>;
 
 pub trait RgbImage: Debug {
     fn is_packed(&self) -> bool;
@@ -79,7 +79,7 @@ pub trait UnpackedRgbImage {
     fn get_channels(&self) -> [&[u8]; 3];
 }
 
-pub type PackedGenericImage = GenericImage<[u8; 3], 1>;
+pub type PackedGenericImage = Image<[u8; 3], 1>;
 
 impl RgbImage for PackedGenericImage {
     fn is_packed(&self) -> bool {
@@ -91,7 +91,7 @@ impl RgbImage for PackedGenericImage {
     }
 
     fn into_unpacked(self: Arc<Self>) -> Arc<dyn UnpackedRgbImage> {
-        Arc::new(GenericImage::<u8, 3>::from_interleaved(&self))
+        Arc::new(Image::<u8, 3>::from_interleaved(&self))
     }
 
     fn size(&self) -> (NonZeroU32, NonZeroU32) {
@@ -99,13 +99,13 @@ impl RgbImage for PackedGenericImage {
     }
 }
 
-impl InterleavedRgbImage for GenericImage<[u8; 3], 1> {
+impl InterleavedRgbImage for Image<[u8; 3], 1> {
     fn flat_buffer(&self) -> &[u8] {
         self.flat_buffer()
     }
 }
 
-pub type UnpackedGenericImage = GenericImage<u8, 3>;
+pub type UnpackedGenericImage = Image<u8, 3>;
 
 impl From<PackedGenericImage> for DynamicImage {
     fn from(value: PackedGenericImage) -> Self {
@@ -114,7 +114,7 @@ impl From<PackedGenericImage> for DynamicImage {
     }
 }
 
-impl RgbImage for GenericImage<u8, 3> {
+impl RgbImage for Image<u8, 3> {
     fn is_packed(&self) -> bool {
         false
     }
@@ -142,8 +142,8 @@ impl UnpackedRgbImage for UnpackedGenericImage {
 #[derive(Debug, Clone)]
 pub enum DynamicImage {
     Luma8(LumaImage),
-    Luma16(GenericImage<u16, 1>),
-    Rgb8Planar(GenericImage<u8, 3>),
+    Luma16(Image<u16, 1>),
+    Rgb8Planar(Image<u8, 3>),
 }
 
 impl From<LumaImage> for DynamicImage {
@@ -152,13 +152,13 @@ impl From<LumaImage> for DynamicImage {
     }
 }
 
-impl From<GenericImage<u16, 1>> for DynamicImage {
-    fn from(value: GenericImage<u16, 1>) -> Self {
+impl From<Image<u16, 1>> for DynamicImage {
+    fn from(value: Image<u16, 1>) -> Self {
         DynamicImage::Luma16(value)
     }
 }
 
-impl TryFrom<DynamicImage> for GenericImage<u16, 1> {
+impl TryFrom<DynamicImage> for Image<u16, 1> {
     type Error = UnsupportedImageError<DynamicImage>;
 
     fn try_from(value: DynamicImage) -> Result<Self, Self::Error> {
@@ -171,7 +171,7 @@ impl TryFrom<DynamicImage> for GenericImage<u16, 1> {
     }
 }
 
-impl<'a> TryFrom<&'a DynamicImage> for &'a GenericImage<u16, 1> {
+impl<'a> TryFrom<&'a DynamicImage> for &'a Image<u16, 1> {
     type Error = UnsupportedImageError<&'a DynamicImage>;
 
     fn try_from(value: &'a DynamicImage) -> Result<Self, Self::Error> {
@@ -215,14 +215,14 @@ impl TryFrom<image::DynamicImage> for DynamicImage {
         let (width, height) = (width.try_into()?, height.try_into()?);
         let invalid_format = match value {
             image::DynamicImage::ImageLuma8(x) => {
-                return Ok(DynamicImage::Luma8(GenericImage::new_vec(
+                return Ok(DynamicImage::Luma8(Image::new_vec(
                     x.into_vec(),
                     width,
                     height,
                 )))
             }
             image::DynamicImage::ImageLuma16(x) => {
-                return Ok(DynamicImage::Luma16(GenericImage::new_vec(
+                return Ok(DynamicImage::Luma16(Image::new_vec(
                     x.into_vec(),
                     width,
                     height,
@@ -266,11 +266,8 @@ mod tests {
             .chunks_exact(3)
             .map(|chunk| [chunk[0], chunk[1], chunk[2]])
             .collect();
-        let pilatus = GenericImage::<[u8; 3], 1>::new_vec(
-            vec_rgb,
-            2.try_into().unwrap(),
-            2.try_into().unwrap(),
-        );
+        let pilatus =
+            Image::<[u8; 3], 1>::new_vec(vec_rgb, 2.try_into().unwrap(), 2.try_into().unwrap());
         let dynamic: DynamicImage = pilatus.into();
 
         let DynamicImage::Rgb8Planar(rgb) = &dynamic else {
@@ -292,7 +289,7 @@ mod tests {
     #[test]
     fn test_into_packed() {
         let size = 2.try_into().unwrap();
-        let image = Arc::new(GenericImage::<u8, 3>::new_vec(
+        let image = Arc::new(Image::<u8, 3>::new_vec(
             vec![1u8, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3],
             size,
             size,

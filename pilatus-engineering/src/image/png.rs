@@ -69,14 +69,13 @@ mod tests {
     use std::num::NonZeroU32;
 
     use image::GenericImageView;
-
-    use crate::image::GenericImage;
+    use image_buffer::Image;
 
     #[test]
     fn encode_color_image() {
         let raw = vec![0, 0, 0, 0, 128, 128, 128, 128, 255, 255, 255, 255];
         let non_zero_two = NonZeroU32::try_from(2).unwrap();
-        let rgb = GenericImage::<u8, 3>::new_vec(raw.clone(), non_zero_two, non_zero_two);
+        let rgb = Image::<u8, 3>::new_vec(raw.clone(), non_zero_two, non_zero_two);
         let d_image = crate::image::DynamicImage::Rgb8Planar(rgb.clone());
         let encoded = d_image.encode_png().unwrap();
         let decoded = image::load_from_memory(&encoded).unwrap();

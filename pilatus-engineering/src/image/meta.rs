@@ -185,17 +185,18 @@ pub struct ImageMeta {
 mod tests {
     use std::num::NonZeroU32;
 
-    use crate::image::{DynamicImage, GenericImage};
+    use image_buffer::Image;
+
+    use crate::image::DynamicImage;
 
     use super::*;
 
     #[test]
     fn insert_and_extract_image_luma16() {
-        let image = GenericImage::<u16, 1>::new_vec(vec![1], NonZeroU32::MIN, NonZeroU32::MIN);
+        let image = Image::<u16, 1>::new_vec(vec![1], NonZeroU32::MIN, NonZeroU32::MIN);
         let dynamic: DynamicImage = image.into();
         let meta = ImageWithMeta::with_meta(dynamic, ImageMeta { hash: None });
-        let back: &GenericImage<u16, 1> =
-            meta.with_format_by_key(&ImageKey::unspecified()).unwrap();
+        let back: &Image<u16, 1> = meta.with_format_by_key(&ImageKey::unspecified()).unwrap();
         assert_eq!((NonZeroU32::MIN, NonZeroU32::MIN), back.dimensions());
     }
 }

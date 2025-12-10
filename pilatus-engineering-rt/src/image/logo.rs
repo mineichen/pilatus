@@ -6,7 +6,7 @@ use std::{
 
 use minfac::{Registered, ServiceCollection};
 use pilatus::{LogoQuery, LogoService};
-use pilatus_engineering::image::{GenericImage, ImageLogoService, ImageLogoServiceTrait};
+use pilatus_engineering::image::{Image, ImageLogoService, ImageLogoServiceTrait};
 use tracing::warn;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
@@ -18,7 +18,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 type Age = u64;
 
 struct ImageLogoServiceImpl {
-    cache: RwLock<HashMap<LogoQuery, (Age, GenericImage<[u8; 4], 1>)>>,
+    cache: RwLock<HashMap<LogoQuery, (Age, Image<[u8; 4], 1>)>>,
     logo_service: LogoService,
 }
 
@@ -34,7 +34,7 @@ impl ImageLogoServiceImpl {
 const CACHE_CAPACITY: usize = 10;
 
 impl ImageLogoServiceTrait for ImageLogoServiceImpl {
-    fn get_logo(&self, query: LogoQuery) -> GenericImage<[u8; 4], 1> {
+    fn get_logo(&self, query: LogoQuery) -> Image<[u8; 4], 1> {
         let lock = self.cache.read().unwrap();
         if let Some((_, cached)) = lock.get(&query) {
             return cached.clone();
@@ -93,7 +93,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 isize.1.try_into().expect("Input image has height=0"),
             );
 
-            GenericImage::<[u8; 4], 1>::new_arc(
+            Image::<[u8; 4], 1>::new_arc(
                 rgba.into_vec()
                     .chunks_exact(4)
                     .map(|x| [x[0], x[1], x[2], x[3]])
@@ -144,7 +144,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 .try_into()
                 .expect("Generated Image has height=0");
 
-            GenericImage::<[u8; 4], 1>::new_arc(
+            Image::<[u8; 4], 1>::new_arc(
                 pixmap
                     .take()
                     .chunks_exact(4)
@@ -158,7 +158,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
             let height = query.height.get();
 
             warn!("The logo is not loadable. Therefore a red surface of the size {width}x{height} was returned");
-            GenericImage::<[u8; 4], 1>::new_arc(
+            Image::<[u8; 4], 1>::new_arc(
                 (0..(width * height)).map(|_| [255, 0, 0, 255]).collect(),
                 NonZeroU32::from(*query.width),
                 NonZeroU32::from(*query.height),
@@ -236,7 +236,7 @@ mod tests {
         assert_eq!(&logo.buffer()[last_row_col - 100], &[0, 0, 0, 0]);
     }
 
-    fn get_logo(s: LogoService) -> GenericImage<[u8; 4], 1> {
+    fn get_logo(s: LogoService) -> Image<[u8; 4], 1> {
         let service = ImageLogoServiceImpl::new(s);
         let query = LogoQuery {
             width: 200.try_into().unwrap(),

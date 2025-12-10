@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use pilatus::LogoQuery;
 
-use super::GenericImage;
+use image_buffer::Image;
 
 pub trait ImageLogoServiceTrait {
-    fn get_logo(&self, query: LogoQuery) -> GenericImage<[u8; 4], 1>;
+    fn get_logo(&self, query: LogoQuery) -> Image<[u8; 4], 1>;
 }
 
 #[derive(Clone)]
