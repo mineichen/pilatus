@@ -12,9 +12,8 @@ members = [
     "pilatus-rt",
     "examples/stream",
     "examples/tick",
-    "examples/tick-app", 
-    "examples/tick-egui", 
-    "examples/tick-rt", 
+    "examples/tick-app",
+    "examples/tick-rt",
 ]
 
 [workspace.dependencies]

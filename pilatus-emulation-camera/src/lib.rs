@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use pilatus::{Name, device::DeviceId, unstable_pub};
 use serde::{Deserialize, Serialize};
@@ -81,11 +80,11 @@ unstable_pub!(
 );
 
 #[cfg(test)]
+#[cfg(feature = "impex")]
 mod tests {
     use super::*;
 
     #[test]
-    #[cfg(feature = "impex")]
     fn parse_params() {
         let params = Params::default();
         let serialized = serde_json::to_string(&params).unwrap();
