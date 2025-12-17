@@ -211,4 +211,19 @@ mod tests {
             vec!(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3)
         );
     }
+
+    #[test]
+    #[cfg(feature = "image")]
+    fn create_image_from_zero_width_fails() {
+        let image: ::image::ImageBuffer<image::Luma<u8>, Vec<u8>> =
+            image::ImageBuffer::from_raw(0, 1, vec![]).unwrap();
+        DynamicImage::from_image(image.into()).unwrap_err();
+    }
+    #[test]
+    #[cfg(feature = "image")]
+    fn create_image_from_zero_height_fails() {
+        let image: ::image::ImageBuffer<image::Luma<u8>, Vec<u8>> =
+            image::ImageBuffer::from_raw(1, 0, vec![]).unwrap();
+        DynamicImage::from_image(image.into()).unwrap_err();
+    }
 }

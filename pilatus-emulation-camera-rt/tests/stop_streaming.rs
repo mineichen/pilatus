@@ -1,5 +1,3 @@
-use imbuf::DynamicImageChannel;
-
 #[cfg(feature = "integration")]
 #[tracing_test::traced_test]
 #[test]
@@ -8,6 +6,7 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
 
     use futures::StreamExt;
     use image::{ImageBuffer, Rgb};
+    use imbuf::DynamicImageChannel;
     use pilatus::device::ActorSystem;
     use pilatus::{DeviceConfig, Recipe, Recipes};
     use pilatus_engineering::image::{DynamicImage, SubscribeDynamicImageMessage};
