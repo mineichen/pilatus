@@ -53,6 +53,7 @@ fn record_integration() -> anyhow::Result<()> {
         image.save(player_collection_path.join(format!("imgage{i}.png")))?;
     }
     Runtime::with_root(dir.path())
+        .register(pilatus_engineering_rt::register)
         .register(pilatus_emulation_camera_rt::register)
         .configure()
         .run_until_finished(async {

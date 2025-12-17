@@ -6,7 +6,7 @@
 use std::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
-    num::NonZeroU32,
+    num::{NonZeroU32, NonZeroU8},
     sync::Arc,
 };
 
@@ -18,11 +18,12 @@ use futures::{
     stream::BoxStream,
     Future, SinkExt, StreamExt,
 };
+use imbuf::{DynamicImageChannel, DynamicSize, ImageChannel, PixelTypePrimitive};
 use jpeg_encoder::{ColorType, Encoder};
 use pilatus::device::{ActorError, ActorMessage, ActorSystem, DeviceId};
 use pilatus_engineering::image::{
     BroadcastImage, DynamicImage, Image, ImageWithMeta, LocalizableBroadcastImage, LumaImage,
-    PackedGenericImage, RgbImage, StreamImageError, SubscribeImageMessage, SubscribeImageOk,
+    Rgb8Image, StreamImageError, SubscribeImageMessage, SubscribeImageOk,
     SubscribeLocalizableImageMessage, SubscribeLocalizableImageOk,
 };
 use serde::Serialize;
@@ -127,28 +128,39 @@ fn encode_dynamic_raw_image<T: Serialize>(
     image: DynamicImage,
     meta: T,
 ) -> anyhow::Result<Vec<u8>> {
-    let dims = image.dimensions();
-    let (width, height) = dims;
-    let buf =
-        prepare_dynamic_image_buf(flag, meta, width.get() as usize * height.get() as usize / 2)?;
-    match image {
-        DynamicImage::Luma8(i) => encode_raw(buf, &i.buffers(), DataType::U8, dims),
-        DynamicImage::Luma16(i) => {
-            encode_raw(buf, &[bytes_from_u16(i.buffer())?], DataType::U16, dims)
+    fn encode_typed<TMeta: Serialize, TPixel: PixelTypePrimitive>(
+        x: &ImageChannel<DynamicSize<TPixel>>,
+        channel_len: usize,
+        flag: u8,
+        meta: TMeta,
+    ) -> anyhow::Result<Vec<u8>> {
+        let (width, height) = x.dimensions();
+        let pixel_elements = x.pixel_elements();
+        //let pixel_len = x.width().get() * x.height().get();
+        let buf = prepare_dynamic_image_buf(
+            flag,
+            meta,
+            width.get() as usize * height.get() as usize / 2 * pixel_elements.get() as usize,
+        )?;
+
+        match (channel_len, pixel_elements.get()) {
+            (3, 1) | (1, 1) => encode_raw(
+                buf,
+                x.buffer_flat_bytes(),
+                DataType::U8,
+                (width, height),
+                pixel_elements,
+            ),
+
+            _ => anyhow::bail!("Unsupported image format: {:?}", x),
         }
-        DynamicImage::Rgb8Planar(i) => encode_raw(buf, &i.buffers(), DataType::U8, dims),
+    }
+
+    match &image.first() {
+        &imbuf::DynamicImageChannel::U8(x) => encode_typed(x, image.len(), flag, meta),
+        &imbuf::DynamicImageChannel::U16(x) => encode_typed(x, image.len(), flag, meta),
         _ => Err(anyhow!("Unsupported image format: {:?}", image)),
     }
-}
-
-fn bytes_from_u16(from: &[u16]) -> anyhow::Result<&[u8]> {
-    if cfg!(target_endian = "big") {
-        return Err(anyhow::anyhow!("Not implemented on big endian platforms"));
-    }
-
-    let len = from.len().checked_mul(2).unwrap();
-    let ptr: *const u8 = from.as_ptr().cast();
-    Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
 }
 
 fn encode_dynamic_jpeg_image<T: Serialize>(
@@ -156,31 +168,32 @@ fn encode_dynamic_jpeg_image<T: Serialize>(
     image: DynamicImage,
     meta: T,
 ) -> anyhow::Result<Vec<u8>> {
-    let dims = image.dimensions();
+    let first = image.first();
+    let dims = first.dimensions();
+    let pixel_elements = first.pixel_elements();
+
     let buf = prepare_dynamic_image_buf(
         flag,
         meta,
         dims.0.get() as usize * dims.1.get() as usize / 2,
     )?;
-    match image {
-        DynamicImage::Luma8(i) => encode_jpeg(buf, i.buffer(), ColorType::Luma, dims),
-        DynamicImage::Luma16(i) => encode_jpeg(
-            buf,
-            &i.buffer()
-                .iter()
-                .map(|x| (x >> 8) as u8)
-                .collect::<Vec<_>>(),
-            ColorType::Luma,
-            dims,
-        ),
-        DynamicImage::Rgb8Planar(i) => {
-            let packed: PackedGenericImage = Image::<[u8; 3], 1>::from_planar_image(&i);
-            encode_jpeg(
-                buf,
-                pilatus_engineering::image::InterleavedRgbImage::flat_buffer(&packed),
-                ColorType::Rgb,
-                dims,
-            )
+    match (first, image.len(), pixel_elements.get()) {
+        (DynamicImageChannel::U8(i), 1, 1) => {
+            encode_jpeg(buf, i.buffer_flat(), ColorType::Luma, dims)
+        }
+        // This code was once active, but is wrong... We should just say its not supported
+        // (DynamicImageChannel::U16(i), 1, 1) => {
+        //     let mut_buf = i
+        //         .buffer_flat()
+        //         .iter()
+        //         .map(|x| (x >> 8) as u8)
+        //         .collect::<Vec<_>>();
+        //     encode_jpeg(buf, &mut_buf, ColorType::Luma, dims)
+        // }
+        (DynamicImageChannel::U8(_typed), 3, 1) => {
+            let image = Image::<u8, 3>::try_from(image).map_err(|e| anyhow!("{e:?}"))?;
+            let interleaved = Image::<[u8; 3], 1>::from_planar_image(&image);
+            encode_jpeg(buf, interleaved.buffer_flat(), ColorType::Rgb, dims)
         }
         _ => Err(anyhow!("Unsupported image format: {:?}", image)),
     }
@@ -195,10 +208,10 @@ impl<T: Serialize> StreamableImage for (Arc<LumaImage>, T) {
     }
 }
 
-pub struct RgbImageWithMetadata<T>(pub Arc<dyn RgbImage + Send + Sync>, pub T);
+pub struct RgbImageWithMetadata<T>(pub Rgb8Image, pub T);
 
 impl<T> RgbImageWithMetadata<T> {
-    pub fn new(img: Arc<dyn RgbImage + Send + Sync>, meta: T) -> Self {
+    pub fn new(img: Rgb8Image, meta: T) -> Self {
         Self(img, meta)
     }
     pub fn get_meta(&self) -> &T {
@@ -216,9 +229,9 @@ impl<T: Debug> Debug for RgbImageWithMetadata<T> {
 
 impl<T: Serialize> StreamableImage for RgbImageWithMetadata<T> {
     fn encode(self) -> anyhow::Result<Vec<u8>> {
-        let dims = self.0.size();
-        let packed = self.0.into_packed();
-        encode_legacy(packed.flat_buffer(), ColorType::Rgb, dims, |b| {
+        let dims = self.0.dimensions();
+        let packed = self.0.into_interleaved();
+        encode_legacy(packed.buffer_flat(), ColorType::Rgb, dims, |b| {
             serde_json::to_writer(b, &self.1).map_err(Into::into)
         })
     }
@@ -263,22 +276,20 @@ enum DataType {
     U16,
 }
 
+// Currently only supports planar images
 fn encode_raw(
     mut buf: Vec<u8>,
-    channels: &[&[u8]],
+    flat_buffer: &[u8],
     pixel_kind: DataType,
     (width, height): (NonZeroU32, NonZeroU32),
+    pixel_size: NonZeroU8,
 ) -> anyhow::Result<Vec<u8>> {
     // https://stackoverflow.com/questions/45213511/formula-for-memory-alignment
     let unaligned_pixel_start = buf.len() + 4;
     let alignment_bytes = (((unaligned_pixel_start + 7) & !7) - unaligned_pixel_start) as u32;
 
     const HEADER_BYTE_SIZE: u32 = 8;
-    anyhow::ensure!(
-        channels.iter().all(|c| c.len() <= u32::MAX as usize),
-        "Too many channels"
-    );
-    let image_total_buf_len: u32 = channels.iter().map(|c| c.len() as u32).sum();
+    let image_total_buf_len: u32 = flat_buffer.len().try_into()?;
     buf.extend_from_slice(
         &(image_total_buf_len + HEADER_BYTE_SIZE + alignment_bytes).to_le_bytes(),
     );
@@ -286,11 +297,10 @@ fn encode_raw(
     buf.extend((0..alignment_bytes).map(|_| 0)); // Guarantee 8Byte aligned
     buf.push(0u8); // reserved
     buf.push(pixel_kind as u8);
-    buf.put_slice(&u16::try_from(channels.len())?.to_le_bytes());
+    buf.put_slice(&(u16::from(pixel_size.get())).to_le_bytes());
     buf.put_slice(&width.get().to_le_bytes());
-    for channel in channels {
-        buf.put_slice(channel);
-    }
+    buf.put_slice(flat_buffer);
+
     trace!(
         "Encoded raw: {:?}, width: {width}, height: {height}",
         &buf[0..buf.len().min(10)]

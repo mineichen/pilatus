@@ -7,6 +7,7 @@ use pilatus_axum::{
     DeviceJsonError, ServiceCollectionExtensions,
     extract::{InjectRegistered, Path, Query},
 };
+use pilatus_engineering::image::{FromImage, ImageEncoderTrait};
 
 use crate::DeviceState;
 
@@ -36,7 +37,8 @@ impl DeviceState {
                 .join(format!("{}.png", msg.image_name.as_str())),
         )
         .expect("Name is always a valid path");
-        let encoded_image = pilatus::execute_blocking(move || msg.image.encode_png())
+        let encoder = self.encoder.clone();
+        let encoded_image = pilatus::execute_blocking(move || encoder.encode(msg.image))
             .await
             .map_err(ActorError::custom)?;
         self.file_service
@@ -56,8 +58,8 @@ async fn upload_image_to_collection(
         .await
         .map_err(ActorError::custom)?;
 
-    let image: pilatus_engineering::image::DynamicImage =
-        decode_image.try_into().map_err(ActorError::custom)?;
+    let image = pilatus_engineering::image::DynamicImage::from_image(decode_image)
+        .map_err(ActorError::custom)?;
 
     Ok(actor_system
         .ask(

@@ -12,7 +12,7 @@ image.workspace = true
 minfac.workspace = true
 pilatus = { workspace = true, features = ["minfac"] }
 pilatus-emulation-camera = { workspace = true, features = ["unstable"] }
-pilatus-engineering = { path = "../pilatus-engineering", features = ["image-algorithm"] }
+pilatus-engineering = { path = "../pilatus-engineering", features = ["image"] }
 pilatus-axum.workspace = true
 serde.workspace = true
 tokio = { workspace = true, features = ["sync"] }
@@ -24,11 +24,13 @@ tracing-test = { version = "0.2", features = ["no-env-filter"] }
 tempfile = { version = "3", optional = true }
 serde_json = { version = "1", optional = true }
 pilatus-rt = { workspace = true, features = ["unstable"], optional = true }
-pilatus-axum-rt = { workspace = true, optional = true }
+pilatus-axum-rt = { workspace = true, features = ["engineering"], optional = true }
+pilatus-engineering-rt = { workspace = true, optional = true }
 reqwest = { version = "0.12", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["sync", "macros"]}
+imbuf.workspace = true
 
 [features]
-integration = ["tempfile", "serde_json", "pilatus-rt", "pilatus-axum-rt", "reqwest"]
+integration = ["tempfile", "serde_json", "pilatus-rt", "pilatus-axum-rt", "pilatus-engineering-rt", "reqwest"]

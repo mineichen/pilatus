@@ -68,6 +68,7 @@ fn upload_zip() -> anyhow::Result<()> {
 
     let rt = Runtime::with_root(dir.path())
         .register(pilatus_axum_rt::register)
+        .register(pilatus_engineering_rt::register)
         .register(register_test_services)
         .configure();
 

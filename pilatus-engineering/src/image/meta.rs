@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
+use imbuf::IncompatibleImageError;
 use serde::{Deserialize, Serialize};
 
 use super::{StableHash, UnsupportedImageError};
@@ -41,7 +42,7 @@ impl<T> ImageWithMeta<T> {
         }
     }
 
-    #[deprecated = "Image with Meta got plugins which should also be forwarded. Dont destruct this object, but instead modify it"]
+    #[deprecated = "Image with Meta got extensions which should also be forwarded. Dont destruct this object, but instead modify it"]
     pub fn with_meta_and_others(
         image: T,
         meta: ImageMeta,
@@ -96,13 +97,10 @@ impl ImageWithMeta<super::DynamicImage> {
     pub fn with_format_by_key<'a: 'b, 'b, T>(
         &'a self,
         search_key: &'b ImageKey,
-    ) -> Result<&'a T, ExtractWithFormatError<'b>>
+    ) -> Result<T, ExtractWithFormatError<'b>>
     where
         T: Debug,
-        for<'c> &'c T: TryFrom<
-            &'c super::DynamicImage,
-            Error = UnsupportedImageError<&'c super::DynamicImage>,
-        >,
+        for<'c> T: TryFrom<&'c super::DynamicImage, Error = IncompatibleImageError>,
     {
         let x = self.by_key(search_key)?;
         x.try_into().map_err(ExtractWithFormatError::Unsupported)
@@ -113,7 +111,7 @@ pub enum ExtractWithFormatError<'a> {
     #[error("{0:?}")]
     UnknownKey(UnknownKeyError<'a, super::DynamicImage>),
     #[error("{0:?}")]
-    Unsupported(UnsupportedImageError<&'a super::DynamicImage>),
+    Unsupported(IncompatibleImageError),
 }
 
 impl<'a> From<UnknownKeyError<'a, super::DynamicImage>> for ExtractWithFormatError<'a> {
@@ -128,9 +126,10 @@ impl<'a> From<ExtractWithFormatError<'a>> for (super::DynamicImage, anyhow::Erro
         match val {
             ExtractWithFormatError::UnknownKey(x) => x.into(),
             ExtractWithFormatError::Unsupported(x) => {
-                let img = x.0.clone();
-                let unsup = UnsupportedImageError((), x.1);
-                (img, anyhow::Error::from(unsup))
+                let err = format!("{:?}", x);
+
+                let unsup = UnsupportedImageError((), err.into());
+                (x.image.clone(), anyhow::Error::from(unsup))
             }
         }
     }
@@ -185,7 +184,7 @@ pub struct ImageMeta {
 mod tests {
     use std::num::NonZeroU32;
 
-    use image_buffer::Image;
+    use imbuf::Image;
 
     use crate::image::DynamicImage;
 
@@ -196,7 +195,7 @@ mod tests {
         let image = Image::<u16, 1>::new_vec(vec![1], NonZeroU32::MIN, NonZeroU32::MIN);
         let dynamic: DynamicImage = image.into();
         let meta = ImageWithMeta::with_meta(dynamic, ImageMeta { hash: None });
-        let back: &Image<u16, 1> = meta.with_format_by_key(&ImageKey::unspecified()).unwrap();
+        let back: Image<u16, 1> = meta.with_format_by_key(&ImageKey::unspecified()).unwrap();
         assert_eq!((NonZeroU32::MIN, NonZeroU32::MIN), back.dimensions());
     }
 }

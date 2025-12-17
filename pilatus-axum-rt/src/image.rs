@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use axum::{extract::Query, response::sse::Event};
 use futures::{stream::BoxStream, Stream, StreamExt};
-use image::{ImageEncoder, ImageResult};
+use image::ImageResult;
 use minfac::ServiceCollection;
 use pilatus::device::{ActorSystem, DeviceId, DynamicIdentifier};
 use pilatus_axum::{
@@ -13,8 +13,9 @@ use pilatus_axum::{
     AppendHeaders, Html, IntoResponse, ServiceCollectionExtensions,
 };
 use pilatus_engineering::image::{
-    DynamicImage, GetImageMessage, ImageWithMeta, LumaImage, StreamImageError,
-    SubscribeDynamicImageMessage, SubscribeImageMessage, SubscribeLocalizableImageMessage,
+    DynamicImage, GetImageMessage, ImageEncoder, ImageEncoderTrait, ImageWithMeta, LumaImage,
+    StreamImageError, SubscribeDynamicImageMessage, SubscribeImageMessage,
+    SubscribeLocalizableImageMessage,
 };
 use tracing::{debug, warn};
 
@@ -71,7 +72,9 @@ async fn single_luma_image_handler(
         let dims = img.dimensions();
         let mut buf = Vec::with_capacity(dims.0.get() as usize * dims.1.get() as usize / 4);
         let codec = image::codecs::png::PngEncoder::new(&mut buf);
-        codec.write_image(
+
+        image::ImageEncoder::write_image(
+            codec,
             img.buffer(),
             dims.0.get(),
             dims.1.get(),
@@ -92,6 +95,7 @@ async fn single_luma_image_handler(
 
 async fn single_dynamic_image_handler(
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
+    InjectRegistered(image_encoder): InjectRegistered<ImageEncoder>,
     Query(id): Query<DynamicIdentifier>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let img = actor_system
@@ -104,7 +108,7 @@ async fn single_dynamic_image_handler(
         .map_err(|_| StatusCode::BAD_REQUEST)?
         .image;
     pilatus::execute_blocking(move || {
-        let buf = img.encode_png()?;
+        let buf = image_encoder.encode(img)?;
         let name = chrono::Utc::now().format("%Y-%m-%d_%H-%M-%S-%f");
         anyhow::Ok((
             AppendHeaders([(

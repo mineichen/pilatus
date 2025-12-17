@@ -12,7 +12,7 @@ chrono = { workspace = true, features = ["serde"] }
 futures.workspace = true
 itertools = "0.14"
 minfac.workspace = true
-pilatus = { workspace = true, features = ["minfac"] }
+pilatus = { workspace = true, features = ["minfac", "tokio"] }
 pin-project = "1.0.10"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

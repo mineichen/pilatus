@@ -1,6 +1,7 @@
 use std::{num::NonZeroU32, sync::Arc, time::SystemTime};
 
 use super::DeviceState;
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use futures::{StreamExt, TryStreamExt};
 use minfac::ServiceCollection;
@@ -13,8 +14,10 @@ use pilatus_axum::{
     extract::{InjectRegistered, Json, Path},
     http::StatusCode,
 };
-use pilatus_engineering::camera::RecordMessage;
-use pilatus_engineering::image::{ImageKey, ImageWithMeta, SubscribeDynamicImageMessage};
+use pilatus_engineering::image::{
+    ImageEncoderTrait, ImageKey, ImageWithMeta, SubscribeDynamicImageMessage,
+};
+use pilatus_engineering::{camera::RecordMessage, image::ImageEncoder};
 use serde::Deserialize;
 use tracing::debug;
 
@@ -38,11 +41,12 @@ impl DeviceState {
             .await
             .map_actor_error(|_| anyhow::anyhow!("unknown error"));
         let file_service = self.file_service.clone();
+        let encoder = self.encoder.clone();
         Step2(async move {
             let encoded_stream = images?
                 .map(|x| async {
                     let time = std::time::SystemTime::now();
-                    let encoded = encode_all(x?).await?;
+                    let encoded = encode_all(x?, encoder.clone()).await?;
                     anyhow::Ok((time, encoded))
                 })
                 .buffer_unordered(8);
@@ -78,12 +82,14 @@ impl DeviceState {
 
 pub(crate) async fn encode_all(
     all: ImageWithMeta<pilatus_engineering::image::DynamicImage>,
-) -> anyhow::Result<Vec<(ImageKey, Vec<u8>)>> {
+    encoder: ImageEncoder,
+) -> anyhow::Result<Vec<(ImageKey, Bytes)>> {
     debug!("Before encode");
     let r = futures::stream::iter(all.into_iter())
-        .then(|(key, img)| async move {
+        .then(|(key, img)| async {
+            let encoder = encoder.clone();
             tokio::task::spawn_blocking(move || {
-                let i = img.encode_png()?;
+                let i = encoder.encode(img)?;
                 anyhow::Ok((key, i))
             })
             .await?
@@ -95,7 +101,7 @@ pub(crate) async fn encode_all(
 }
 
 pub async fn save_encoded(
-    (time, images): (SystemTime, Vec<(ImageKey, Vec<u8>)>),
+    (time, images): (SystemTime, Vec<(ImageKey, Bytes)>),
     file_service: Arc<FileService>,
     collection_dir: &std::path::Path,
 ) -> anyhow::Result<()> {

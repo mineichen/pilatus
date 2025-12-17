@@ -10,20 +10,25 @@ use pilatus::{
     device::{ActorSystem, DeviceContext, DeviceResult, DeviceValidationContext},
     prelude::*,
 };
-use pilatus_engineering::image::{DynamicImage, ImageWithMeta, StreamImageError};
+use pilatus_engineering::image::{DynamicImage, ImageEncoder, ImageWithMeta, StreamImageError};
 use tracing::warn;
 
 use crate::publish_frame::PublisherState;
 use pilatus_emulation_camera::{EmulationMode, Params};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
-    c.with::<(Registered<ActorSystem>, Registered<FileServiceBuilder>)>()
-        .register_device(DEVICE_TYPE, validator, device);
+    c.with::<(
+        Registered<ActorSystem>,
+        Registered<FileServiceBuilder>,
+        Registered<ImageEncoder>,
+    )>()
+    .register_device(DEVICE_TYPE, validator, device);
 }
 
 pub const DEVICE_TYPE: &str = "engineering-emulation-camera";
 
 pub(super) struct DeviceState {
+    pub(crate) encoder: ImageEncoder,
     pub(crate) paused: bool,
     pub(crate) stream: tokio::sync::broadcast::Sender<
         Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
@@ -42,7 +47,7 @@ async fn validator(ctx: DeviceValidationContext<'_>) -> Result<Params, UpdatePar
 async fn device(
     ctx: DeviceContext,
     params: Params,
-    (actor_system, file_service_builder): (ActorSystem, FileServiceBuilder),
+    (actor_system, file_service_builder, encoder): (ActorSystem, FileServiceBuilder, ImageEncoder),
 ) -> DeviceResult {
     let id = ctx.id;
     let system = actor_system
@@ -80,6 +85,7 @@ async fn device(
                     paused: false,
                     actor_system,
                     recording_sender,
+                    encoder,
                 })
                 .await;
         },

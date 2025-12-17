@@ -11,6 +11,7 @@ async-stream = "0.3"
 axum = { version = "0.8", features = ["ws"] }
 bytes.workspace = true
 futures.workspace = true
+imbuf.workspace = true
 jpeg-encoder = { version = "0.6", features = ["simd"], optional = true}
 minfac.workspace = true
 pilatus = { workspace = true, features = ["tokio"]}

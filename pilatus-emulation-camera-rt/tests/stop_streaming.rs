@@ -1,3 +1,5 @@
+use imbuf::DynamicImageChannel;
+
 #[cfg(feature = "integration")]
 #[tracing_test::traced_test]
 #[test]
@@ -19,10 +21,11 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
     }
 
     fn pixel_color(image: &DynamicImage) -> [u8; 3] {
-        match image {
-            DynamicImage::Rgb8Planar(rgb) => {
-                let [r, g, b] = rgb.buffers();
-                [r[0], g[0], b[0]]
+        let first = image.first();
+        match (first, image.len(), first.pixel_elements().get()) {
+            (DynamicImageChannel::U8(typed), 1, 3) => {
+                let buf = typed.buffer_flat();
+                [buf[0], buf[1], buf[2]]
             }
             other => panic!("unexpected image format: {other:?}"),
         }
@@ -57,6 +60,7 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
 
     let runtime = Runtime::with_root(tmp.path())
         .register(pilatus_emulation_camera_rt::register)
+        .register(pilatus_engineering_rt::register)
         .configure();
 
     let actor_system: ActorSystem = runtime.provider.get().unwrap();

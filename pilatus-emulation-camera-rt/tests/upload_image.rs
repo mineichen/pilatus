@@ -40,6 +40,7 @@ fn upload_image_to_collection() -> anyhow::Result<()> {
 
     let runtime = Runtime::with_root(tmp.path())
         .register(pilatus_emulation_camera_rt::register)
+        .register(pilatus_engineering_rt::register)
         .register(pilatus_axum_rt::register)
         .configure();
 

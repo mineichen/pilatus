@@ -50,6 +50,7 @@ impl DeviceState {
                     .as_ref()
                     .map(|x| x.collection_path().to_path_buf());
                 let file_service = self.file_service.clone();
+                let encoder = self.encoder.clone();
 
                 Ok(self
                     .actor_system
@@ -58,19 +59,21 @@ impl DeviceState {
                     .map(move |x| {
                         let collection_dir = collection_dir.clone();
                         let file_service = file_service.clone();
+                        let encoder = encoder.clone();
                         async move {
                             let ok = x?;
                             let time = std::time::SystemTime::now();
                             if let Some(collection_dir) = collection_dir
-                                && let Err(e) = super::record::encode_all(ok.clone())
-                                    .and_then(|x| {
-                                        super::record::save_encoded(
-                                            (time, x),
-                                            file_service,
-                                            &collection_dir,
-                                        )
-                                    })
-                                    .await
+                                && let Err(e) =
+                                    super::record::encode_all(ok.clone(), encoder.clone())
+                                        .and_then(|x| {
+                                            super::record::save_encoded(
+                                                (time, x),
+                                                file_service,
+                                                &collection_dir,
+                                            )
+                                        })
+                                        .await
                             {
                                 warn!("Couldn't save streaming image {e}.");
                             }

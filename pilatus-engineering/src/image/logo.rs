@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use pilatus::LogoQuery;
 
-use image_buffer::Image;
+use imbuf::Image;
 
 pub trait ImageLogoServiceTrait {
     fn get_logo(&self, query: LogoQuery) -> Image<[u8; 4], 1>;

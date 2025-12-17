@@ -4,11 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bytes.workspace = true
 minfac.workspace = true
 pilatus.workspace = true
 pilatus-engineering.workspace = true
-image.workspace = true                    # Must remain an internal dependency
+image.workspace = true # Must remain an internal dependency
+imbuf.workspace = true 
 resvg = { version = "0.45.0" }
+thiserror.workspace = true
 tracing.workspace = true
 
 # Dev dependencies cannot be optonal
