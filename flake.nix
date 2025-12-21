@@ -34,12 +34,18 @@
           pkgs.mold
           pkgs.bashInteractive
           pkgs.openssl
+          pkgs.gcc
+          pkgs.binutils
         ];
         
         # Helper function to create shell scripts with error handling
+        # Sets up common build environment (gcc, binutils, mold, pkg-config, openssl)
         writeShellScriptWithError = name: script:
           toString (pkgs.writeShellScript name ''
             set -e
+            export PATH="${pkgs.gcc}/bin:${pkgs.binutils}/bin:${pkgs.mold}/bin:${pkgs.pkg-config}/bin"
+            export LD_LIBRARY_PATH="${pkgs.openssl.out}/lib"
+            export PKG_CONFIG_PATH="${pkgs.openssl.out}/lib/pkgconfig"
             ${script}
           '');
       in {
@@ -84,6 +90,7 @@
         apps.test = {
           type = "app";
           program = writeShellScriptWithError "test" ''
+            export PATH="${stableToolchain}/bin:$PATH"
             cargo test
           '';
         };
@@ -91,6 +98,7 @@
         apps.test-all-features = {
           type = "app";
           program = writeShellScriptWithError "test-all-features" ''
+            export PATH="${stableToolchain}/bin:$PATH"
             cargo test --all-features
           '';
         };
@@ -99,7 +107,6 @@
           type = "app";
           program = writeShellScriptWithError "miri-test" ''
             export PATH="${nightlyToolchain}/bin:$PATH"
-            export LD_LIBRARY_PATH="${pkgs.openssl.out}/lib"
             cargo miri setup
             cargo miri test miri
           '';
@@ -108,7 +115,7 @@
         apps.build-book = {
           type = "app";
           program = writeShellScriptWithError "build-book" ''
-            export PATH="${pkgs.mdbook}/bin:$PATH"
+            export PATH="${pkgs.mdbook}/bin"
             cd book
             mdbook build
           '';

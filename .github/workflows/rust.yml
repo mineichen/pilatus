@@ -17,9 +17,12 @@ jobs:
       
       - uses: DeterminateSystems/nix-installer-action@main
       
-      - uses: nix-community/cache-nix-action@v1
+      - uses: actions/cache@v4
         with:
+          path: /nix
           key: ${{ runner.os }}-nix-${{ hashFiles('flake.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-nix-
       
       - name: Test with minimal features
         run: nix run .#test
@@ -34,9 +37,12 @@ jobs:
       
       - uses: DeterminateSystems/nix-installer-action@main
       
-      - uses: nix-community/cache-nix-action@v1
+      - uses: actions/cache@v4
         with:
+          path: /nix
           key: ${{ runner.os }}-nix-${{ hashFiles('flake.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-nix-
       
       - name: Run Miri tests
         run: nix run .#miri-test
@@ -53,9 +59,12 @@ jobs:
       
       - uses: DeterminateSystems/nix-installer-action@main
       
-      - uses: nix-community/cache-nix-action@v1
+      - uses: actions/cache@v4
         with:
+          path: /nix
           key: ${{ runner.os }}-nix-${{ hashFiles('flake.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-nix-
       
       - name: Build book
         run: nix run .#build-book
