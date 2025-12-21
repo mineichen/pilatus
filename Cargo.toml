@@ -45,5 +45,5 @@ tokio = "1"
 tracing = "0.1"
 uuid = "1"
 
-[patch."https://github.com/mineichen/image-buffer.git"]
-imbuf = { path = "../image-buffer" }
+# [patch."https://github.com/mineichen/image-buffer.git"]
+# imbuf = { path = "../image-buffer" }

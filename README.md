@@ -1,6 +1,8 @@
 # Pilatus Framework
 A modular, extendable application framework which is currently used for industrial and computervision projects. The core is not limited to engineering, but should suite other projects with autonomous configurable subsystems which interact with one another.
 
+📚 **[Read the Documentation](https://mineichen.github.io/pilatus/)**
+
 ## Features
 - Run asynchronous actors which communicate via message passing
 - Switch between different sets of actor configurations without restarting the application using the built in recipe management

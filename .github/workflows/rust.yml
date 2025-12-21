@@ -14,21 +14,60 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Use CI-Config
-        run: mv .cargo/config_ci.toml .cargo/config.toml
+      
+      - uses: DeterminateSystems/nix-installer-action@main
+      
+      - uses: nix-community/cache-nix-action@v1
+        with:
+          cache-on-failure: true
+      
       - name: Test with minimal features
-        run: cargo test
+        run: nix run .#test
+      
       - name: Test with all features
-        run: cargo test --all-features
+        run: nix run .#test-all-features
+
   test_miri:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust with Miri
-        run: |
-          rustup install nightly
-          rustup default nightly
-          rustup component add miri
-          cargo miri setup
+      
+      - uses: DeterminateSystems/nix-installer-action@main
+      
+      - uses: nix-community/cache-nix-action@v1
+        with:
+          cache-on-failure: true
+      
       - name: Run Miri tests
-        run: cargo miri test miri
+        run: nix run .#miri-test
+
+  build-book:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: DeterminateSystems/nix-installer-action@main
+      
+      - uses: nix-community/cache-nix-action@v1
+        with:
+          cache-on-failure: true
+      
+      - name: Build book
+        run: nix run .#build-book
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: target/book
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
