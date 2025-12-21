@@ -40,12 +40,13 @@
         
         # Helper function to create shell scripts with error handling
         # Sets up common build environment (gcc, binutils, mold, pkg-config, openssl)
+        # Note: PKG_CONFIG_PATH should be sufficient for openssl-sys to find OpenSSL
         writeShellScriptWithError = name: script:
           toString (pkgs.writeShellScript name ''
             set -e
             export PATH="${pkgs.gcc}/bin:${pkgs.binutils}/bin:${pkgs.mold}/bin:${pkgs.pkg-config}/bin"
             export LD_LIBRARY_PATH="${pkgs.openssl.out}/lib"
-            export PKG_CONFIG_PATH="${pkgs.openssl.out}/lib/pkgconfig"
+            export PKG_CONFIG_PATH="${pkgs.openssl.dev}/lib/pkgconfig"
             ${script}
           '');
       in {
@@ -107,6 +108,42 @@
           type = "app";
           program = writeShellScriptWithError "miri-test" ''
             export PATH="${nightlyToolchain}/bin:$PATH"
+            # Ensure cargo uses the nightly toolchain from PATH (not rustup)
+            unset RUSTUP_TOOLCHAIN
+            # nix run preserves the working directory, but ensure we're in project root
+            if [ ! -f "Cargo.toml" ]; then
+              # Try to find project root
+              while [ "$PWD" != "/" ] && [ ! -f "Cargo.toml" ]; do
+                cd ..
+              done
+              if [ ! -f "Cargo.toml" ]; then
+                echo "Error: Could not find Cargo.toml" >&2
+                exit 1
+              fi
+            fi
+            # Verify we're using nightly (using case-insensitive check without grep)
+            RUSTC_VERSION=$(rustc --version)
+            case "$RUSTC_VERSION" in
+              *nightly*) ;;
+              *) echo "Error: Not using nightly toolchain, got: $RUSTC_VERSION" >&2; exit 1;;
+            esac
+            # Verify cargo is also nightly
+            CARGO_VERSION=$(cargo --version)
+            case "$CARGO_VERSION" in
+              *nightly*) ;;
+              *) echo "Error: cargo is not nightly, got: $CARGO_VERSION" >&2; exit 1;;
+            esac
+            # Verify cargo-miri is available and comes from nightly
+            if ! command -v cargo-miri >/dev/null 2>&1; then
+              echo "Error: cargo-miri not found in PATH" >&2
+              exit 1
+            fi
+            # Verify cargo-miri is from the nightly toolchain we set in PATH
+            CARGO_MIRI_PATH=$(command -v cargo-miri)
+            case "$CARGO_MIRI_PATH" in
+              *nightly*) ;;
+              *) echo "Error: cargo-miri not from nightly toolchain, found at: $CARGO_MIRI_PATH" >&2; exit 1;;
+            esac
             cargo miri setup
             cargo miri test miri
           '';
