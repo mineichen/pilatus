@@ -18,13 +18,7 @@ jobs:
       
       - uses: DeterminateSystems/nix-installer-action@main
       
-      - uses: actions/cache@v4
-        id: nix-cache
-        with:
-          path: /nix/store
-          key: ${{ runner.os }}-nix-store-${{ hashFiles('flake.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-nix-store
+      - uses: DeterminateSystems/magic-nix-cache-action@main
       
       - name: Build all Nix dependencies
         # Build packages and fetch all dependencies to populate the Nix store
@@ -44,12 +38,7 @@ jobs:
       
       - uses: DeterminateSystems/nix-installer-action@main
       
-      - uses: actions/cache@v4
-        with:
-          path: /nix/store
-          key: ${{ runner.os }}-nix-store-${{ hashFiles('flake.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-nix-store
+      - uses: DeterminateSystems/magic-nix-cache-action@main
       
       - name: Test with minimal features
         run: nix run .#test
@@ -65,12 +54,7 @@ jobs:
       
       - uses: DeterminateSystems/nix-installer-action@main
       
-      - uses: actions/cache@v4
-        with:
-          path: /nix/store
-          key: ${{ runner.os }}-nix-store-${{ hashFiles('flake.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-nix-store
+      - uses: DeterminateSystems/magic-nix-cache-action@main
       
       - name: Run Miri tests
         run: nix run .#miri-test
@@ -88,12 +72,7 @@ jobs:
       
       - uses: DeterminateSystems/nix-installer-action@main
       
-      - uses: actions/cache@v4
-        with:
-          path: /nix/store
-          key: ${{ runner.os }}-nix-store-${{ hashFiles('flake.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-nix-store
+      - uses: DeterminateSystems/magic-nix-cache-action@main
       
       - name: Build book
         run: nix run .#build-book
