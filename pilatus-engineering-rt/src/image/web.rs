@@ -142,7 +142,7 @@ async fn image_viewer() -> Result<Html<String>, StatusCode> {
 
 #[cfg(not(debug_assertions))]
 async fn image_viewer() -> Html<&'static str> {
-    include_str!("../../../resources/image_viewer.html").into()
+    include_str!("../../resources/image_viewer.html").into()
 }
 
 async fn list_subscribe_devices(
