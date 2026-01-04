@@ -29,6 +29,8 @@ mod logo;
 mod message;
 mod meta;
 mod stable_hash;
+#[cfg(feature = "axum")]
+pub mod web;
 
 #[cfg(feature = "tokio")]
 pub use broadcaster::*;

@@ -1,11 +1,9 @@
-use std::{io::Cursor, num::NonZeroU8, sync::Arc};
+use std::{io::Cursor, sync::Arc};
 
 use image::ImageFormat;
-use imbuf::{DynamicImageChannel, Image, ImageChannel, LumaImage};
-use minfac::{Registered, ServiceCollection};
-use pilatus_engineering::image::{
-    DynamicImage, EncodeError, ImageEncoder, ImageEncoderTrait, Rgb8Image,
-};
+use imbuf::{DynamicImageChannel, Image};
+use minfac::ServiceCollection;
+use pilatus_engineering::image::{DynamicImage, EncodeError, ImageEncoder, ImageEncoderTrait};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.register(|| Arc::new(PngBackend {}))

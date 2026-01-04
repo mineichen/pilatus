@@ -54,6 +54,7 @@ fn record_integration() -> anyhow::Result<()> {
     }
     Runtime::with_root(dir.path())
         .register(pilatus_engineering_rt::register)
+        .register(pilatus_axum_rt::register)
         .register(pilatus_emulation_camera_rt::register)
         .configure()
         .run_until_finished(async {

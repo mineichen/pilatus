@@ -98,6 +98,7 @@
         devShells.miri = pkgs.mkShell {
           buildInputs = [
             nightlyToolchain
+            pkgs.cargo-udeps
           ] ++ commonBuildInputs;
 
           LD_LIBRARY_PATH = "${pkgs.openssl.out}/lib";

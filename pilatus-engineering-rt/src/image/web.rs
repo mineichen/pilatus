@@ -8,9 +8,11 @@ use pilatus::device::{ActorSystem, DeviceId, DynamicIdentifier};
 use pilatus_axum::{
     extract::{ws::WebSocketUpgrade, InjectRegistered, Json, Path},
     http::StatusCode,
-    image::{DefaultImageStreamer, ImageStreamer, LocalizableImageStreamer, StreamingImageFormat},
     sse::Sse,
     AppendHeaders, Html, IntoResponse, ServiceCollectionExtensions,
+};
+use pilatus_engineering::image::web::{
+    DefaultImageStreamer, ImageStreamer, LocalizableImageStreamer, StreamingImageFormat,
 };
 use pilatus_engineering::image::{
     DynamicImage, GetImageMessage, ImageEncoder, ImageEncoderTrait, ImageWithMeta, LumaImage,
@@ -20,6 +22,10 @@ use pilatus_engineering::image::{
 use tracing::{debug, warn};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
+    // Note: Web routes that use WebSocketUpgrade require WebSocketDropperService
+    // to be registered (typically by pilatus-axum-rt). If pilatus-engineering-rt
+    // is used without pilatus-axum-rt, the dependency checker will fail at build time.
+    // This is expected behavior - web routes should only be used with pilatus-axum-rt.
     #[rustfmt::skip]
     c.register_web("image", |x| x
         .http("", |m| m.get(single_dynamic_image_handler))
@@ -136,7 +142,7 @@ async fn image_viewer() -> Result<Html<String>, StatusCode> {
 
 #[cfg(not(debug_assertions))]
 async fn image_viewer() -> Html<&'static str> {
-    include_str!("../resources/image_viewer.html").into()
+    include_str!("../../../resources/image_viewer.html").into()
 }
 
 async fn list_subscribe_devices(

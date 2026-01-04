@@ -18,19 +18,26 @@ serde.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 tokio-stream = { version = "0.1", features = ["fs", "sync"] }
 tracing.workspace = true
-tracing-test = { version = "0.2", features = ["no-env-filter"] }
 
 # dev-dependencies cannot be optional
 tempfile = { version = "3", optional = true }
 serde_json = { version = "1", optional = true }
+pilatus-axum-rt = { workspace = true, optional = true }
+pilatus-engineering-rt = { workspace = true, optional = true, features = ["axum"] }
 pilatus-rt = { workspace = true, features = ["unstable"], optional = true }
-pilatus-axum-rt = { workspace = true, features = ["engineering"], optional = true }
-pilatus-engineering-rt = { workspace = true, optional = true }
 reqwest = { version = "0.12", optional = true }
 
 [dev-dependencies]
+tracing-test = { version = "0.2", features = ["no-env-filter"] }
 tokio = { workspace = true, features = ["sync", "macros"]}
 imbuf.workspace = true
 
 [features]
-integration = ["tempfile", "serde_json", "pilatus-rt", "pilatus-axum-rt", "pilatus-engineering-rt", "reqwest"]
+integration = [
+    "tempfile", 
+    "serde_json", 
+    "pilatus-rt", 
+    "pilatus-axum-rt", 
+    "pilatus-engineering-rt", 
+    "reqwest"
+]

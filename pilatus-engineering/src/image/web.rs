@@ -21,19 +21,20 @@ use futures::{
 use imbuf::{DynamicImageChannel, DynamicSize, ImageChannel, PixelTypePrimitive};
 use jpeg_encoder::{ColorType, Encoder};
 use pilatus::device::{ActorError, ActorMessage, ActorSystem, DeviceId};
-use pilatus_engineering::image::{
-    BroadcastImage, DynamicImage, Image, ImageWithMeta, LocalizableBroadcastImage, LumaImage,
-    Rgb8Image, StreamImageError, SubscribeImageMessage, SubscribeImageOk,
-    SubscribeLocalizableImageMessage, SubscribeLocalizableImageOk,
-};
-use serde::Serialize;
-use tracing::{debug, trace};
-
-use crate::{
+use pilatus_axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     http::StatusCode,
     IntoResponse,
 };
+use serde::Serialize;
+use tracing::{debug, trace};
+
+use super::{
+    BroadcastImage, DynamicImage, Image, ImageWithMeta, LocalizableBroadcastImage, LumaImage,
+    Rgb8Image, StreamImageError, SubscribeImageMessage, SubscribeImageOk,
+    SubscribeLocalizableImageMessage, SubscribeLocalizableImageOk,
+};
+
 pub trait StreamableImage: Sized {
     fn encode(self) -> anyhow::Result<Vec<u8>>;
 }

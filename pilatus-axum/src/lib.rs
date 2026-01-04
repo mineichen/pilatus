@@ -1,7 +1,5 @@
 mod abort;
 mod dependency_provider;
-#[cfg(feature = "engineering")]
-pub mod image;
 mod inject;
 mod into_response;
 mod minfac_extensions;
