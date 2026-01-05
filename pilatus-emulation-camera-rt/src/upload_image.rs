@@ -7,7 +7,7 @@ use pilatus_axum::{
     DeviceJsonError, ServiceCollectionExtensions,
     extract::{InjectRegistered, Path, Query},
 };
-use pilatus_engineering::image::{FromImage, ImageEncoderTrait};
+use pilatus_engineering::image::ImageEncoderTrait;
 
 use crate::DeviceState;
 
@@ -58,7 +58,7 @@ async fn upload_image_to_collection(
         .await
         .map_err(ActorError::custom)?;
 
-    let image = pilatus_engineering::image::DynamicImage::from_image(decode_image)
+    let image = pilatus_engineering::image::DynamicImage::try_from(decode_image)
         .map_err(ActorError::custom)?;
 
     Ok(actor_system

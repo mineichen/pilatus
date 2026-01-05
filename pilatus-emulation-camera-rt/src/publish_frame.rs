@@ -11,7 +11,7 @@ use pilatus::{
     RelativeDirectoryPath, TransactionError,
     device::{ActorMessage, HandlerResult, Step2, WeakUntypedActorMessageSender},
 };
-use pilatus_engineering::image::{DynamicImage as PilatusDynamicImage, FromImage, ImageWithMeta};
+use pilatus_engineering::image::{DynamicImage as PilatusDynamicImage, ImageWithMeta};
 use tracing::{debug, warn};
 
 use super::DeviceState;
@@ -172,7 +172,7 @@ impl PublisherState {
         let img =
             tokio::task::spawn_blocking(move || image::load_from_memory(&image_data)).await??;
 
-        let pilatus_image = PilatusDynamicImage::from_image(img)?;
+        let pilatus_image = PilatusDynamicImage::try_from(img)?;
         debug!(
             "Publish '{:?}': {:?}",
             &path.0.file_name().and_then(|x| x.to_str()).unwrap_or(""),

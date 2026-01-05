@@ -148,57 +148,6 @@ pub enum EncodeError {
 #[error("Unsupported format {1}")]
 pub struct UnsupportedImageError<TIn>(TIn, Cow<'static, str>);
 
-#[cfg(feature = "image")]
-pub trait FromImage: Sized {
-    fn from_image(value: image::DynamicImage) -> Result<Self, std::num::TryFromIntError>;
-}
-
-#[cfg(feature = "image")]
-impl FromImage for DynamicImage {
-    fn from_image(value: image::DynamicImage) -> Result<Self, std::num::TryFromIntError> {
-        use image::GenericImageView;
-
-        let (width, height) = value.dimensions();
-        let (width, height) = (width.try_into()?, height.try_into()?);
-        Ok(match value {
-            image::DynamicImage::ImageLuma8(x) => {
-                Image::<u8, 1>::new_vec(x.into_vec(), width, height).into()
-            }
-            image::DynamicImage::ImageLuma16(x) => {
-                Image::<u16, 1>::new_vec(x.into_vec(), width, height).into()
-            }
-            image::DynamicImage::ImageLumaA8(x) => {
-                Image::<[u8; 2], 1>::new_vec_flat(x.into_vec(), width, height).into()
-            }
-            image::DynamicImage::ImageLumaA16(x) => {
-                Image::<[u16; 2], 1>::new_vec_flat(x.into_vec(), width, height).into()
-            }
-            image::DynamicImage::ImageRgb8(x) => {
-                Image::<[u8; 3], 1>::new_vec_flat(x.into_vec(), width, height).into()
-            }
-            image::DynamicImage::ImageRgb16(x) => {
-                Image::<[u16; 3], 1>::new_vec_flat(x.into_vec(), width, height).into()
-            }
-            image::DynamicImage::ImageRgb32F(x) => {
-                Image::<[f32; 3], 1>::new_vec_flat(x.into_vec(), width, height).into()
-            }
-            image::DynamicImage::ImageRgba8(x) => {
-                Image::<[u8; 4], 1>::new_vec_flat(x.into_vec(), width, height).into()
-            }
-            image::DynamicImage::ImageRgba16(x) => {
-                Image::<[u16; 4], 1>::new_vec_flat(x.into_vec(), width, height).into()
-            }
-            image::DynamicImage::ImageRgba32F(x) => {
-                Image::<[f32; 4], 1>::new_vec_flat(x.into_vec(), width, height).into()
-            }
-            _ => {
-                tracing::error!("Unexhaustive Enum was extended... returning wrong error");
-                return Err(NonZeroU32::try_from(0).unwrap_err());
-            }
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,20 +161,5 @@ mod tests {
             packed.buffer_flat(),
             vec!(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3)
         );
-    }
-
-    #[test]
-    #[cfg(feature = "image")]
-    fn create_image_from_zero_width_fails() {
-        let image: ::image::ImageBuffer<image::Luma<u8>, Vec<u8>> =
-            image::ImageBuffer::from_raw(0, 1, vec![]).unwrap();
-        DynamicImage::from_image(image.into()).unwrap_err();
-    }
-    #[test]
-    #[cfg(feature = "image")]
-    fn create_image_from_zero_height_fails() {
-        let image: ::image::ImageBuffer<image::Luma<u8>, Vec<u8>> =
-            image::ImageBuffer::from_raw(1, 0, vec![]).unwrap();
-        DynamicImage::from_image(image.into()).unwrap_err();
     }
 }

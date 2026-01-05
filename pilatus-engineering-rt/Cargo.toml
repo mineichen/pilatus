@@ -10,11 +10,11 @@ bytes.workspace = true
 chrono = { workspace = true, features = ["serde"], optional = true }
 futures.workspace = true
 image.workspace = true # Must remain an internal dependency
-imbuf.workspace = true 
+imbuf = { workspace = true, features = ["image_0_25"] } 
 minfac.workspace = true
 pilatus = { workspace = true, features = ["minfac"] }
 pilatus-axum = { workspace = true, optional = true }
-pilatus-engineering = { workspace = true }
+pilatus-engineering.workspace = true
 resvg = { version = "0.45.0" }
 thiserror.workspace = true
 tracing.workspace = true

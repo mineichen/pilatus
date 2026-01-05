@@ -89,6 +89,6 @@ mod tests {
         let params = Params::default();
         let serialized = serde_json::to_string(&params).unwrap();
         println!("serialized = {}", serialized);
-        let deserialized: ParamsImpex = serde_json::from_str(&serialized).unwrap();
+        let _deserialized: ParamsImpex = serde_json::from_str(&serialized).unwrap();
     }
 }
