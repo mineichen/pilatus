@@ -37,6 +37,7 @@ pub use broadcaster::*;
 // use image::{GenericImageView, Rgb8Image};
 pub use logo::*;
 pub use meta::*;
+#[cfg(feature = "axum")]
 pub use web::*;
 
 pub use message::*;
@@ -110,7 +111,7 @@ impl From<Rgb8Image> for DynamicImage {
 }
 
 impl TryFrom<DynamicImage> for Rgb8Image {
-    type Error = IncompatibleImageError;
+    type Error = IncompatibleImageError<DynamicImage>;
 
     fn try_from(value: DynamicImage) -> Result<Self, Self::Error> {
         Image::<[u8; 3], 1>::try_from(value)

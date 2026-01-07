@@ -100,7 +100,8 @@ impl ImageWithMeta<super::DynamicImage> {
     ) -> Result<T, ExtractWithFormatError<'b>>
     where
         T: Debug,
-        for<'c> T: TryFrom<&'c super::DynamicImage, Error = IncompatibleImageError>,
+        for<'c> T:
+            TryFrom<&'c super::DynamicImage, Error = IncompatibleImageError<imbuf::DynamicImage>>,
     {
         let x = self.by_key(search_key)?;
         x.try_into().map_err(ExtractWithFormatError::Unsupported)
@@ -111,7 +112,7 @@ pub enum ExtractWithFormatError<'a> {
     #[error("{0:?}")]
     UnknownKey(UnknownKeyError<'a, super::DynamicImage>),
     #[error("{0:?}")]
-    Unsupported(IncompatibleImageError),
+    Unsupported(IncompatibleImageError<imbuf::DynamicImage>),
 }
 
 impl<'a> From<UnknownKeyError<'a, super::DynamicImage>> for ExtractWithFormatError<'a> {
