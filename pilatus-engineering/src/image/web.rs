@@ -7,7 +7,6 @@ use std::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
     num::{NonZeroU32, NonZeroU8},
-    sync::Arc,
 };
 
 use anyhow::anyhow;
@@ -39,7 +38,7 @@ pub trait StreamableImage: Sized {
     fn encode(self) -> anyhow::Result<Vec<u8>>;
 }
 
-impl StreamableImage for Arc<LumaImage> {
+impl StreamableImage for LumaImage {
     fn encode(self) -> anyhow::Result<Vec<u8>> {
         let dims = self.dimensions();
         encode_legacy(self.buffer(), ColorType::Luma, dims, |_| Ok(()))
@@ -200,7 +199,7 @@ fn encode_dynamic_jpeg_image<T: Serialize>(
     }
 }
 
-impl<T: Serialize> StreamableImage for (Arc<LumaImage>, T) {
+impl<T: Serialize> StreamableImage for (LumaImage, T) {
     fn encode(self) -> anyhow::Result<Vec<u8>> {
         let dims = self.0.dimensions();
         encode_legacy(self.0.buffer(), ColorType::Luma, dims, |b| {

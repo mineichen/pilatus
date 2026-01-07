@@ -77,23 +77,20 @@ impl ActorMessage for SubscribeImageMessage {
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct BroadcastImage {
-    pub image: Arc<LumaImage>,
+    pub image: LumaImage,
     pub hash: Option<StableHash>,
 }
 
 impl BroadcastImage {
-    pub fn with_hash(image: impl Into<Arc<LumaImage>>, hash: Option<StableHash>) -> Self {
-        Self {
-            image: image.into(),
-            hash,
-        }
+    pub fn with_hash(image: LumaImage, hash: Option<StableHash>) -> Self {
+        Self { image, hash }
     }
 }
 
 impl From<GetImageOk> for BroadcastImage {
     fn from(o: GetImageOk) -> Self {
         Self {
-            image: Arc::new(o.image),
+            image: o.image,
             hash: o.meta.hash,
         }
     }
@@ -113,19 +110,19 @@ impl From<LocalizableBroadcastImage> for BroadcastImage {
 #[non_exhaustive]
 #[derive(Clone)]
 pub struct LocalizableBroadcastImage {
-    pub image: Arc<LumaImage>,
+    pub image: LumaImage,
     pub hash: Option<StableHash>,
     pub projector: Option<DynamicPointProjector>,
 }
 
 impl LocalizableBroadcastImage {
     pub fn with_hash_and_projector(
-        image: impl Into<Arc<LumaImage>>,
+        image: LumaImage,
         hash: Option<StableHash>,
         projector: Option<DynamicPointProjector>,
     ) -> Self {
         Self {
-            image: image.into(),
+            image,
             hash,
             projector,
         }
@@ -166,7 +163,7 @@ pub struct GetLocalizableImageOk {
 impl From<GetLocalizableImageOk> for BroadcastImage {
     fn from(value: GetLocalizableImageOk) -> Self {
         Self {
-            image: Arc::new(value.image),
+            image: value.image,
             hash: value.hash,
         }
     }
