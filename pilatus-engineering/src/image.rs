@@ -37,6 +37,7 @@ pub use broadcaster::*;
 // use image::{GenericImageView, Rgb8Image};
 pub use logo::*;
 pub use meta::*;
+pub use web::*;
 
 pub use message::*;
 pub use stable_hash::*;
