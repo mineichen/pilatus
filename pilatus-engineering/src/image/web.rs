@@ -19,7 +19,7 @@ use futures::{
 };
 use imbuf::{DynamicImageChannel, DynamicSize, ImageChannel, PixelTypePrimitive};
 use jpeg_encoder::{ColorType, Encoder};
-use pilatus::device::{ActorError, ActorMessage, ActorSystem, DeviceId};
+use pilatus::device::{ActorError, ActorMessage, ActorSystem, DeviceId, DynamicIdentifier};
 use pilatus_axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     http::StatusCode,
@@ -346,7 +346,7 @@ where
         TFut: Future<Output = Result<TImg, ActorError<anyhow::Error>>> + 'static + Send,
     >(
         upgrade: WebSocketUpgrade,
-        device_id: Option<DeviceId>,
+        device_id: DynamicIdentifier,
         actor_system: ActorSystem,
         transformer: TFn,
     ) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -363,7 +363,7 @@ where
         TMessageHandlerFuture: Future<Output = Result<(), anyhow::Error>> + 'static + Send,
     >(
         upgrade: WebSocketUpgrade,
-        device_id: Option<DeviceId>,
+        device_id: DynamicIdentifier,
         actor_system: ActorSystem,
         transformer: TFn,
         message_handler: TMessageHandler,
@@ -386,13 +386,13 @@ where
         TMessageHandlerFuture: Future<Output = Result<(), anyhow::Error>> + 'static + Send,
     >(
         upgrade: WebSocketUpgrade,
-        device_id: Option<DeviceId>,
+        device_id: DynamicIdentifier,
         actor_system: ActorSystem,
         transformer: TFn,
         message_handler: TMessageHandler,
     ) -> Result<impl IntoResponse, (WebSocketUpgrade, (StatusCode, String))> {
         let broadcast = {
-            let mut sender = match actor_system.get_sender_or_single_handler::<TMsg>(device_id) {
+            let mut sender = match actor_system.get_sender::<TMsg>(device_id) {
                 Ok(x) => x,
                 Err(e) => return Err((upgrade, (StatusCode::NOT_FOUND, e.to_string()))),
             };

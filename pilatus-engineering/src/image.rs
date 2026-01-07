@@ -30,7 +30,7 @@ mod message;
 mod meta;
 mod stable_hash;
 #[cfg(feature = "axum")]
-pub mod web;
+mod web;
 
 #[cfg(feature = "tokio")]
 pub use broadcaster::*;
