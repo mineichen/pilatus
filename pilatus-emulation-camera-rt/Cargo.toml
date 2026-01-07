@@ -9,6 +9,7 @@ bytes.workspace = true
 chrono.workspace = true
 futures.workspace = true
 image.workspace = true
+imbuf.workspace = true
 minfac.workspace = true
 pilatus = { workspace = true, features = ["minfac"] }
 pilatus-emulation-camera = { workspace = true, features = ["unstable"] }
