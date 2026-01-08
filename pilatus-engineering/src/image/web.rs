@@ -19,7 +19,7 @@ use futures::{
 };
 use imbuf::{DynamicImageChannel, DynamicSize, ImageChannel, PixelTypePrimitive};
 use jpeg_encoder::{ColorType, Encoder};
-use pilatus::device::{ActorError, ActorMessage, ActorSystem, DeviceId, DynamicIdentifier};
+use pilatus::device::{ActorError, ActorMessage, ActorSystem, DynamicIdentifier};
 use pilatus_axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     http::StatusCode,
