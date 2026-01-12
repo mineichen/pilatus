@@ -22,12 +22,12 @@ fn record_integration() -> anyhow::Result<()> {
     )?;
     let mut recipe = Recipe::default();
     let player_id = recipe.add_device(DeviceConfig::new_unchecked(
-        "engineering-emulation-camera",
+        "pilatus-emulation-camera",
         "Player",
         json!({}),
     ));
     let recorder_id = recipe.add_device(DeviceConfig::new_unchecked(
-        "engineering-emulation-camera",
+        "pilatus-emulation-camera",
         "Recorder",
         json!({
             "permanent_recording": {

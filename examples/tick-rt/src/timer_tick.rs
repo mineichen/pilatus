@@ -14,7 +14,7 @@ use tracing::info;
 
 use crate::GetTickMessage;
 
-pub const DEVICE_TYPE: &str = "timer_tick";
+pub const DEVICE_TYPE: &str = "pilatus-timer-tick";
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<Registered<ActorSystem>>()

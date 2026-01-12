@@ -8,7 +8,7 @@ use pilatus_axum::{
 use super::DeviceState;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
-    c.register_web("engineering/emulation-camera", |r| {
+    c.register_web(crate::device::DEVICE_TYPE, |r| {
         r.http("/toggle_pause", |f| f.put(toggle_pause_web))
     })
 }

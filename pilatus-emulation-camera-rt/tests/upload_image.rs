@@ -14,7 +14,7 @@ fn upload_image_to_collection() -> anyhow::Result<()> {
 
     let mut recipe = Recipe::default();
     let device_id = recipe.add_device(DeviceConfig::new_unchecked(
-        "engineering-emulation-camera",
+        "pilatus-emulation-camera",
         "Camera",
         json!({
             "file": {
@@ -65,7 +65,7 @@ fn upload_image_to_collection() -> anyhow::Result<()> {
         // Upload the image via the HTTP endpoint
         let client = reqwest::Client::new();
         let upload_url = format!(
-            "{}/engineering/emulation-camera/collection/test_collection/uploaded?device_id={}",
+            "{}/pilatus-emulation-camera/collection/test_collection/uploaded?device_id={}",
             base_url, device_id
         );
 

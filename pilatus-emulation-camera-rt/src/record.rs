@@ -22,7 +22,7 @@ use serde::Deserialize;
 use tracing::debug;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
-    c.register_web("engineering/emulation-camera", |r| {
+    c.register_web(crate::device::DEVICE_TYPE, |r| {
         r.http("/{device_id}/record/{collection_name}", |f| {
             f.put(record_web)
         })

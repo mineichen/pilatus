@@ -25,7 +25,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
     .register_device(DEVICE_TYPE, validator, device);
 }
 
-pub const DEVICE_TYPE: &str = "engineering-emulation-camera";
+pub const DEVICE_TYPE: &str = "pilatus-emulation-camera";
 
 pub(super) struct DeviceState {
     pub(crate) encoder: ImageEncoder,

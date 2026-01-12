@@ -1,5 +1,5 @@
-curl -X PUT -I 127.0.0.1:4123/api/manual/increment
-curl -X GET 127.0.0.1:4123/api/greeter/greet/hansi
+curl -X PUT -I 127.0.0.1:4123/api/pilatus-manual-tick/increment
+curl -X GET 127.0.0.1:4123/api/pilatus-greeter/greet/hansi
 curl -X PUT 127.0.0.1:4123/api/recipe/default/device/bc505bd1-1818-4d97-a4cb-2b698b657000/params -H "Content-Type: application/json" -d '{"parameters": {"lang": "German"}, "variables": {}}' -v
 curl -X GET 127.0.0.1:4123/api/recipe/start/manual
 curl -X PUT 127.0.0.1:4123/api/recipe/commit -v

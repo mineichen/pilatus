@@ -34,6 +34,7 @@ impl WebSocketUpgrade {
             let dropper = dropper;
             callback(s).map(move |x| {
                 drop(dropper);
+                tracing::warn!("Dropping WS");
                 x
             })
         })

@@ -35,7 +35,7 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
 
     let mut recipe = Recipe::default();
     let device_id = recipe.add_device(DeviceConfig::new_unchecked(
-        "engineering-emulation-camera",
+        "pilatus-emulation-camera",
         "Camera",
         json!({
             "file": {
