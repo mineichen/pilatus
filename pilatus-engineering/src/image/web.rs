@@ -6,7 +6,7 @@
 use std::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
-    num::{NonZeroU32, NonZeroU8},
+    num::{NonZeroU16, NonZeroU32, NonZeroU8},
 };
 
 use anyhow::anyhow;
@@ -17,7 +17,7 @@ use futures::{
     stream::BoxStream,
     Future, SinkExt, StreamExt,
 };
-use imbuf::{DynamicImageChannel, DynamicSize, ImageChannel, PixelTypePrimitive};
+use imbuf::{DynamicImageChannel, DynamicSize, ImageChannel, PixelType, PixelTypePrimitive};
 use jpeg_encoder::{ColorType, Encoder};
 use pilatus::device::{ActorError, ActorMessage, ActorSystem, DynamicIdentifier};
 use pilatus_axum::{
@@ -130,7 +130,8 @@ fn encode_dynamic_raw_image<T: Serialize>(
 ) -> anyhow::Result<Vec<u8>> {
     fn encode_typed<TMeta: Serialize, TPixel: PixelTypePrimitive>(
         x: &ImageChannel<DynamicSize<TPixel>>,
-        channel_len: usize,
+        pixel_kind: DataType,
+        channel_len: NonZeroU16,
         flag: u8,
         meta: TMeta,
     ) -> anyhow::Result<Vec<u8>> {
@@ -142,23 +143,20 @@ fn encode_dynamic_raw_image<T: Serialize>(
             meta,
             width.get() as usize * height.get() as usize / 2 * pixel_elements.get() as usize,
         )?;
-
-        match (channel_len, pixel_elements.get()) {
-            (3, 1) | (1, 1) => encode_raw(
-                buf,
-                x.buffer_flat_bytes(),
-                DataType::U8,
-                (width, height),
-                pixel_elements,
-            ),
-
-            _ => anyhow::bail!("Unsupported image format: {:?}", x),
-        }
+        encode_raw(
+            buf,
+            x.buffer_flat_bytes(),
+            pixel_kind,
+            (width, height),
+            pixel_elements,
+            channel_len,
+        )
     }
-
+    let channels =
+        NonZeroU16::new(u16::try_from(image.len())?).expect("Images cannot have 0 channels");
     match &image.first() {
-        &imbuf::DynamicImageChannel::U8(x) => encode_typed(x, image.len(), flag, meta),
-        &imbuf::DynamicImageChannel::U16(x) => encode_typed(x, image.len(), flag, meta),
+        &imbuf::DynamicImageChannel::U8(x) => encode_typed(x, DataType::U8, channels, flag, meta),
+        &imbuf::DynamicImageChannel::U16(x) => encode_typed(x, DataType::U16, channels, flag, meta),
         _ => Err(anyhow!("Unsupported image format: {:?}", image)),
     }
 }
@@ -283,6 +281,7 @@ fn encode_raw(
     pixel_kind: DataType,
     (width, height): (NonZeroU32, NonZeroU32),
     pixel_size: NonZeroU8,
+    channel_size: NonZeroU16,
 ) -> anyhow::Result<Vec<u8>> {
     // https://stackoverflow.com/questions/45213511/formula-for-memory-alignment
     let unaligned_pixel_start = buf.len() + 4;
@@ -295,9 +294,9 @@ fn encode_raw(
     );
 
     buf.extend((0..alignment_bytes).map(|_| 0)); // Guarantee 8Byte aligned
-    buf.push(0u8); // reserved
+    buf.push(pixel_size.get()); // reserved
     buf.push(pixel_kind as u8);
-    buf.put_slice(&(u16::from(pixel_size.get())).to_le_bytes());
+    buf.put_slice(&channel_size.get().to_le_bytes());
     buf.put_slice(&width.get().to_le_bytes());
     buf.put_slice(flat_buffer);
 
