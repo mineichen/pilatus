@@ -8,7 +8,10 @@ use pilatus::{prelude::*, GenericConfig, OnceExtractor, SystemShutdown, TracingT
 use pilatus_axum::MinfacRouter;
 use serde::Deserialize;
 use tokio::net::TcpListener;
-use tower_http::{cors::CorsLayer, services::ServeDir};
+use tower_http::{
+    cors::CorsLayer,
+    services::{ServeDir, ServeFile},
+};
 use tracing::{debug, info};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
@@ -100,9 +103,9 @@ async fn axum_service(
         .expect("Receiver is stored within DI-Container");
 
     let router = if let Some(x) = &web_config.fallback_path {
-        private_router
-            .0
-            .fallback_service(get_service(ServeDir::new(x)))
+        private_router.0.fallback_service(get_service(
+            ServeDir::new(x).fallback(ServeFile::new(x.join("index.html"))),
+        ))
     } else {
         private_router.0
     };
