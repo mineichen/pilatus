@@ -19,6 +19,11 @@ impl<T, TErr: Debug> From<Result<T, ActorError<TErr>>> for DeviceJsonResponse<T,
         Self(r)
     }
 }
+impl<T, TErr: Debug> From<ActorError<TErr>> for DeviceJsonResponse<T, TErr> {
+    fn from(value: ActorError<TErr>) -> Self {
+        Self(Err(value))
+    }
+}
 
 #[derive(Debug)]
 pub struct DeviceJsonError<TErr: Debug> {
