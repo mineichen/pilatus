@@ -8,10 +8,6 @@ use pilatus::{
 
 use super::{DynamicImage, DynamicPointProjector, ImageWithMeta, LumaImage, StableHash};
 
-#[derive(Default)]
-#[non_exhaustive]
-pub struct GetImageMessage {}
-
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum StreamImageError<TImage> {
@@ -22,6 +18,8 @@ pub enum StreamImageError<TImage> {
         image: TImage,
         error: Arc<anyhow::Error>,
     },
+    #[error("Error during image acquisition")]
+    Acquisition { error: Arc<anyhow::Error> },
     #[error("ActorError: {0:?}")]
     ActorError(Arc<ActorError<Infallible>>),
 }
@@ -38,6 +36,9 @@ impl<T: Debug> From<ActorError<(T, anyhow::Error)>> for StreamImageError<T> {
     }
 }
 
+#[derive(Default)]
+#[non_exhaustive]
+pub struct GetImageMessage {}
 pub type GetImageOk = ImageWithMeta<LumaImage>;
 
 impl From<GetImageOk> for LumaImage {

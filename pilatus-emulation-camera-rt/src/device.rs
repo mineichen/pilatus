@@ -58,6 +58,7 @@ async fn device(
         .add_handler(DeviceState::update_params)
         .add_handler(DeviceState::list_collections)
         .add_handler(DeviceState::add_image)
+        .add_handler(DeviceState::handle_get_image)
         .add_handler(DeviceState::delete_collection)
         .add_handler(DeviceState::toggle_pause)
         .add_handler(DeviceState::subscribe_luma);
@@ -73,6 +74,8 @@ async fn device(
 
     futures::future::join(
         async {
+            let stream = tokio::sync::broadcast::channel(1).0;
+            debug_assert_eq!(0, stream.receiver_count(), "Important to create stream outside of execute().await. Otherwise, the receiver is kept alive until .await finishes");
             system
                 .execute(DeviceState {
                     publisher: Arc::new(PublisherState::new(
@@ -82,7 +85,7 @@ async fn device(
                         params,
                     )),
                     file_service: Arc::new(file_service_builder.build(ctx.id)),
-                    stream: tokio::sync::broadcast::channel(1).0,
+                    stream,
                     paused: false,
                     actor_system,
                     recording_sender,
@@ -112,29 +115,24 @@ impl DeviceState {
                     tracing::error!("Couldn't send recording task: {e}")
                 };
                 match Arc::get_mut(&mut self.publisher) {
-                    Some(old)
-                        if old.params.file.active == params.file.active
-                            && old.params.file.file_ending == params.file.file_ending =>
-                    {
+                    // Not enqueued for publish_frame
+                    Some(old) if !old.params.file.requires_collection_reload(&params.file) => {
                         old.params = params;
                     }
-                    _ => self.publisher = Arc::new(self.publisher.with_params(params)),
-                }
-                let weak = Arc::downgrade(&self.publisher);
-
-                Step2(
-                    async {
-                        PublisherState::send_delayed(weak).await;
-                        Ok(())
+                    _ => {
+                        self.publisher = Arc::new(self.publisher.with_params(params));
+                        let weak = Arc::downgrade(&self.publisher);
+                        return Step2(PublisherState::send_delayed(weak).map(|_| Ok(())).boxed());
                     }
-                    .boxed(),
-                )
+                }
             }
             EmulationMode::Streaming => {
-                warn!("Updating Stream params not yet supported. Update is ignored");
-                Step2(std::future::ready(Ok(())).boxed())
+                warn!(
+                    "Updating Stream params for Streaming mode is not yet supported. Update is ignored"
+                );
             }
-        }
+        };
+        Step2(std::future::ready(Ok(())).boxed())
     }
 }
 

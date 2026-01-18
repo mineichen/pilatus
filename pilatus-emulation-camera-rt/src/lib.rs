@@ -1,5 +1,6 @@
 mod delete_collection;
 mod device;
+mod get_image;
 mod list_collections;
 mod pause;
 mod permanent_recording;

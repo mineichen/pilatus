@@ -21,7 +21,7 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
 
     fn pixel_color(image: &DynamicImage) -> [u8; 3] {
         let first = image.first();
-        match (first, image.len(), first.pixel_elements().get()) {
+        match (first, image.len().get(), first.pixel_elements().get()) {
             (DynamicImageChannel::U8(typed), 1, 3) => {
                 let buf = typed.buffer_flat();
                 [buf[0], buf[1], buf[2]]

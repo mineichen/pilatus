@@ -11,7 +11,7 @@ use pilatus::{
     RelativeDirectoryPath, TransactionError,
     device::{ActorMessage, HandlerResult, Step2, WeakUntypedActorMessageSender},
 };
-use pilatus_engineering::image::{DynamicImage as PilatusDynamicImage, ImageWithMeta};
+use pilatus_engineering::image::{DynamicImage as ImbufDynamicImage, ImageWithMeta};
 use tracing::{debug, warn};
 
 use super::DeviceState;
@@ -35,25 +35,35 @@ impl DeviceState {
         &mut self,
         msg: PublishImageMessage,
     ) -> impl HandlerResult<PublishImageMessage> {
-        let re_schedule = if let Some(strong) = msg.0.upgrade() {
-            match strong.next_image(self).await {
-                Ok(Some(image)) => self
-                    .stream
-                    .send(Ok(ImageWithMeta::with_hash(image, None)))
-                    .ok()
-                    .map(|_| msg.0),
+        let move_to_next = !self.paused;
+        let re_schedule =
+            match PublisherState::next_image_if_upgradeable(&msg.0, self, move_to_next).await {
+                Ok(Some((image, path))) => {
+                    debug!(
+                        "Publish '{:?}' to {} receivers: {:?}",
+                        &path.0.file_name().and_then(|x| x.to_str()).unwrap_or(""),
+                        self.stream.receiver_count(),
+                        &image
+                    );
+                    self.stream
+                        .send(Ok(ImageWithMeta::with_hash(image, None)))
+                        .ok()
+                        .map(|_| msg.0)
+                }
                 Ok(None) => {
                     debug!("Stop acquisition");
-                    Some(msg.0)
+                    None
                 }
                 Err(e) => {
                     warn!("Stop due to acquisition error: {e:?}");
+                    self.stream.send(Err(
+                        pilatus_engineering::image::StreamImageError::Acquisition {
+                            error: Arc::new(e),
+                        },
+                    ));
                     None
                 }
-            }
-        } else {
-            None
-        };
+            };
 
         Step2(async move {
             if let Some(weak) = re_schedule {
@@ -144,21 +154,25 @@ impl PublisherState {
         }
     }
 
-    async fn next_image(
-        &self,
+    pub(crate) async fn next_image_if_upgradeable(
+        weak: &Weak<Self>,
         state: &mut super::DeviceState,
-    ) -> anyhow::Result<Option<PilatusDynamicImage>> {
+        move_to_next: bool,
+    ) -> anyhow::Result<Option<(ImbufDynamicImage, ExistingCollectionEntry)>> {
+        let Some(this) = weak.upgrade() else {
+            return Ok(None);
+        };
         let next = {
-            let mut lock = self.pending_active.lock().await;
-            let (lock, last) = lock.deref_mut();
-            if lock.is_empty() {
-                if !self.params.file.auto_restart {
+            let mut lock = this.pending_active.lock().await;
+            let (heap, last) = lock.deref_mut();
+            if heap.is_empty() {
+                if !this.params.file.auto_restart {
                     return Ok(None);
                 }
-                *lock = self.load_collection(state).await?;
+                *heap = this.load_collection(state).await?;
             }
-            if !state.paused || last.is_none() {
-                *last = lock.pop();
+            if move_to_next || last.is_none() {
+                *last = heap.pop();
             }
 
             last.clone()
@@ -172,13 +186,8 @@ impl PublisherState {
         let img =
             tokio::task::spawn_blocking(move || image::load_from_memory(&image_data)).await??;
 
-        let pilatus_image = PilatusDynamicImage::try_from(img)?;
-        debug!(
-            "Publish '{:?}': {:?}",
-            &path.0.file_name().and_then(|x| x.to_str()).unwrap_or(""),
-            &pilatus_image
-        );
-        Ok(Some(pilatus_image))
+        let pilatus_image = ImbufDynamicImage::try_from(img)?;
+        Ok(Some((pilatus_image, path)))
     }
 
     async fn load_collection(

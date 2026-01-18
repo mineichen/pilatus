@@ -49,6 +49,7 @@ const OK_CODE: u8 = 0 << 4;
 const MISSED_ITEM_CODE: u8 = 1 << 4;
 const PROCESSING_CODE: u8 = 2 << 4;
 const ACTOR_ERROR_CODE: u8 = 3 << 4;
+const ACQUISITION_CODE: u8 = 4 << 4;
 
 #[derive(Default, serde::Deserialize, Clone, Copy)]
 pub enum StreamingImageFormat {
@@ -153,7 +154,7 @@ fn encode_dynamic_raw_image<T: Serialize>(
         )
     }
     let channels =
-        NonZeroU16::new(u16::try_from(image.len())?).expect("Images cannot have 0 channels");
+        NonZeroU16::new(u16::try_from(image.len().get())?).expect("Images cannot have 0 channels");
     match &image.first() {
         &imbuf::DynamicImageChannel::U8(x) => encode_typed(x, DataType::U8, channels, flag, meta),
         &imbuf::DynamicImageChannel::U16(x) => encode_typed(x, DataType::U16, channels, flag, meta),
@@ -175,7 +176,7 @@ fn encode_dynamic_jpeg_image<T: Serialize>(
         meta,
         dims.0.get() as usize * dims.1.get() as usize / 2,
     )?;
-    match (first, image.len(), pixel_elements.get()) {
+    match (first, image.len().get(), pixel_elements.get()) {
         (DynamicImageChannel::U8(i), 1, 1) => {
             encode_jpeg(buf, i.buffer_flat(), ColorType::Luma, dims)
         }

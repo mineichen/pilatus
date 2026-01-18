@@ -100,8 +100,10 @@ impl ImageWithMeta<super::DynamicImage> {
     ) -> Result<T, ExtractWithFormatError<'b>>
     where
         T: Debug,
-        for<'c> T:
-            TryFrom<&'c super::DynamicImage, Error = IncompatibleImageError<imbuf::DynamicImage>>,
+        T: TryFrom<
+            &'a super::DynamicImage,
+            Error = IncompatibleImageError<&'a imbuf::DynamicImage>,
+        >,
     {
         let x = self.by_key(search_key)?;
         x.try_into().map_err(ExtractWithFormatError::Unsupported)
@@ -112,7 +114,7 @@ pub enum ExtractWithFormatError<'a> {
     #[error("{0:?}")]
     UnknownKey(UnknownKeyError<'a, super::DynamicImage>),
     #[error("{0:?}")]
-    Unsupported(IncompatibleImageError<imbuf::DynamicImage>),
+    Unsupported(IncompatibleImageError<&'a imbuf::DynamicImage>),
 }
 
 impl<'a> From<UnknownKeyError<'a, super::DynamicImage>> for ExtractWithFormatError<'a> {
@@ -185,7 +187,7 @@ pub struct ImageMeta {
 mod tests {
     use std::num::NonZeroU32;
 
-    use imbuf::Image;
+    use imbuf::{Image, ImageRef};
 
     use crate::image::DynamicImage;
 
@@ -196,7 +198,7 @@ mod tests {
         let image = Image::<u16, 1>::new_vec(vec![1], NonZeroU32::MIN, NonZeroU32::MIN);
         let dynamic: DynamicImage = image.into();
         let meta = ImageWithMeta::with_meta(dynamic, ImageMeta { hash: None });
-        let back: Image<u16, 1> = meta.with_format_by_key(&ImageKey::unspecified()).unwrap();
+        let back: ImageRef<u16, 1> = meta.with_format_by_key(&ImageKey::unspecified()).unwrap();
         assert_eq!((NonZeroU32::MIN, NonZeroU32::MIN), back.dimensions());
     }
 }

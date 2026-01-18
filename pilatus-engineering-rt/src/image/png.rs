@@ -16,7 +16,7 @@ impl ImageEncoderTrait for PngBackend {
         const APPROXIMATE_COMPRESSION: usize = 3;
         let first = input.first();
         let (width, height) = first.dimensions();
-        match (first, &input.len(), first.pixel_elements().get()) {
+        match (first, &input.len().get(), first.pixel_elements().get()) {
             (DynamicImageChannel::U8(typed), 1, 1) => {
                 let img = image::ImageBuffer::<image::Luma<_>, _>::from_raw(
                     width.get(),

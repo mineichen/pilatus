@@ -45,6 +45,12 @@ unstable_pub!(
     }
 );
 
+impl FileParams {
+    pub fn requires_collection_reload(&self, new_params: &Self) -> bool {
+        self.active != new_params.active || self.file_ending != new_params.file_ending
+    }
+}
+
 unstable_pub!(
     #[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq)]
     #[cfg_attr(feature = "impex", derive(impex::Impex))]
