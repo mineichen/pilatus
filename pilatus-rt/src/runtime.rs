@@ -9,6 +9,7 @@ use tokio::runtime::Builder;
 use tracing::{error, info};
 
 use pilatus::{GenericConfig, HostedService, SystemTerminator};
+use serde_json::Value as JsonValue;
 
 use crate::metadata_future::MetadataFuture;
 
@@ -21,7 +22,7 @@ pub struct Runtime {
 /// Convenience wrapper for integration tests.
 /// Keeps the temporary directory alive for as long as the runtime is used.
 pub struct TempRuntime {
-    config_json: Option<Vec<u8>>,
+    config_json: Option<JsonValue>,
     steps: Vec<TempRuntimeStep>,
 }
 
@@ -40,8 +41,8 @@ impl TempRuntime {
     }
 
     /// Sets the `config.json` contents to be written during [`TempRuntime::configure`].
-    pub fn config_json(mut self, config_json: impl AsRef<[u8]>) -> Self {
-        self.config_json = Some(config_json.as_ref().to_vec());
+    pub fn config(mut self, config_json: JsonValue) -> Self {
+        self.config_json = Some(config_json);
         self
     }
 
@@ -66,6 +67,8 @@ impl TempRuntime {
     pub fn configure(self) -> Result<TempConfiguredRuntime, std::io::Error> {
         let dir = tempfile::tempdir()?;
         if let Some(cfg) = self.config_json {
+            let cfg = serde_json::to_vec(&cfg)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             std::fs::write(dir.path().join("config.json"), cfg)?;
         }
 

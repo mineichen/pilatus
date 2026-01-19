@@ -8,7 +8,7 @@ fn upload_image_to_collection() -> anyhow::Result<()> {
     use serde_json::json;
 
     let configured = TempRuntime::new()
-        .config_json(br#"{ "web": { "socket": "0.0.0.0:0" } }"#)
+        .config(serde_json::json!({ "web": { "socket": "0.0.0.0:0" } }))
         .register(pilatus_emulation_camera_rt::register)
         .register(pilatus_engineering_rt::register)
         .register(pilatus_axum_rt::register)

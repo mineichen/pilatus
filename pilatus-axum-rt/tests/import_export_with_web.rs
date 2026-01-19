@@ -42,8 +42,7 @@ fn upload_zip() -> anyhow::Result<()> {
         });
     }
     TempRuntime::new()
-        .config_json(
-            br#"{
+        .config(serde_json::json!({
             "web": {
                 "socket": "0.0.0.0:0"
             },
@@ -59,8 +58,7 @@ fn upload_zip() -> anyhow::Result<()> {
                   "tower_http": "trace"
                 }
             }
-        }"#,
-        )
+        }))
         .register(pilatus_axum_rt::register)
         .register(register_test_services)
         .configure()?

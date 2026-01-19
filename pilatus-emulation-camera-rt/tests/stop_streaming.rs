@@ -32,7 +32,9 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
     }
 
     let configured = TempRuntime::new()
-        .config_json(br#"{ "web": { "socket": "0.0.0.0:0" } }"#)
+        .config(serde_json::json!({
+            "web": { "socket": "0.0.0.0:0" }
+        }))
         .register(pilatus_emulation_camera_rt::register)
         .register(pilatus_engineering_rt::register)
         .register(pilatus_axum_rt::register)

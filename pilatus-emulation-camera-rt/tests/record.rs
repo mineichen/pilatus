@@ -8,8 +8,7 @@ fn record_integration() -> anyhow::Result<()> {
     use serde_json::json;
 
     let configured = TempRuntime::new()
-        .config_json(
-            br#"{
+        .config(serde_json::json!({
             "web": {
                 "socket": "0.0.0.0:0"
             },
@@ -20,8 +19,7 @@ fn record_integration() -> anyhow::Result<()> {
                   "pilatus::image": "debug"
                 }
             }
-        }"#,
-        )
+        }))
         .register(pilatus_engineering_rt::register)
         .register(pilatus_axum_rt::register)
         .register(pilatus_emulation_camera_rt::register)
