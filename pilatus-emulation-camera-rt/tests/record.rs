@@ -4,13 +4,14 @@ fn record_integration() -> anyhow::Result<()> {
     use futures::StreamExt;
     use image::Rgb;
     use pilatus::{DeviceConfig, Recipe, Recipes, RelativeDirectoryPath};
-    use pilatus_rt::{Runtime, TokioFileService};
+    use pilatus_rt::{TempRuntime, TokioFileService};
     use serde_json::json;
 
-    let dir = tempfile::tempdir()?;
-    std::fs::write(
-        dir.path().join("config.json"),
+    let runtime = TempRuntime::new()?.config_json(
         br#"{
+            "web": {
+                "socket": "0.0.0.0:0"
+            },
             "tracing": {
                 "default_level": "debug",
                 "filters": {
@@ -36,7 +37,7 @@ fn record_integration() -> anyhow::Result<()> {
             }
         }),
     ));
-    let recipes_path = dir.path().join("recipes");
+    let recipes_path = runtime.path().join("recipes");
     let player_collection_path = recipes_path.join(player_id.to_string()).join("bar");
     std::fs::create_dir_all(&player_collection_path)?;
 
@@ -52,12 +53,11 @@ fn record_integration() -> anyhow::Result<()> {
         let image = image::ImageBuffer::from_pixel(2, 2, Rgb(color));
         image.save(player_collection_path.join(format!("imgage{i}.png")))?;
     }
-    Runtime::with_root(dir.path())
+    runtime
         .register(pilatus_engineering_rt::register)
         .register(pilatus_axum_rt::register)
         .register(pilatus_emulation_camera_rt::register)
-        .configure()
-        .run_until_finished(async {
+        .run_until(|()| async move {
             let file_service = TokioFileService::builder(recipes_path).build(recorder_id);
             for _ in 0..3 {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;

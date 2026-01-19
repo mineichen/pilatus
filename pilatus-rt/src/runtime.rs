@@ -1,6 +1,10 @@
 use futures::{stream::FuturesUnordered, StreamExt};
-use minfac::{ServiceCollection, ServiceProvider};
-use std::{any::Any, path::PathBuf, sync::Arc};
+use minfac::{Resolvable, ServiceCollection, ServiceProvider};
+use std::{
+    any::Any,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tokio::runtime::Builder;
 use tracing::{error, info};
 
@@ -12,6 +16,110 @@ pub struct Runtime {
     services: ServiceCollection,
     #[cfg(feature = "tracing")]
     tracing: bool,
+}
+
+/// Convenience wrapper for integration tests.
+///
+/// Creates a temporary root directory and builds a [`Runtime`] from it.
+/// Keeps the temporary directory alive for as long as the runtime is used.
+pub struct TempRuntime {
+    dir: tempfile::TempDir,
+    runtime: Runtime,
+}
+
+impl TempRuntime {
+    /// Creates a temporary root and writes a default empty `config.json` (`{}`).
+    pub fn new() -> std::io::Result<Self> {
+        let dir = tempfile::tempdir()?;
+        let runtime = Runtime::with_root(dir.path());
+        Ok(Self { dir, runtime })
+    }
+
+    /// Replaces `config.json` in the temp root and rebuilds the internal [`Runtime`].
+    ///
+    /// Call this **before** using [`TempRuntime::register`] / [`TempRuntime::register_instance`],
+    /// otherwise you'll lose previously added registrations (since rebuilding recreates the service collection).
+    pub fn config_json(mut self, config_json: impl AsRef<[u8]>) -> std::io::Result<Self> {
+        std::fs::write(self.dir.path().join("config.json"), config_json)?;
+        self.runtime = Runtime::with_root(self.dir.path());
+        Ok(self)
+    }
+
+    pub fn path(&self) -> &Path {
+        self.dir.path()
+    }
+
+    pub fn register(self, registrar: extern "C" fn(&mut ServiceCollection)) -> Self {
+        let Self { dir, runtime } = self;
+        Self {
+            dir,
+            runtime: runtime.register(registrar),
+        }
+    }
+
+    pub fn register_instance(self, instance: impl Clone + Send + Sync + Any) -> Self {
+        let Self { dir, runtime } = self;
+        Self {
+            dir,
+            runtime: runtime.register_instance(instance),
+        }
+    }
+
+    pub fn configure(self) -> TempConfiguredRuntime {
+        let Self { dir, runtime } = self;
+        let configured = runtime.configure();
+        TempConfiguredRuntime {
+            dir,
+            inner: configured,
+        }
+    }
+
+    /// Runs the runtime until the provided future finishes, while injecting dependencies from minfac.
+    ///
+    /// Dependencies are inferred from the closure's argument type and resolved via `provider.resolve()`.
+    /// This allows call sites to avoid turbofish and only specify dependencies in the closure pattern:
+    ///
+    /// - `temp.run_until(|Registered(actor_system): Registered<ActorSystem>| async move { ... })`
+    /// - `temp.run_until(|(Registered(stats), Registered(svc))| async move { ... })`
+    pub fn run_until<T, TDeps, TFut, F>(self, f: F) -> T
+    where
+        TDeps: Resolvable,
+        TFut: futures::Future<Output = T>,
+        F: FnOnce(TDeps) -> TFut,
+    {
+        self.configure().run_until(f)
+    }
+}
+
+pub struct TempConfiguredRuntime {
+    dir: tempfile::TempDir,
+    inner: ConfiguredRuntime,
+}
+
+impl TempConfiguredRuntime {
+    pub fn path(&self) -> &Path {
+        self.dir.path()
+    }
+
+    /// Like [`TempRuntime::run_until`], but for a pre-configured runtime.
+    pub fn run_until<T, TDeps, TFut, F>(self, f: F) -> T
+    where
+        TDeps: Resolvable,
+        TFut: futures::Future<Output = T>,
+        F: FnOnce(TDeps) -> TFut,
+    {
+        let deps = self
+            .inner
+            .provider
+            .resolve::<TDeps>()
+            .expect("Missing dependencies for TempConfiguredRuntime::run_until");
+
+        self.inner.run_until_finished(f(deps))
+    }
+
+    pub fn run(self, other: impl futures::Future<Output = ()>) {
+        self.inner.run(other);
+    }
 }
 
 impl Default for Runtime {

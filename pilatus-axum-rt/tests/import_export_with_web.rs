@@ -1,6 +1,6 @@
 #![cfg(feature = "integration")]
 use std::collections::HashMap;
-use std::{fs::File, io::Write, sync::Arc};
+use std::sync::Arc;
 
 use bytes::Bytes;
 use futures::{sink::SinkExt, StreamExt};
@@ -11,7 +11,7 @@ use pilatus::{
     prelude::*,
     DeviceConfig, RecipeId, UpdateParamsMessageError,
 };
-use pilatus_rt::{RecipeServiceFassade, Runtime};
+use pilatus_rt::{RecipeServiceFassade, TempRuntime};
 use reqwest::StatusCode;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
@@ -19,10 +19,7 @@ use tokio_tungstenite::tungstenite::Message;
 #[test]
 //#[cfg(feature = "integration")]
 fn upload_zip() -> anyhow::Result<()> {
-    let dir = tempfile::tempdir()?;
-
-    let mut file = File::create(dir.path().join("config.json"))?;
-    file.write_all(
+    let runtime = TempRuntime::new()?.config_json(
         br#"{
             "web": {
                 "socket": "0.0.0.0:0"
@@ -41,7 +38,6 @@ fn upload_zip() -> anyhow::Result<()> {
             }
         }"#,
     )?;
-    file.flush().unwrap();
 
     extern "C" fn register_test_services(c: &mut ServiceCollection) {
         async fn device(
@@ -66,51 +62,52 @@ fn upload_zip() -> anyhow::Result<()> {
         });
     }
 
-    let rt = Runtime::with_root(dir.path())
+    runtime
         .register(pilatus_axum_rt::register)
         .register(register_test_services)
-        .configure();
+        .run_until(
+            |(Registered(web_stats), Registered(recipe_service)): (
+                Registered<pilatus_axum::Stats>,
+                Registered<Arc<RecipeServiceFassade>>,
+            )| async move {
+                let port = web_stats.socket_addr().await.port();
+                assert_ne!(port, 80);
+                let base = format!("http://127.0.0.1:{port}/api");
+                let client = reqwest::Client::new();
+                let (clone_id, data) = generate_zip(&base, &client, &recipe_service).await.unwrap();
+                // recipe_service
+                //     .add_recipe_with_id(RecipeId::from_str("Test2").unwrap(), Recipe::default())
+                //     .await
+                //     .unwrap();
 
-    let web_stats: pilatus_axum::Stats = rt.provider.get().unwrap();
-    let recipe_service: Arc<RecipeServiceFassade> = rt.provider.get().unwrap();
-    rt.run_until_finished(async move {
-        let port = web_stats.socket_addr().await.port();
-        assert_ne!(port, 80);
-        let base = format!("http://127.0.0.1:{port}/api");
-        let client = reqwest::Client::new();
-        let (clone_id, data) = generate_zip(&base, &client, &recipe_service).await.unwrap();
-        // recipe_service
-        //     .add_recipe_with_id(RecipeId::from_str("Test2").unwrap(), Recipe::default())
-        //     .await
-        //     .unwrap();
-
-        let (mut sock, _response) =
-            connect_async(format!("ws://127.0.0.1:{port}/api/recipe/import"))
+                let (mut sock, _response) =
+                    connect_async(format!("ws://127.0.0.1:{port}/api/recipe/import"))
+                        .await
+                        .unwrap();
+                sock.send(tokio_tungstenite::tungstenite::Message::Binary(
+                    Bytes::copy_from_slice((data.len() as u64).to_le_bytes().as_slice()),
+                ))
                 .await
                 .unwrap();
-        sock.send(tokio_tungstenite::tungstenite::Message::Binary(
-            Bytes::copy_from_slice((data.len() as u64).to_le_bytes().as_slice()),
-        ))
-        .await
-        .unwrap();
-        for chunk in data.chunks(3) {
-            sock.send(tokio_tungstenite::tungstenite::Message::Binary(
-                Bytes::copy_from_slice(chunk),
-            ))
-            .await
-            .unwrap()
-        }
-        let answer = sock.next().await;
-        let Some(Ok(Message::Text(msg))) = answer else {
-            panic!("Expected text response {answer:?}");
-        };
-        assert_eq!(msg, "\"Success\"");
+                for chunk in data.chunks(3) {
+                    sock.send(tokio_tungstenite::tungstenite::Message::Binary(
+                        Bytes::copy_from_slice(chunk),
+                    ))
+                    .await
+                    .unwrap()
+                }
+                let answer = sock.next().await;
+                let Some(Ok(Message::Text(msg))) = answer else {
+                    panic!("Expected text response {answer:?}");
+                };
+                assert_eq!(msg, "\"Success\"");
 
-        // Websocket-Workers exist even if Axum shut down causes ServiceProvider to crash
-        let (_, all) = get_current(&base, &client).await.unwrap();
-        assert!(all.contains(&clone_id));
-        //tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-    });
+                // Websocket-Workers exist even if Axum shut down causes ServiceProvider to crash
+                let (_, all) = get_current(&base, &client).await.unwrap();
+                assert!(all.contains(&clone_id));
+                //tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+            },
+        );
     Ok(())
 }
 //#[cfg(feature = "integration")]

@@ -7,10 +7,11 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
     use futures::StreamExt;
     use image::{ImageBuffer, Rgb};
     use imbuf::DynamicImageChannel;
+    use minfac::Registered;
     use pilatus::device::ActorSystem;
     use pilatus::{DeviceConfig, Recipe, Recipes};
     use pilatus_engineering::image::{DynamicImage, SubscribeDynamicImageMessage};
-    use pilatus_rt::Runtime;
+    use pilatus_rt::TempRuntime;
     use serde_json::json;
     use tokio::time::sleep;
     fn write_color_image(path: impl AsRef<std::path::Path>, color: [u8; 3]) -> anyhow::Result<()> {
@@ -30,11 +31,10 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
         }
     }
 
-    let tmp = tempfile::tempdir()?;
-    std::fs::write(tmp.path().join("config.json"), "{}")?;
+    let runtime = TempRuntime::new()?.config_json(br#"{ "web": { "socket": "0.0.0.0:0" } }"#)?;
 
     let mut recipe = Recipe::default();
-    let device_id = recipe.add_device(DeviceConfig::new_unchecked(
+    let camera_id = recipe.add_device(DeviceConfig::new_unchecked(
         "pilatus-emulation-camera",
         "Camera",
         json!({
@@ -45,53 +45,50 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
         }),
     ));
 
-    let recipes_dir = tmp.path().join("recipes");
+    let recipes_dir = runtime.path().join("recipes");
     std::fs::create_dir_all(&recipes_dir)?;
     std::fs::write(
         recipes_dir.join("recipes.json"),
         serde_json::to_string(&Recipes::new_with_recipe(recipe))?,
     )?;
 
-    let device_dir = recipes_dir.join(device_id.to_string());
+    let device_dir = recipes_dir.join(camera_id.to_string());
     let collection_dir = device_dir.join("collection");
     std::fs::create_dir_all(&collection_dir)?;
     write_color_image(collection_dir.join("image0.png"), [255, 0, 0])?;
 
-    let runtime = Runtime::with_root(tmp.path())
+    runtime
         .register(pilatus_emulation_camera_rt::register)
         .register(pilatus_engineering_rt::register)
         .register(pilatus_axum_rt::register)
-        .configure();
+        .run_until(
+            async move |Registered(actor_system): Registered<ActorSystem>| {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                let mut stream = actor_system
+                    .ask(camera_id, SubscribeDynamicImageMessage::default())
+                    .await
+                    .expect("subscribe stream");
 
-    let actor_system: ActorSystem = runtime.provider.get().unwrap();
-    let camera_id = device_id;
+                let first_frame = stream
+                    .next()
+                    .await
+                    .expect("stream finished before first frame")
+                    .expect("stream returned error");
+                assert_eq!(
+                    pixel_color(&first_frame.image),
+                    [255, 0, 0],
+                    "expected first frame to come from the first image"
+                );
+                drop(stream);
 
-    runtime.run_until_finished(async move {
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        let mut stream = actor_system
-            .ask(camera_id, SubscribeDynamicImageMessage::default())
-            .await
-            .expect("subscribe stream");
-
-        let first_frame = stream
-            .next()
-            .await
-            .expect("stream finished before first frame")
-            .expect("stream returned error");
-        assert_eq!(
-            pixel_color(&first_frame.image),
-            [255, 0, 0],
-            "expected first frame to come from the first image"
+                sleep(Duration::from_millis(100)).await;
+                tokio::fs::write(collection_dir.join("image1.png"), b"not a image")
+                    .await
+                    .unwrap();
+                sleep(Duration::from_millis(100)).await;
+                assert!(!logs_contain("ERROR"),);
+            },
         );
-        drop(stream);
-
-        sleep(Duration::from_millis(100)).await;
-        tokio::fs::write(collection_dir.join("image1.png"), b"not a image")
-            .await
-            .unwrap();
-        sleep(Duration::from_millis(100)).await;
-        assert!(!logs_contain("ERROR"),);
-    });
 
     Ok(())
 }
