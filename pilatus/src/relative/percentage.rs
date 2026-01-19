@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 #[derive(PartialEq, PartialOrd, Clone, Copy, Serialize, Deserialize, sealedstruct::Seal)]
 pub struct PercentageRaw(f64);
 
+#[cfg(feature = "impex")]
+impl impex::ImpexPrimitive for Percentage {}
+
 impl sealedstruct::Validator for PercentageRaw {
     fn check(&self) -> sealedstruct::Result<()> {
         if **self < 0. {
