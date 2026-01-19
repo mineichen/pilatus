@@ -15,6 +15,7 @@ pub use recipe::*;
 pub use tracing::TracingState;
 
 pub use runtime::Runtime;
+// Helpers for integration tests
 pub use runtime::{TempConfiguredRuntime, TempRuntime};
 
 pub extern "C" fn register(collection: &mut minfac::ServiceCollection) {

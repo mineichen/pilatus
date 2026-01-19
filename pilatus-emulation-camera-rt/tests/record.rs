@@ -7,8 +7,9 @@ fn record_integration() -> anyhow::Result<()> {
     use pilatus_rt::{TempRuntime, TokioFileService};
     use serde_json::json;
 
-    let runtime = TempRuntime::new()?.config_json(
-        br#"{
+    let configured = TempRuntime::new()
+        .config_json(
+            br#"{
             "web": {
                 "socket": "0.0.0.0:0"
             },
@@ -20,7 +21,11 @@ fn record_integration() -> anyhow::Result<()> {
                 }
             }
         }"#,
-    )?;
+        )
+        .register(pilatus_engineering_rt::register)
+        .register(pilatus_axum_rt::register)
+        .register(pilatus_emulation_camera_rt::register)
+        .configure()?;
     let mut recipe = Recipe::default();
     let player_id = recipe.add_device(DeviceConfig::new_unchecked(
         "pilatus-emulation-camera",
@@ -37,7 +42,7 @@ fn record_integration() -> anyhow::Result<()> {
             }
         }),
     ));
-    let recipes_path = runtime.path().join("recipes");
+    let recipes_path = configured.path().join("recipes");
     let player_collection_path = recipes_path.join(player_id.to_string()).join("bar");
     std::fs::create_dir_all(&player_collection_path)?;
 
@@ -53,35 +58,31 @@ fn record_integration() -> anyhow::Result<()> {
         let image = image::ImageBuffer::from_pixel(2, 2, Rgb(color));
         image.save(player_collection_path.join(format!("imgage{i}.png")))?;
     }
-    runtime
-        .register(pilatus_engineering_rt::register)
-        .register(pilatus_axum_rt::register)
-        .register(pilatus_emulation_camera_rt::register)
-        .run_until(|()| async move {
-            let file_service = TokioFileService::builder(recipes_path).build(recorder_id);
-            for _ in 0..3 {
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                let all = file_service
-                    .stream_files_recursive(RelativeDirectoryPath::new("foo").unwrap())
-                    .filter_map(|x| async { x.ok() })
-                    .collect::<Vec<_>>()
-                    .await;
+    configured.run_until(|()| async move {
+        let file_service = TokioFileService::builder(recipes_path).build(recorder_id);
+        for _ in 0..3 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let all = file_service
+                .stream_files_recursive(RelativeDirectoryPath::new("foo").unwrap())
+                .filter_map(|x| async { x.ok() })
+                .collect::<Vec<_>>()
+                .await;
 
-                if all.len() >= 2 {
-                    println!(
-                        "Files: {:?}",
-                        all.iter().map(|f| f.file_name()).collect::<Vec<_>>()
-                    );
-                    let data = file_service.get_file(all.get(0).unwrap()).await.unwrap();
-                    let image = image::load_from_memory(&data).unwrap();
-                    assert!(
-                        matches!(image, image::DynamicImage::ImageRgb8(_)),
-                        "Not rgb image: {image:?}"
-                    );
-                    return;
-                }
+            if all.len() >= 2 {
+                println!(
+                    "Files: {:?}",
+                    all.iter().map(|f| f.file_name()).collect::<Vec<_>>()
+                );
+                let data = file_service.get_file(all.get(0).unwrap()).await.unwrap();
+                let image = image::load_from_memory(&data).unwrap();
+                assert!(
+                    matches!(image, image::DynamicImage::ImageRgb8(_)),
+                    "Not rgb image: {image:?}"
+                );
+                return;
             }
-            panic!("Never got more than 1 file");
-        });
+        }
+        panic!("Never got more than 1 file");
+    });
     Ok(())
 }

@@ -19,75 +19,68 @@ pub struct Runtime {
 }
 
 /// Convenience wrapper for integration tests.
-///
-/// Creates a temporary root directory and builds a [`Runtime`] from it.
 /// Keeps the temporary directory alive for as long as the runtime is used.
 pub struct TempRuntime {
-    dir: tempfile::TempDir,
-    runtime: Runtime,
+    config_json: Option<Vec<u8>>,
+    steps: Vec<TempRuntimeStep>,
+}
+
+enum TempRuntimeStep {
+    Registrar(extern "C" fn(&mut ServiceCollection)),
+    Instance(Box<dyn FnOnce(&mut ServiceCollection)>),
 }
 
 impl TempRuntime {
-    /// Creates a temporary root and writes a default empty `config.json` (`{}`).
-    pub fn new() -> std::io::Result<Self> {
-        let dir = tempfile::tempdir()?;
-        let runtime = Runtime::with_root(dir.path());
-        Ok(Self { dir, runtime })
-    }
-
-    /// Replaces `config.json` in the temp root and rebuilds the internal [`Runtime`].
-    ///
-    /// Call this **before** using [`TempRuntime::register`] / [`TempRuntime::register_instance`],
-    /// otherwise you'll lose previously added registrations (since rebuilding recreates the service collection).
-    pub fn config_json(mut self, config_json: impl AsRef<[u8]>) -> std::io::Result<Self> {
-        std::fs::write(self.dir.path().join("config.json"), config_json)?;
-        self.runtime = Runtime::with_root(self.dir.path());
-        Ok(self)
-    }
-
-    pub fn path(&self) -> &Path {
-        self.dir.path()
-    }
-
-    pub fn register(self, registrar: extern "C" fn(&mut ServiceCollection)) -> Self {
-        let Self { dir, runtime } = self;
+    /// Creates a temp runtime builder. No IO happens until [`TempRuntime::configure`].
+    pub fn new() -> Self {
         Self {
-            dir,
-            runtime: runtime.register(registrar),
+            config_json: None,
+            steps: Vec::new(),
         }
     }
 
-    pub fn register_instance(self, instance: impl Clone + Send + Sync + Any) -> Self {
-        let Self { dir, runtime } = self;
-        Self {
-            dir,
-            runtime: runtime.register_instance(instance),
-        }
+    /// Sets the `config.json` contents to be written during [`TempRuntime::configure`].
+    pub fn config_json(mut self, config_json: impl AsRef<[u8]>) -> Self {
+        self.config_json = Some(config_json.as_ref().to_vec());
+        self
     }
 
-    pub fn configure(self) -> TempConfiguredRuntime {
-        let Self { dir, runtime } = self;
-        let configured = runtime.configure();
-        TempConfiguredRuntime {
-            dir,
-            inner: configured,
-        }
+    pub fn register(mut self, registrar: extern "C" fn(&mut ServiceCollection)) -> Self {
+        self.steps.push(TempRuntimeStep::Registrar(registrar));
+        self
     }
 
-    /// Runs the runtime until the provided future finishes, while injecting dependencies from minfac.
-    ///
-    /// Dependencies are inferred from the closure's argument type and resolved via `provider.resolve()`.
-    /// This allows call sites to avoid turbofish and only specify dependencies in the closure pattern:
-    ///
-    /// - `temp.run_until(|Registered(actor_system): Registered<ActorSystem>| async move { ... })`
-    /// - `temp.run_until(|(Registered(stats), Registered(svc))| async move { ... })`
-    pub fn run_until<T, TDeps, TFut, F>(self, f: F) -> T
+    pub fn register_instance<T>(mut self, instance: T) -> Self
     where
-        TDeps: Resolvable,
-        TFut: futures::Future<Output = T>,
-        F: FnOnce(TDeps) -> TFut,
+        T: Clone + Send + Sync + Any + 'static,
     {
-        self.configure().run_until(f)
+        self.steps.push(TempRuntimeStep::Instance(Box::new(
+            move |c: &mut ServiceCollection| c.register_instance(instance),
+        )));
+        self
+    }
+
+    /// Creates a temporary root directory, writes `config.json`, builds the runtime and applies registrations.
+    ///
+    /// This is the only fallible operation in the TempRuntime API.
+    pub fn configure(self) -> Result<TempConfiguredRuntime, std::io::Error> {
+        let dir = tempfile::tempdir()?;
+        if let Some(cfg) = self.config_json {
+            std::fs::write(dir.path().join("config.json"), cfg)?;
+        }
+
+        let mut runtime = Runtime::with_root(dir.path());
+        for step in self.steps {
+            match step {
+                TempRuntimeStep::Registrar(registrar) => (registrar)(&mut runtime.services),
+                TempRuntimeStep::Instance(f) => (f)(&mut runtime.services),
+            }
+        }
+
+        Ok(TempConfiguredRuntime {
+            dir,
+            inner: runtime.configure(),
+        })
     }
 }
 

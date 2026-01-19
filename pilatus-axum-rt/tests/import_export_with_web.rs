@@ -19,26 +19,6 @@ use tokio_tungstenite::tungstenite::Message;
 #[test]
 //#[cfg(feature = "integration")]
 fn upload_zip() -> anyhow::Result<()> {
-    let runtime = TempRuntime::new()?.config_json(
-        br#"{
-            "web": {
-                "socket": "0.0.0.0:0"
-            },
-            "tracing": {
-                "default_level": "debug",
-                "filters": {
-                  "tokio": "info",
-                  "mio_serial": "info",
-                  "mio::poll": "debug",
-                  "runtime::resource": "debug",
-                  "pilatus_anyfeeder": "error",
-                  "pilatus::image": "debug",
-                  "tower_http": "trace"
-                }
-            }
-        }"#,
-    )?;
-
     extern "C" fn register_test_services(c: &mut ServiceCollection) {
         async fn device(
             ctx: DeviceContext,
@@ -61,10 +41,29 @@ fn upload_zip() -> anyhow::Result<()> {
             })
         });
     }
-
-    runtime
+    TempRuntime::new()
+        .config_json(
+            br#"{
+            "web": {
+                "socket": "0.0.0.0:0"
+            },
+            "tracing": {
+                "default_level": "debug",
+                "filters": {
+                  "tokio": "info",
+                  "mio_serial": "info",
+                  "mio::poll": "debug",
+                  "runtime::resource": "debug",
+                  "pilatus_anyfeeder": "error",
+                  "pilatus::image": "debug",
+                  "tower_http": "trace"
+                }
+            }
+        }"#,
+        )
         .register(pilatus_axum_rt::register)
         .register(register_test_services)
+        .configure()?
         .run_until(
             |(Registered(web_stats), Registered(recipe_service)): (
                 Registered<pilatus_axum::Stats>,

@@ -31,7 +31,12 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
         }
     }
 
-    let runtime = TempRuntime::new()?.config_json(br#"{ "web": { "socket": "0.0.0.0:0" } }"#)?;
+    let configured = TempRuntime::new()
+        .config_json(br#"{ "web": { "socket": "0.0.0.0:0" } }"#)
+        .register(pilatus_emulation_camera_rt::register)
+        .register(pilatus_engineering_rt::register)
+        .register(pilatus_axum_rt::register)
+        .configure()?;
 
     let mut recipe = Recipe::default();
     let camera_id = recipe.add_device(DeviceConfig::new_unchecked(
@@ -45,7 +50,7 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
         }),
     ));
 
-    let recipes_dir = runtime.path().join("recipes");
+    let recipes_dir = configured.path().join("recipes");
     std::fs::create_dir_all(&recipes_dir)?;
     std::fs::write(
         recipes_dir.join("recipes.json"),
@@ -57,38 +62,33 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
     std::fs::create_dir_all(&collection_dir)?;
     write_color_image(collection_dir.join("image0.png"), [255, 0, 0])?;
 
-    runtime
-        .register(pilatus_emulation_camera_rt::register)
-        .register(pilatus_engineering_rt::register)
-        .register(pilatus_axum_rt::register)
-        .run_until(
-            async move |Registered(actor_system): Registered<ActorSystem>| {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-                let mut stream = actor_system
-                    .ask(camera_id, SubscribeDynamicImageMessage::default())
-                    .await
-                    .expect("subscribe stream");
+    configured.run_until(
+        |Registered(actor_system): Registered<ActorSystem>| async move {
+            use anyhow::Context;
 
-                let first_frame = stream
-                    .next()
-                    .await
-                    .expect("stream finished before first frame")
-                    .expect("stream returned error");
-                assert_eq!(
-                    pixel_color(&first_frame.image),
-                    [255, 0, 0],
-                    "expected first frame to come from the first image"
-                );
-                drop(stream);
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            let mut stream = actor_system
+                .ask(camera_id, SubscribeDynamicImageMessage::default())
+                .await
+                .context("subscribe stream")?;
 
-                sleep(Duration::from_millis(100)).await;
-                tokio::fs::write(collection_dir.join("image1.png"), b"not a image")
-                    .await
-                    .unwrap();
-                sleep(Duration::from_millis(100)).await;
-                assert!(!logs_contain("ERROR"),);
-            },
-        );
+            let first_frame = stream
+                .next()
+                .await
+                .context("stream finished before first frame")?
+                .context("stream returned error")?;
+            assert_eq!(
+                pixel_color(&first_frame.image),
+                [255, 0, 0],
+                "expected first frame to come from the first image"
+            );
+            drop(stream);
 
-    Ok(())
+            sleep(Duration::from_millis(100)).await;
+            tokio::fs::write(collection_dir.join("image1.png"), b"not a image").await?;
+            sleep(Duration::from_millis(100)).await;
+            assert!(!logs_contain("ERROR"),);
+            Ok(())
+        },
+    )
 }
