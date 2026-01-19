@@ -3,27 +3,10 @@
 fn record_integration() -> anyhow::Result<()> {
     use futures::StreamExt;
     use image::Rgb;
-    use pilatus::{DeviceConfig, Recipe, Recipes, RelativeDirectoryPath};
+    use pilatus::{DeviceConfig, Recipe, RelativeDirectoryPath};
     use pilatus_rt::{TempRuntime, TokioFileService};
     use serde_json::json;
 
-    let configured = TempRuntime::new()
-        .config(serde_json::json!({
-            "web": {
-                "socket": "0.0.0.0:0"
-            },
-            "tracing": {
-                "default_level": "debug",
-                "filters": {
-                  "tokio": "info",
-                  "pilatus::image": "debug"
-                }
-            }
-        }))
-        .register(pilatus_engineering_rt::register)
-        .register(pilatus_axum_rt::register)
-        .register(pilatus_emulation_camera_rt::register)
-        .configure()?;
     let mut recipe = Recipe::default();
     let player_id = recipe.add_device(DeviceConfig::new_unchecked(
         "pilatus-emulation-camera",
@@ -40,14 +23,28 @@ fn record_integration() -> anyhow::Result<()> {
             }
         }),
     ));
+
+    let configured = TempRuntime::new()
+        .config(serde_json::json!({
+            "web": {
+                "socket": "0.0.0.0:0"
+            },
+            "tracing": {
+                "default_level": "debug",
+                "filters": {
+                  "tokio": "info",
+                  "pilatus::image": "debug"
+                }
+            }
+        }))
+        .add_recipe(recipe)
+        .register(pilatus_engineering_rt::register)
+        .register(pilatus_axum_rt::register)
+        .register(pilatus_emulation_camera_rt::register)
+        .configure()?;
     let recipes_path = configured.path().join("recipes");
     let player_collection_path = recipes_path.join(player_id.to_string()).join("bar");
     std::fs::create_dir_all(&player_collection_path)?;
-
-    std::fs::write(
-        recipes_path.join("recipes.json"),
-        serde_json::to_string(&Recipes::new_with_recipe(recipe))?,
-    )?;
 
     for (i, color) in [[0u8, 0, 255], [0, 255, 0], [255, 0, 0]]
         .into_iter()

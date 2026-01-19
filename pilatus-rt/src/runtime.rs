@@ -8,7 +8,7 @@ use std::{
 use tokio::runtime::Builder;
 use tracing::{error, info};
 
-use pilatus::{GenericConfig, HostedService, SystemTerminator};
+use pilatus::{GenericConfig, HostedService, Recipe, Recipes, SystemTerminator};
 use serde_json::Value as JsonValue;
 
 use crate::metadata_future::MetadataFuture;
@@ -23,6 +23,7 @@ pub struct Runtime {
 /// Keeps the temporary directory alive for as long as the runtime is used.
 pub struct TempRuntime {
     config_json: Option<JsonValue>,
+    recipes: Option<Recipes>,
     steps: Vec<TempRuntimeStep>,
 }
 
@@ -36,6 +37,7 @@ impl TempRuntime {
     pub fn new() -> Self {
         Self {
             config_json: None,
+            recipes: None,
             steps: Vec::new(),
         }
     }
@@ -43,6 +45,29 @@ impl TempRuntime {
     /// Sets the `config.json` contents to be written during [`TempRuntime::configure`].
     pub fn config(mut self, config_json: JsonValue) -> Self {
         self.config_json = Some(config_json);
+        self
+    }
+
+    /// Sets the recipes to be written during [`TempRuntime::configure`].
+    ///
+    /// If unset, TempRuntime will not create any recipe file on disk.
+    pub fn set_recipes(mut self, recipes: Recipes) -> Self {
+        self.recipes = Some(recipes);
+        self
+    }
+
+    /// Adds a recipe to the recipes to be written during [`TempRuntime::configure`].
+    ///
+    /// If recipes were not set yet, creates a new [`Recipes`] from the given [`Recipe`].
+    pub fn add_recipe(mut self, recipe: Recipe) -> Self {
+        match &mut self.recipes {
+            Some(recipes) => {
+                recipes.add_new(recipe);
+            }
+            None => {
+                self.recipes = Some(Recipes::new_with_recipe(recipe));
+            }
+        }
         self
     }
 
@@ -70,6 +95,11 @@ impl TempRuntime {
             let cfg = serde_json::to_vec(&cfg)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
             std::fs::write(dir.path().join("config.json"), cfg)?;
+        }
+        if let Some(recipes) = self.recipes {
+            let recipes_dir = dir.path().join("recipes");
+            std::fs::create_dir_all(&recipes_dir)?;
+            recipes.store_sync(recipes_dir.join("recipes.json"))?;
         }
 
         let mut runtime = Runtime::with_root(dir.path());

@@ -9,11 +9,12 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
     use imbuf::DynamicImageChannel;
     use minfac::Registered;
     use pilatus::device::ActorSystem;
-    use pilatus::{DeviceConfig, Recipe, Recipes};
+    use pilatus::{DeviceConfig, Recipe};
     use pilatus_engineering::image::{DynamicImage, SubscribeDynamicImageMessage};
     use pilatus_rt::TempRuntime;
     use serde_json::json;
     use tokio::time::sleep;
+
     fn write_color_image(path: impl AsRef<std::path::Path>, color: [u8; 3]) -> anyhow::Result<()> {
         let img = ImageBuffer::from_pixel(2, 2, Rgb(color));
         img.save(path)?;
@@ -31,15 +32,6 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
         }
     }
 
-    let configured = TempRuntime::new()
-        .config(serde_json::json!({
-            "web": { "socket": "0.0.0.0:0" }
-        }))
-        .register(pilatus_emulation_camera_rt::register)
-        .register(pilatus_engineering_rt::register)
-        .register(pilatus_axum_rt::register)
-        .configure()?;
-
     let mut recipe = Recipe::default();
     let camera_id = recipe.add_device(DeviceConfig::new_unchecked(
         "pilatus-emulation-camera",
@@ -52,12 +44,18 @@ fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
         }),
     ));
 
+    let configured = TempRuntime::new()
+        .config(serde_json::json!({
+            "web": { "socket": "0.0.0.0:0" }
+        }))
+        .add_recipe(recipe)
+        .register(pilatus_emulation_camera_rt::register)
+        .register(pilatus_engineering_rt::register)
+        .register(pilatus_axum_rt::register)
+        .configure()?;
+
     let recipes_dir = configured.path().join("recipes");
     std::fs::create_dir_all(&recipes_dir)?;
-    std::fs::write(
-        recipes_dir.join("recipes.json"),
-        serde_json::to_string(&Recipes::new_with_recipe(recipe))?,
-    )?;
 
     let device_dir = recipes_dir.join(camera_id.to_string());
     let collection_dir = device_dir.join("collection");
