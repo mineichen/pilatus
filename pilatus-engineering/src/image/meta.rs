@@ -42,7 +42,6 @@ impl<T> ImageWithMeta<T> {
         }
     }
 
-    #[deprecated = "Image with Meta got extensions which should also be forwarded. Dont destruct this object, but instead modify it"]
     pub fn with_meta_and_others(
         image: T,
         meta: ImageMeta,
