@@ -69,6 +69,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
     file::register_services(c);
 }
 
+#[allow(dead_code)]
 #[derive(thiserror::Error, Debug)]
 pub enum ChangeDeviceParamsTransactionError {
     #[error("{0:?}")]
@@ -91,6 +92,7 @@ pub struct RecipeServiceAccessor {
     device_actions: Arc<dyn DeviceActions>,
     listeners: Vec<InitRecipeListener>,
     update_sender: broadcast::Sender<Uuid>,
+    #[allow(dead_code)]
     // Can be used to update a Device with change_device_params_on_active_recipe
     // DeviceType -> fn(serde_json::Value, T) -> Result<serde_json::Value, TransactionError>>
     change_strategies: HashMap<(&'static str, TypeId), Box<dyn Any + Send + Sync>>,
@@ -102,6 +104,7 @@ pub struct RecipeDataService<'a, T: 'a> {
     device_actions: &'a dyn DeviceActions,
     listeners: &'a [InitRecipeListener],
     update_sender: &'a broadcast::Sender<Uuid>,
+    #[allow(dead_code)]
     change_strategies: &'a HashMap<(&'static str, TypeId), Box<dyn Any + Send + Sync>>,
 }
 

@@ -18,6 +18,7 @@ use crate::TokioFileService;
 
 mod builder;
 
+#[cfg(any(test, feature = "unstable"))]
 pub use builder::*;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {

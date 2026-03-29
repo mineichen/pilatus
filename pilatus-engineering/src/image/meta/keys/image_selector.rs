@@ -6,10 +6,11 @@ use super::ImageKey;
 /// image_input:
 ///  - Unspecified or null: main image
 ///  - string: specific key is used
+///
 /// image_output:
-///  - Unspecified: same as image_input,
-///  - null: main image  
-///  - string: specific key is used
+///   - Unspecified: same as image_input,
+///   - null: main image  
+///   - string: specific key is used
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub struct ImageSelector {
     image_input: ImageKey,

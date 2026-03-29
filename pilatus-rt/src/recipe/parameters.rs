@@ -124,6 +124,7 @@ impl ChangeParamsStrategy {
 }
 
 impl<TRecipe: DerefMut<Target = Recipes>> RecipeDataService<'_, TRecipe> {
+    #[allow(dead_code)]
     pub async fn change_device_params_on_active_recipe<T: Any>(
         &mut self,
         device_id: DeviceId,

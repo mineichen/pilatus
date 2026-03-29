@@ -118,7 +118,6 @@ impl TryFrom<DynamicImage> for Rgb8Image {
             .map(Rgb8Image::Interleaved)
             .or_else(|d| {
                 Image::<u8, 3>::try_from(d.image)
-                    .map(Into::into)
                     .map(Rgb8Image::Planar)
             })
     }

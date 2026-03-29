@@ -82,9 +82,10 @@ impl ActorSystemIdentifier for DynamicIdentifier {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub enum DynamicIdentifier {
     DeviceId(DeviceId),
+    #[default]
     None,
 }
 
@@ -102,12 +103,6 @@ impl<'de> Deserialize<'de> for DynamicIdentifier {
             Some(x) => DynamicIdentifier::DeviceId(x),
             None => DynamicIdentifier::None,
         })
-    }
-}
-
-impl Default for DynamicIdentifier {
-    fn default() -> Self {
-        Self::None
     }
 }
 

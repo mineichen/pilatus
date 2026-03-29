@@ -13,6 +13,7 @@ use std::{
 /// and thus only cloned on demand if get_mut is called and another copy of this AnyMultiMap exists
 #[derive(Default, Clone)]
 pub struct AnyMultiMap {
+    #[allow(clippy::type_complexity)]
     map: HashMap<TypeId, smallvec::SmallVec<[RefCell<Arc<dyn Any + Send + Sync + 'static>>; 1]>>,
 }
 

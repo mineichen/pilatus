@@ -32,6 +32,12 @@ enum TempRuntimeStep {
     Instance(Box<dyn FnOnce(&mut ServiceCollection)>),
 }
 
+impl Default for TempRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TempRuntime {
     /// Creates a temp runtime builder. No IO happens until [`TempRuntime::configure`].
     pub fn new() -> Self {

@@ -56,11 +56,17 @@ impl DeviceState {
                 }
                 Err(e) => {
                     warn!("Stop due to acquisition error: {e:?}");
-                    self.stream.send(Err(
-                        pilatus_engineering::image::StreamImageError::Acquisition {
-                            error: Arc::new(e),
-                        },
-                    ));
+                    if self
+                        .stream
+                        .send(Err(
+                            pilatus_engineering::image::StreamImageError::Acquisition {
+                                error: Arc::new(e),
+                            },
+                        ))
+                        .is_err()
+                    {
+                        warn!("Couldn't send error to any subscriber")
+                    }
                     None
                 }
             };

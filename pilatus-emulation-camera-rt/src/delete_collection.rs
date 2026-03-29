@@ -36,7 +36,7 @@ impl DeviceState {
             .map_err(|e| ActorError::Custom(DirectoryError::Io(std::io::Error::other(e))))?;
 
         self.file_service
-            .remove_directory(&collection_path)
+            .remove_directory(collection_path)
             .await
             .map_err(ActorError::custom)?;
 

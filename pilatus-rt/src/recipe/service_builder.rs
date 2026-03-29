@@ -36,6 +36,7 @@ impl RecipeServiceBuilder {
         }
     }
 
+    #[allow(dead_code)]
     pub fn replace_permissioner(mut self, permissioner: Arc<dyn DeviceActions>) -> Self {
         self.device_actions = permissioner;
         self

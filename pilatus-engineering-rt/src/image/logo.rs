@@ -18,6 +18,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 type Age = u64;
 
 struct ImageLogoServiceImpl {
+    #[allow(clippy::type_complexity)]
     cache: RwLock<HashMap<LogoQuery, (Age, Image<[u8; 4], 1>)>>,
     logo_service: LogoService,
 }

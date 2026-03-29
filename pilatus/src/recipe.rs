@@ -107,7 +107,7 @@ impl UntypedDeviceParamsWithVariables {
     pub fn from_serializable(serializable: impl Serialize) -> serde_json::Result<Self> {
         let inner = serde_json::to_value(serializable)?;
 
-        check_recursive(&inner).map_err(|e| serde_json::Error::custom(e))?;
+        check_recursive(&inner).map_err(serde_json::Error::custom)?;
         Ok(Self(inner))
     }
 }

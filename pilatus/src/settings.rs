@@ -33,7 +33,6 @@ impl Settings {
     }
 
     /// Inserts or updates the given key
-
     #[cfg(feature = "tokio")]
     pub async fn set<T: serde::Serialize>(&self, key: &str, value: T) -> anyhow::Result<()> {
         let (path, cache) = self.0.as_ref();

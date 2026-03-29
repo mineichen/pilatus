@@ -1,6 +1,6 @@
 //! Use the Device-Event-Queue to schedule broadcast of images
 
-use std::{fmt::Debug, marker::PhantomData, sync::Arc};
+use std::{fmt::Debug, marker::PhantomData};
 
 use futures::{future::BoxFuture, stream::BoxStream, StreamExt};
 use pilatus::device::{

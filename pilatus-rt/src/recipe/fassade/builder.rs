@@ -1,12 +1,17 @@
+#[cfg(any(test, feature = "unstable"))]
 use std::{path::PathBuf, sync::Arc};
 
+#[cfg(any(test, feature = "unstable"))]
 use super::RecipeServiceFassade;
+#[cfg(any(test, feature = "unstable"))]
 use crate::recipe::{actions::DeviceActions, ChangeParamsStrategy, RecipeServiceBuilder};
 
+#[cfg(any(test, feature = "unstable"))]
 pub struct RecipeServiceFassadeBuilder {
     pub recipe_builder: RecipeServiceBuilder,
 }
 
+#[cfg(any(test, feature = "unstable"))]
 impl RecipeServiceFassadeBuilder {
     pub fn new(path: impl Into<PathBuf>, device_actions: Arc<dyn DeviceActions>) -> Self {
         RecipeServiceFassadeBuilder {

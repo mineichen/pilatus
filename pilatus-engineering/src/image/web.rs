@@ -17,7 +17,7 @@ use futures::{
     stream::BoxStream,
     Future, SinkExt, StreamExt,
 };
-use imbuf::{DynamicImageChannel, DynamicSize, ImageChannel, PixelType, PixelTypePrimitive};
+use imbuf::{DynamicImageChannel, DynamicSize, ImageChannel, PixelTypePrimitive};
 use jpeg_encoder::{ColorType, Encoder};
 use pilatus::device::{ActorError, ActorMessage, ActorSystem, DynamicIdentifier};
 use pilatus_axum::{
@@ -49,6 +49,7 @@ const OK_CODE: u8 = 0 << 4;
 const MISSED_ITEM_CODE: u8 = 1 << 4;
 const PROCESSING_CODE: u8 = 2 << 4;
 const ACTOR_ERROR_CODE: u8 = 3 << 4;
+#[allow(dead_code)]
 const ACQUISITION_CODE: u8 = 4 << 4;
 
 #[derive(Default, serde::Deserialize, Clone, Copy)]
@@ -155,9 +156,9 @@ fn encode_dynamic_raw_image<T: Serialize>(
     }
     let channels =
         NonZeroU16::new(u16::try_from(image.len())?).expect("Images cannot have 0 channels");
-    match &image.first() {
-        &imbuf::DynamicImageChannel::U8(x) => encode_typed(x, DataType::U8, channels, flag, meta),
-        &imbuf::DynamicImageChannel::U16(x) => encode_typed(x, DataType::U16, channels, flag, meta),
+    match image.first() {
+        imbuf::DynamicImageChannel::U8(x) => encode_typed(x, DataType::U8, channels, flag, meta),
+        imbuf::DynamicImageChannel::U16(x) => encode_typed(x, DataType::U16, channels, flag, meta),
         _ => Err(anyhow!("Unsupported image format: {:?}", image)),
     }
 }
