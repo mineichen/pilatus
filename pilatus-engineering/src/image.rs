@@ -25,6 +25,8 @@ pub use imbuf::{DynamicImage, Image};
 
 #[cfg(feature = "tokio")]
 mod broadcaster;
+#[cfg(feature = "encode")]
+mod encode;
 mod logo;
 mod message;
 mod meta;
@@ -35,6 +37,8 @@ mod web;
 #[cfg(feature = "tokio")]
 pub use broadcaster::*;
 // use image::{GenericImageView, Rgb8Image};
+#[cfg(feature = "encode")]
+pub use encode::*;
 pub use logo::*;
 pub use meta::*;
 #[cfg(feature = "axum")]
@@ -116,10 +120,7 @@ impl TryFrom<DynamicImage> for Rgb8Image {
     fn try_from(value: DynamicImage) -> Result<Self, Self::Error> {
         Image::<[u8; 3], 1>::try_from(value)
             .map(Rgb8Image::Interleaved)
-            .or_else(|d| {
-                Image::<u8, 3>::try_from(d.image)
-                    .map(Rgb8Image::Planar)
-            })
+            .or_else(|d| Image::<u8, 3>::try_from(d.image).map(Rgb8Image::Planar))
     }
 }
 
