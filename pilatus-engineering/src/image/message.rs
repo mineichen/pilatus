@@ -12,6 +12,7 @@ use super::{DynamicImage, DynamicPointProjector, ImageWithMeta, LumaImage, Stabl
 #[non_exhaustive]
 pub enum StreamImageError<TImage> {
     #[error("{0:?}")]
+    #[deprecated = "Tracked in MetaData::missed_frames instead, as this is often not a problem in real applications"]
     MissedItems(#[from] MissedItemsError),
     #[error("Processing Error: {error:?}")]
     ProcessingError {

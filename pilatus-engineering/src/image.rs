@@ -25,11 +25,10 @@ pub use imbuf::{DynamicImage, Image};
 
 #[cfg(feature = "tokio")]
 mod broadcaster;
-#[cfg(feature = "encode")]
-mod encode;
 mod logo;
 mod message;
 mod meta;
+mod protocol;
 mod stable_hash;
 #[cfg(feature = "axum")]
 mod web;
@@ -37,10 +36,9 @@ mod web;
 #[cfg(feature = "tokio")]
 pub use broadcaster::*;
 // use image::{GenericImageView, Rgb8Image};
-#[cfg(feature = "encode")]
-pub use encode::*;
 pub use logo::*;
 pub use meta::*;
+pub use protocol::*;
 #[cfg(feature = "axum")]
 pub use web::*;
 

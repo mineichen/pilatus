@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::fmt::Debug;
+use std::{collections::HashMap, num::Saturating};
 
 use imbuf::IncompatibleImageError;
 use serde::{Deserialize, Serialize};
@@ -36,7 +36,10 @@ impl<T> ImageWithMeta<T> {
     pub fn with_hash(image: T, hash: Option<StableHash>) -> Self {
         Self {
             image,
-            meta: ImageMeta { hash },
+            meta: ImageMeta {
+                hash,
+                ..Default::default()
+            },
             other: Default::default(),
             extensions: Default::default(),
         }
@@ -177,9 +180,11 @@ impl<T> std::ops::DerefMut for ImageWithMeta<T> {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+#[non_exhaustive]
 pub struct ImageMeta {
     pub hash: Option<StableHash>,
+    pub missed_frames: Saturating<u8>,
 }
 
 #[cfg(test)]
@@ -196,7 +201,13 @@ mod tests {
     fn insert_and_extract_image_luma16() {
         let image = Image::<u16, 1>::new_vec(vec![1], NonZeroU32::MIN, NonZeroU32::MIN);
         let dynamic: DynamicImage = image.into();
-        let meta = ImageWithMeta::with_meta(dynamic, ImageMeta { hash: None });
+        let meta = ImageWithMeta::with_meta(
+            dynamic,
+            ImageMeta {
+                hash: None,
+                ..Default::default()
+            },
+        );
         let back: ImageRef<u16, 1> = meta.with_format_by_key(&ImageKey::unspecified()).unwrap();
         assert_eq!((NonZeroU32::MIN, NonZeroU32::MIN), back.dimensions());
     }

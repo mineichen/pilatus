@@ -24,7 +24,8 @@ futures = "0.3"
 futures-channel = "0.3"
 futures-util = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
-imbuf = { git = "https://github.com/mineichen/imbuf.git" }
+imask = { git = "https://github.com/mineichen/imask.git" }
+imbuf = "0.3.3"
 impex = { git = "https://github.com/mineichen/impex.git" }
 minfac = "0.1"
 pilatus = { path = "pilatus" }
@@ -45,5 +46,5 @@ tokio = "1"
 tracing = "0.1"
 uuid = "1"
 
-# [patch."https://github.com/mineichen/image-buffer.git"]
-# imbuf = { path = "../image-buffer" }
+# [patch.crates-io]
+# imbuf = { path = "../imbuf" }

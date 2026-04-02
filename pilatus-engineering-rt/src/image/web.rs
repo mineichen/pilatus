@@ -154,12 +154,14 @@ async fn list_subscribe_devices(
 async fn list_stream_devices(
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
 ) -> impl IntoResponse {
+    warn!("Deprecated: Use /list/subscribe instead, which can handle Images with various channes and MetaData");
     Json(actor_system.list_devices_for_message_type::<SubscribeImageMessage>())
 }
 
 async fn list_localizable_stream_devices(
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
 ) -> impl IntoResponse {
+    warn!("Deprecated: Use /list/subscribe instead, which can handle Images with various channes and MetaData");
     Json(actor_system.list_devices_for_message_type::<SubscribeLocalizableImageMessage>())
 }
 

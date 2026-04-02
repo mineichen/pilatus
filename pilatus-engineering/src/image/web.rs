@@ -1,8 +1,3 @@
-/// # Reason for introducing new protocol
-/// The initial protocoll stopped if a error occured. Such errors could be temporal (camera not found) or fixable by changing parameters back)
-/// In that case, the subscriber started to randomly request new frames without knowing if this is reasonable
-/// The new design still allows all previous workflows by simply adding .take_while() and therefore volunatarely close the stream.
-/// Furthermore, the new design allows errors to contain images, for situations, where e.g.
 use std::marker::PhantomData;
 
 use futures::{
@@ -19,7 +14,7 @@ use pilatus_axum::{
 };
 use tracing::debug;
 
-use crate::image::encode::StreamableImage;
+use crate::image::protocol::StreamableImage;
 
 use super::{
     BroadcastImage, LocalizableBroadcastImage, SubscribeImageMessage, SubscribeImageOk,

@@ -54,6 +54,7 @@ impl DeviceState {
                     tokio_stream::wrappers::BroadcastStream::new(self.stream.subscribe())
                         .map(|r| {
                             r.map_err(|BroadcastStreamRecvError::Lagged(e)| {
+                                #[expect(deprecated)]
                                 StreamImageError::MissedItems(MissedItemsError::new(
                                     std::num::Saturating(e.min(u16::MAX as u64) as u16),
                                 ))

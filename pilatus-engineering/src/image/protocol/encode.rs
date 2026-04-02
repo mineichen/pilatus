@@ -5,21 +5,26 @@
 /// Furthermore, the new design allows errors to contain images, for situations, where e.g.
 use std::{
     fmt::{self, Debug, Formatter},
+    io::Write,
     num::{NonZeroU16, NonZeroU32, NonZeroU8},
 };
 
 use anyhow::anyhow;
 use bytes::BufMut;
-use imbuf::{DynamicImageChannel, DynamicSize, ImageChannel, PixelTypePrimitive};
+use imbuf::{
+    DynamicImage, DynamicImageChannel, DynamicSize, Image, ImageChannel, PixelTypePrimitive,
+};
 use jpeg_encoder::{ColorType, Encoder};
+use pilatus::MissedItemsError;
 use serde::Serialize;
 use tracing::{debug, trace};
 
-use super::{DynamicImage, Image, ImageWithMeta, LumaImage, Rgb8Image, StreamImageError};
+use crate::image::{protocol::calculate_buf_len, DataType};
 
-pub trait StreamableImage: Sized {
-    fn encode(self) -> anyhow::Result<Vec<u8>>;
-}
+use super::{
+    super::{ImageWithMeta, LumaImage, Rgb8Image, StreamImageError},
+    StreamableImage, CODE_ACTOR_ERROR, CODE_MISSED_ITEM, CODE_OK, CODE_PROCESSING,
+};
 
 impl StreamableImage for LumaImage {
     fn encode(self) -> anyhow::Result<Vec<u8>> {
@@ -27,13 +32,6 @@ impl StreamableImage for LumaImage {
         encode_legacy(self.buffer(), ColorType::Luma, dims, |_| Ok(()))
     }
 }
-
-const OK_CODE: u8 = 0 << 4;
-const MISSED_ITEM_CODE: u8 = 1 << 4;
-const PROCESSING_CODE: u8 = 2 << 4;
-const ACTOR_ERROR_CODE: u8 = 3 << 4;
-#[allow(dead_code)]
-const ACQUISITION_CODE: u8 = 4 << 4;
 
 #[derive(Default, serde::Deserialize, Clone, Copy)]
 pub enum StreamingImageFormat {
@@ -43,19 +41,28 @@ pub enum StreamingImageFormat {
 }
 
 /// Protocol Spec
-///                   | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+/// Reserved have to be written as 0, which is debug_checked by decoders
+///
+///|||||||||||||||||||| 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 /// 0..1              | ok/err codes  |    reserved   |
-/// 1..4              |           reserved            |
+/// 1..2              |            version            |
+/// 2..4              |       number_of_chunks        |
 /// 4..8              |   u32::LE_bytes of MetaLen    |
 /// 8..(MetaLen + 8)  |          Meta as JSON         |
-///                   |   empty for image alignment   |
-/// (MetaLen+8)..(+12)| u32::LE_bytes of MainImagSize |
-/// omitted here      |       encoded MainImage       |
 ///
-/// foreach addidtional image (ordering defined by request)
-///                   |    u32::LE_bytes of ImageSize |
-///                   |         encoded Image         |
+/// Chunks...
+/// 0..1              |     kind      |   reserved    |
+/// 1..               |   data (kind determines end)  |
 ///
+/// Chunks - RawImage (kind = 0)
+/// Chunks - Mask (kind = 1), must currently be the last item to allow unknown size
+///
+///
+/// (There is currently no time to build a clean Zip-File with adequate file formats
+/// - BigTiff instead of rawImage has async rust encoders/decoders for uncompressed data (nocopy on client side)
+/// - Streaming data (Size not known when write starts) could drastically reduce memory footprint
+/// - ImageMasks from imask could easily be streamed with its async encoder/decoder pair
+/// - Extendability was not a pririty when writing this
 impl StreamableImage
     for (
         Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
@@ -66,19 +73,22 @@ impl StreamableImage
         match self.0 {
             Ok(x) => {
                 let meta = x.meta;
-                self.1.encode_dynamic_image(OK_CODE, x.image, meta)
+                self.1.encode_dynamic_image(CODE_OK, x.image, meta)
             }
             Err(e) => match e {
-                StreamImageError::MissedItems(_) => {
-                    encode_meta(vec![MISSED_ITEM_CODE, 0, 0, 0], |_| Ok(()))
+                #[expect(deprecated)]
+                StreamImageError::MissedItems(MissedItemsError { number, .. }) => {
+                    encode_meta(vec![CODE_MISSED_ITEM, 0, 0, 0], |x| {
+                        Ok(x.write_all(&number.0.to_le_bytes())?)
+                    })
                 }
                 StreamImageError::ProcessingError { image, error } => {
                     debug!("Processing error: {error}");
                     self.1
-                        .encode_dynamic_image(PROCESSING_CODE, image, error.to_string())
+                        .encode_dynamic_image(CODE_PROCESSING, image, error.to_string())
                 }
                 StreamImageError::ActorError(_) => {
-                    encode_meta(vec![ACTOR_ERROR_CODE, 0, 0, 0], |_| Ok(()))
+                    encode_meta(vec![CODE_ACTOR_ERROR, 0, 0, 0], |_| Ok(()))
                 }
                 _ => Err(anyhow::anyhow!("Unknown error: {e:?}")),
             },
@@ -116,37 +126,44 @@ fn encode_dynamic_raw_image<T: Serialize>(
     image: DynamicImage,
     meta: T,
 ) -> anyhow::Result<Vec<u8>> {
-    fn encode_typed<TMeta: Serialize, TPixel: PixelTypePrimitive>(
+    fn encode_typed<TPixel: PixelTypePrimitive>(
         x: &ImageChannel<DynamicSize<TPixel>>,
+        buf: Vec<u8>,
         pixel_kind: DataType,
-        channel_len: NonZeroU16,
-        flag: u8,
-        meta: TMeta,
     ) -> anyhow::Result<Vec<u8>> {
-        let (width, height) = x.dimensions();
-        let pixel_elements = x.pixel_elements();
-        //let pixel_len = x.width().get() * x.height().get();
-        let buf = prepare_dynamic_image_buf(
-            flag,
-            meta,
-            width.get() as usize * height.get() as usize / 2 * pixel_elements.get() as usize,
-        )?;
         encode_raw(
             buf,
             x.buffer_flat_bytes(),
             pixel_kind,
-            (width, height),
-            pixel_elements,
-            channel_len,
+            x.dimensions(),
+            x.pixel_elements(),
         )
     }
+    let image_len = image.iter().try_fold(0, |acc, ch| {
+        let header = usize::from(super::CHANNEL_HEADER_BYTE_SIZE);
+        anyhow::Ok(acc + header + calculate_buf_len(ch.dimensions(), ch.pixel_elements())?)
+    })? + 2;
+    let mut buf = prepare_dynamic_image_buf(flag, meta, 0)?;
+    const KIND_LEN: usize = 1;
+    let capacity = buf.len() + KIND_LEN + image_len;
+    buf.reserve_exact(capacity);
+    buf.push(super::KIND_IMAGE);
     let channels =
         NonZeroU16::new(u16::try_from(image.len())?).expect("Images cannot have 0 channels");
-    match image.first() {
-        imbuf::DynamicImageChannel::U8(x) => encode_typed(x, DataType::U8, channels, flag, meta),
-        imbuf::DynamicImageChannel::U16(x) => encode_typed(x, DataType::U16, channels, flag, meta),
-        _ => Err(anyhow!("Unsupported image format: {:?}", image)),
+    buf.put_slice(&channels.get().to_le_bytes());
+    for channel in image.iter() {
+        buf = match channel {
+            imbuf::DynamicImageChannel::U8(x) => encode_typed(x, buf, DataType::U8),
+            imbuf::DynamicImageChannel::U16(x) => encode_typed(x, buf, DataType::U16),
+            _ => Err(anyhow!("Unsupported image format: {:?}", image)),
+        }?;
     }
+    debug_assert_eq!(
+        buf.len(),
+        capacity,
+        "Reserve-Exact should only be used if capacity is correct"
+    );
+    Ok(buf)
 }
 
 fn encode_dynamic_jpeg_image<T: Serialize>(
@@ -256,12 +273,6 @@ fn encode_jpeg(
     Ok(buf)
 }
 
-#[repr(u8)]
-enum DataType {
-    U8,
-    U16,
-}
-
 // Currently only supports planar images
 fn encode_raw(
     mut buf: Vec<u8>,
@@ -269,23 +280,11 @@ fn encode_raw(
     pixel_kind: DataType,
     (width, height): (NonZeroU32, NonZeroU32),
     pixel_size: NonZeroU8,
-    channel_size: NonZeroU16,
 ) -> anyhow::Result<Vec<u8>> {
-    // https://stackoverflow.com/questions/45213511/formula-for-memory-alignment
-    let unaligned_pixel_start = buf.len() + 4;
-    let alignment_bytes = (((unaligned_pixel_start + 7) & !7) - unaligned_pixel_start) as u32;
-
-    const HEADER_BYTE_SIZE: u32 = 8;
-    let image_total_buf_len: u32 = flat_buffer.len().try_into()?;
-    buf.extend_from_slice(
-        &(image_total_buf_len + HEADER_BYTE_SIZE + alignment_bytes).to_le_bytes(),
-    );
-
-    buf.extend((0..alignment_bytes).map(|_| 0)); // Guarantee 8Byte aligned
-    buf.push(pixel_size.get()); // reserved
+    buf.push(pixel_size.get());
     buf.push(pixel_kind as u8);
-    buf.put_slice(&channel_size.get().to_le_bytes());
     buf.put_slice(&width.get().to_le_bytes());
+    buf.put_slice(&height.get().to_le_bytes());
     buf.put_slice(flat_buffer);
 
     trace!(
