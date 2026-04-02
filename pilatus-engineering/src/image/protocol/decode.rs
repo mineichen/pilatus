@@ -53,7 +53,9 @@ pub fn decode(
             input
         ));
     }
-    match input[0] {
+    debug_assert_eq!(input[2], 0);
+    debug_assert_eq!(input[3], 0);
+    match u16::from_le_bytes([input[0], input[1]]) {
         super::CODE_OK => extract_meta_and_image(input),
         #[expect(deprecated)]
         super::CODE_MISSED_ITEM => {
@@ -73,9 +75,9 @@ pub fn decode(
             // ));
         }
         super::CODE_PROCESSING => extract_meta_and_image(input),
-        command => {
-            let version = input[0] & 0b00001111;
-            let command_nr = (command & 0b11110000) >> 4;
+        _ => {
+            let version = input[1];
+            let command_nr = (input[0] & 0b11110000) >> 4;
             Err(if version != super::VERSION {
                 let input_start = &input[0..input.len().min(20)];
                 anyhow!(

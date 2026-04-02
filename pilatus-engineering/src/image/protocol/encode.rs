@@ -46,7 +46,7 @@ pub enum StreamingImageFormat {
 ///|||||||||||||||||||| 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 /// 0..1              | ok/err codes  |    reserved   |
 /// 1..2              |            version            |
-/// 2..4              |       number_of_chunks        |
+/// 2..4              |            reserved           |
 /// 4..8              |   u32::LE_bytes of MetaLen    |
 /// 8..(MetaLen + 8)  |          Meta as JSON         |
 ///
@@ -78,7 +78,7 @@ impl StreamableImage
             Err(e) => match e {
                 #[expect(deprecated)]
                 StreamImageError::MissedItems(MissedItemsError { number, .. }) => {
-                    encode_meta(vec![CODE_MISSED_ITEM, 0, 0, 0], |x| {
+                    encode_meta(prepare_buffer(CODE_MISSED_ITEM, 12), |x| {
                         Ok(x.write_all(&number.0.to_le_bytes())?)
                     })
                 }
@@ -88,7 +88,7 @@ impl StreamableImage
                         .encode_dynamic_image(CODE_PROCESSING, image, error.to_string())
                 }
                 StreamImageError::ActorError(_) => {
-                    encode_meta(vec![CODE_ACTOR_ERROR, 0, 0, 0], |_| Ok(()))
+                    encode_meta(prepare_buffer(CODE_ACTOR_ERROR, 4), |_| Ok(()))
                 }
                 _ => Err(anyhow::anyhow!("Unknown error: {e:?}")),
             },
@@ -99,7 +99,7 @@ impl StreamableImage
 impl StreamingImageFormat {
     fn encode_dynamic_image<T: Serialize>(
         self,
-        code: u8,
+        code: u16,
         image: DynamicImage,
         meta: T,
     ) -> anyhow::Result<Vec<u8>> {
@@ -110,19 +110,26 @@ impl StreamingImageFormat {
     }
 }
 
+fn prepare_buffer(flag: u16, capacity: usize) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(capacity);
+    buf.extend_from_slice(&flag.to_le_bytes());
+    buf.push(0);
+    buf.push(0);
+    buf
+}
+
 fn prepare_dynamic_image_buf<T: Serialize>(
-    flag: u8,
+    flag: u16,
     meta: T,
     capacity: usize,
 ) -> anyhow::Result<Vec<u8>> {
+    let buf = prepare_buffer(flag, capacity);
     let meta_writer = move |b: &mut Vec<u8>| serde_json::to_writer(b, &meta).map_err(Into::into);
-    let mut buf = Vec::with_capacity(capacity);
-    buf.extend_from_slice(&[flag, 0, 0, 0]);
     encode_meta(buf, meta_writer)
 }
 
 fn encode_dynamic_raw_image<T: Serialize>(
-    flag: u8,
+    flag: u16,
     image: DynamicImage,
     meta: T,
 ) -> anyhow::Result<Vec<u8>> {
@@ -167,7 +174,7 @@ fn encode_dynamic_raw_image<T: Serialize>(
 }
 
 fn encode_dynamic_jpeg_image<T: Serialize>(
-    flag: u8,
+    flag: u16,
     image: DynamicImage,
     meta: T,
 ) -> anyhow::Result<Vec<u8>> {

@@ -12,14 +12,14 @@ pub use encode::*;
 const VERSION: u8 = 1;
 const CHANNEL_HEADER_BYTE_SIZE: u8 = 10;
 
-const CODE_OK: u8 = VERSION;
-const CODE_MISSED_ITEM: u8 = 1 << 4 | VERSION;
+const CODE_OK: u16 = VERSION as u16;
+const CODE_MISSED_ITEM: u16 = 1 << 4 | (VERSION as u16) << 8;
 #[allow(dead_code)]
-const CODE_PROCESSING: u8 = 2 << 4 | VERSION;
+const CODE_PROCESSING: u16 = 2 << 4 | (VERSION as u16) << 8;
 #[allow(dead_code)]
-const CODE_ACTOR_ERROR: u8 = 3 << 4 | VERSION;
+const CODE_ACTOR_ERROR: u16 = 3 << 4 | (VERSION as u16) << 8;
 #[allow(dead_code)]
-const CODE_ACQUISITION: u8 = 4 << 4 | VERSION;
+const CODE_ACQUISITION: u16 = 4 << 4 | (VERSION as u16) << 8;
 
 const KIND_IMAGE: u8 = 1 << 4;
 const KIND_MASK: u8 = 2 << 4;
