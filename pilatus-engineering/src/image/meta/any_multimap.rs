@@ -90,8 +90,11 @@ impl AnyMultiMap {
                 .ok()
             })
     }
-
+    #[deprecated = "Use pop instead"]
     pub fn take<T: Any + Clone + Send + Sync>(&mut self) -> Option<T> {
+        self.pop()
+    }
+    pub fn pop<T: Any + Clone + Send + Sync>(&mut self) -> Option<T> {
         self.map
             .remove(&std::any::TypeId::of::<T>())
             .and_then(|mut x| x.pop())
@@ -100,6 +103,28 @@ impl AnyMultiMap {
                     .downcast::<T>()
                     .ok()
                     .map(Arc::unwrap_or_clone)
+            })
+    }
+
+    pub fn iter<T: Any>(&self) -> impl Iterator<Item = Ref<'_, T>> {
+        self.map
+            .get(&std::any::TypeId::of::<T>())
+            .into_iter()
+            .flat_map(|x| {
+                x.iter().filter_map(|x| {
+                    std::cell::Ref::filter_map(x.borrow(), |y| y.downcast_ref::<T>()).ok()
+                })
+            })
+    }
+
+    pub fn iter_extract<T: Any + Clone + Send + Sync>(&mut self) -> impl Iterator<Item = T> {
+        self.map
+            .remove(&std::any::TypeId::of::<T>())
+            .into_iter()
+            .flat_map(|x| {
+                x.into_iter().filter_map(|x| {
+                    Some(Arc::unwrap_or_clone(x.into_inner().downcast::<T>().ok()?))
+                })
             })
     }
 
@@ -123,6 +148,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn iter_extract_all() {
+        let mut map = AnyMultiMap::default();
+        map.insert(0i32);
+        map.insert(42i32);
+        assert_eq!(vec![0, 42], map.iter_extract::<i32>().collect::<Vec<_>>());
+        assert_eq!(None, map.iter::<u8>().next().map(|x| *x));
+    }
+
+    #[test]
+    fn iter_all() {
+        let mut map = AnyMultiMap::default();
+        map.insert(0i32);
+        map.insert(42i32);
+        assert_eq!(
+            vec![0, 42],
+            map.iter::<i32>().map(|x| *x).collect::<Vec<_>>()
+        );
+        assert_eq!(Some(0), map.iter::<i32>().next().map(|x| *x));
+    }
+
+    #[test]
     fn insert_and_get() {
         let mut map = AnyMultiMap::default();
         map.insert(0i32);
@@ -131,10 +177,10 @@ mod tests {
     }
 
     #[test]
-    fn take_item() {
+    fn pop_item() {
         let mut map = AnyMultiMap::default();
         map.insert("Foo".to_string());
-        assert_eq!("Foo", map.take::<String>().unwrap())
+        assert_eq!("Foo", map.pop::<String>().unwrap())
     }
     #[test]
     fn insert_and_get_mut_twice() {
