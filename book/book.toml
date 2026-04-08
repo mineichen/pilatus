@@ -11,7 +11,6 @@ build-dir = "../target/book"
 [output.html]
 default-theme = "navy"
 git-repository-url = "https://github.com/mineichen/pilatus"
-git-repository-icon = "fa fa-github"
 edit-url-template = "https://github.com/mineichen/pilatus/edit/main/book/{path}"
 
 [output.html.search]
