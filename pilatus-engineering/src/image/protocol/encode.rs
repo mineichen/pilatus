@@ -7,9 +7,10 @@ use std::{
     fmt::{self, Debug, Formatter},
     io::Write,
     num::{NonZeroU16, NonZeroU32, NonZeroU8},
+    ops::RangeInclusive,
 };
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use bytes::BufMut;
 use imbuf::{
     DynamicImage, DynamicImageChannel, DynamicSize, Image, ImageChannel, PixelTypePrimitive,
@@ -19,7 +20,7 @@ use pilatus::MissedItemsError;
 use serde::Serialize;
 use tracing::{debug, trace};
 
-use crate::image::{protocol::calculate_buf_len, DataType};
+use crate::image::{protocol::calculate_buf_len, AnyMultiMap, DataType};
 
 use super::{
     super::{ImageWithMeta, LumaImage, Rgb8Image, StreamImageError},
@@ -71,10 +72,9 @@ impl StreamableImage
 {
     fn encode(self) -> anyhow::Result<Vec<u8>> {
         match self.0 {
-            Ok(x) => {
-                let meta = x.meta;
-                self.1.encode_dynamic_image(CODE_OK, x.image, meta)
-            }
+            Ok(x) => self
+                .1
+                .encode_dynamic_image(CODE_OK, x.image, x.extensions, x.meta),
             Err(e) => match e {
                 #[expect(deprecated)]
                 StreamImageError::MissedItems(MissedItemsError { number, .. }) => {
@@ -84,8 +84,12 @@ impl StreamableImage
                 }
                 StreamImageError::ProcessingError { image, error } => {
                     debug!("Processing error: {error}");
-                    self.1
-                        .encode_dynamic_image(CODE_PROCESSING, image, error.to_string())
+                    self.1.encode_dynamic_image(
+                        CODE_PROCESSING,
+                        image,
+                        Default::default(),
+                        error.to_string(),
+                    )
                 }
                 StreamImageError::ActorError(_) => {
                     encode_meta(prepare_buffer(CODE_ACTOR_ERROR, 4), |_| Ok(()))
@@ -101,11 +105,12 @@ impl StreamingImageFormat {
         self,
         code: u16,
         image: DynamicImage,
+        ext: AnyMultiMap,
         meta: T,
     ) -> anyhow::Result<Vec<u8>> {
         match self {
             StreamingImageFormat::Jpeg => encode_dynamic_jpeg_image(code, image, meta),
-            StreamingImageFormat::Raw => encode_dynamic_raw_image(code, image, meta),
+            StreamingImageFormat::Raw => encode_dynamic_raw_image(code, image, ext, meta),
         }
     }
 }
@@ -131,6 +136,7 @@ fn prepare_dynamic_image_buf<T: Serialize>(
 fn encode_dynamic_raw_image<T: Serialize>(
     flag: u16,
     image: DynamicImage,
+    extensions: AnyMultiMap,
     meta: T,
 ) -> anyhow::Result<Vec<u8>> {
     fn encode_typed<TPixel: PixelTypePrimitive>(
@@ -151,12 +157,11 @@ fn encode_dynamic_raw_image<T: Serialize>(
         anyhow::Ok(acc + header + calculate_buf_len(ch.dimensions(), ch.pixel_elements())?)
     })? + 2;
     let mut buf = prepare_dynamic_image_buf(flag, meta, 0)?;
-    const KIND_LEN: usize = 1;
-    let capacity = buf.len() + KIND_LEN + image_len;
-    buf.reserve_exact(capacity);
-    buf.push(super::KIND_IMAGE);
+
+    let capacity = buf.len() + image_len;
+    buf.reserve(capacity);
     let channels =
-        NonZeroU16::new(u16::try_from(image.len())?).expect("Images cannot have 0 channels");
+        NonZeroU16::try_from(image.len_nonzero()).context("Number of Channels is too big")?;
     buf.put_slice(&channels.get().to_le_bytes());
     for channel in image.iter() {
         buf = match channel {
@@ -165,11 +170,26 @@ fn encode_dynamic_raw_image<T: Serialize>(
             _ => Err(anyhow!("Unsupported image format: {:?}", image)),
         }?;
     }
+
     debug_assert_eq!(
         buf.len(),
         capacity,
         "Reserve-Exact should only be used if capacity is correct"
     );
+
+    for mask in extensions.iter::<imask::SortedRanges<u64, u64>>() {
+        buf.push(super::KIND_MASK);
+        //println!("{}", buf.len());
+        futures::executor::block_on(imask::AsyncRangeWriter::new(
+            &mut buf,
+            futures::stream::iter(mask.iter::<RangeInclusive<u64>>()),
+        ))?;
+        //panic!("{}", buf.len());
+        // Both dimensions cannot be 0... If we find 14 consecutive, we know it's impossible to be valid data
+        // the ending 42 is there, to make sure, we don't cut numbers which still belong to a number
+
+        buf.extend_from_slice(&super::MASK_SENTINEL);
+    }
     Ok(buf)
 }
 

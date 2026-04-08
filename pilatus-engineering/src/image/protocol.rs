@@ -34,6 +34,12 @@ pub(crate) enum DataType {
     U16,
 }
 
+const MASK_SENTINEL: [u8; 15] = {
+    let mut sentinel = [0; 15];
+    sentinel[14] = 42;
+    sentinel
+};
+
 impl TryFrom<u8> for DataType {
     type Error = anyhow::Error;
 
@@ -63,7 +69,7 @@ mod tests {
     use imbuf::{Image, PixelType};
     use testresult::TestResult;
 
-    use crate::image::ImageWithMeta;
+    use crate::image::{ImageWithMeta, StableHash};
 
     use super::*;
 
@@ -91,12 +97,49 @@ mod tests {
             const { NonZeroU32::new(1).unwrap() },
             const { NonZeroU32::new(2).unwrap() },
         );
-        let encodable_image = Ok(ImageWithMeta::with_hash(image.clone().into(), None));
+        let hash = StableHash::from_hashable(42);
+        let encodable_image = ImageWithMeta::with_hash(image.clone().into(), Some(hash));
+
+        let bytes = (Ok(encodable_image.clone()), StreamingImageFormat::Raw).encode()?;
+        let back = crate::image::decode(&bytes)??.try_convert_image::<Image<T, CHANNELS>>()?;
+        assert_eq!(image.buffers(), back.image.buffers());
+        assert_eq!(encodable_image.meta, back.meta);
+
+        Ok(())
+    }
+    #[test]
+    fn encode_decode_with_imask() -> TestResult {
+        type Ranges = imask::SortedRanges<u64, u64>;
+        let image = Image::<u8, 1>::new_vec_flat(vec![128], NonZeroU32::MIN, NonZeroU32::MIN);
+        let ranges = [
+            Ranges::try_from_ordered_iter([0u32..10, 15..20])?,
+            Ranges::try_from_ordered_iter([30u32..40, 45..50])?,
+        ];
+        let mut meta = ImageWithMeta::with_hash(image.clone().into(), None);
+        for range in ranges.iter() {
+            meta.extensions.insert(range.clone());
+        }
+        assert_eq!(
+            ranges.clone().to_vec(),
+            meta.extensions
+                .iter::<Ranges>()
+                .map(|x| x.clone())
+                .collect::<Vec<_>>()
+        );
+
+        let encodable_image = Ok(meta);
 
         let bytes = (encodable_image, StreamingImageFormat::Raw).encode()?;
-        let back = crate::image::decode(&bytes)??;
-        let back_typed = Image::<T, CHANNELS>::try_from(back.image)?;
-        assert_eq!(image.buffers(), back_typed.buffers());
+        let back = crate::image::decode(&bytes)??.try_convert_image::<Image<u8, 1>>()?;
+
+        assert_eq!(image.buffers(), back.image.buffers());
+        assert_eq!(
+            ranges.clone().to_vec(),
+            back.extensions
+                .iter::<Ranges>()
+                .map(|x| x.clone())
+                .collect::<Vec<_>>()
+        );
 
         Ok(())
     }
