@@ -24,6 +24,23 @@ pub struct ImageWithMeta<T> {
 }
 
 impl<T> ImageWithMeta<T> {
+    pub fn try_convert_image<TNew>(self) -> Result<ImageWithMeta<TNew>, TNew::Error>
+    where
+        TNew: TryFrom<T>,
+    {
+        let image = self.image.try_into()?;
+        let mut other = HashMap::new();
+        for (key, img) in self.other {
+            other.insert(key, img.try_into()?);
+        }
+
+        Ok(ImageWithMeta {
+            image,
+            meta: self.meta,
+            other,
+            extensions: self.extensions,
+        })
+    }
     pub fn with_meta(image: T, meta: ImageMeta) -> Self {
         Self {
             image,
@@ -180,7 +197,7 @@ impl<T> std::ops::DerefMut for ImageWithMeta<T> {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Default)]
+#[derive(Clone, Serialize, Deserialize, Debug, Default, PartialEq)]
 #[non_exhaustive]
 pub struct ImageMeta {
     pub hash: Option<StableHash>,
