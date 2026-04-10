@@ -37,6 +37,8 @@ impl RelativePathError for RelativeDirPathError {
         RelativeDirPathError::InvalidRelativePath(path.to_string_lossy().to_string())
     }
 }
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct RelativeDirectoryPath(Path);
 

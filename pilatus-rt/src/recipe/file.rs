@@ -1,5 +1,6 @@
 use std::{
     fs::FileType,
+    io::{self, ErrorKind},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -10,8 +11,8 @@ use futures::{
 };
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
-    DirectoryError, FileServiceBuilder, FileServiceTrait, RelativeDirectoryPath,
-    RelativeDirectoryPathBuf, RelativeFilePath, TransactionError,
+    FileServiceBuilder, FileServiceTrait, RelativeDirectoryPath, RelativeDirectoryPathBuf,
+    RelativeFilePath, TransactionError,
 };
 use tokio::{fs, io::AsyncReadExt};
 use tracing::trace;
@@ -33,19 +34,24 @@ impl FileServiceTrait for TokioFileService {
     async fn metadata_directory(
         &self,
         directory: &RelativeDirectoryPath,
-    ) -> Result<std::fs::Metadata, DirectoryError> {
+    ) -> io::Result<std::fs::Metadata> {
         let s = self.get_directory_path(directory);
         fs::metadata(s)
             .await
             .map_err(|e| match e.kind() {
-                std::io::ErrorKind::NotFound => DirectoryError::NotFound(directory.to_owned()),
-                _ => DirectoryError::Io(e),
+                std::io::ErrorKind::NotFound => {
+                    io::Error::new(io::ErrorKind::NotFound, directory.display().to_string())
+                }
+                _ => e,
             })
             .and_then(|e| {
                 if e.is_dir() {
                     Ok(e)
                 } else {
-                    Err(DirectoryError::NotADirectory(directory.to_owned()))
+                    Err(io::Error::new(
+                        ErrorKind::NotADirectory,
+                        directory.display().to_string(),
+                    ))
                 }
             })
     }
@@ -105,13 +111,10 @@ impl FileServiceTrait for TokioFileService {
         Ok(())
     }
 
-    async fn remove_directory(
-        &self,
-        directory: &RelativeDirectoryPath,
-    ) -> Result<(), DirectoryError> {
+    async fn remove_directory(&self, directory: &RelativeDirectoryPath) -> io::Result<()> {
         self.metadata_directory(directory).await?;
         let p = self.get_directory_path(directory);
-        fs::remove_dir_all(p).await.map_err(DirectoryError::Io)
+        fs::remove_dir_all(p).await
     }
 
     async fn get_file(&self, filename: &RelativeFilePath) -> Result<Vec<u8>, TransactionError> {

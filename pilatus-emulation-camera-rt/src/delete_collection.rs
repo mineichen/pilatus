@@ -1,6 +1,8 @@
+use std::io;
+
 use minfac::ServiceCollection;
 use pilatus::{
-    DirectoryError, Name, RelativeDirectoryPath,
+    Name, RelativeDirectoryPath,
     device::{ActorError, ActorMessage, ActorResult, ActorSystem, DynamicIdentifier},
 };
 use pilatus_axum::{
@@ -24,7 +26,7 @@ pub(super) struct DeleteCollectionMessage {
 
 impl ActorMessage for DeleteCollectionMessage {
     type Output = ();
-    type Error = DirectoryError;
+    type Error = io::Error;
 }
 
 impl DeviceState {
@@ -33,7 +35,7 @@ impl DeviceState {
         msg: DeleteCollectionMessage,
     ) -> ActorResult<DeleteCollectionMessage> {
         let collection_path = RelativeDirectoryPath::new(msg.collection_name.as_str())
-            .map_err(|e| ActorError::Custom(DirectoryError::Io(std::io::Error::other(e))))?;
+            .map_err(|e| ActorError::Custom(std::io::Error::other(e)))?;
 
         self.file_service
             .remove_directory(collection_path)

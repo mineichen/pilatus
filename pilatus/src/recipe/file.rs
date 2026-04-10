@@ -3,6 +3,7 @@
 //! If a Recipe is not running, the RecipeService is allowed to modify files (e.g. import/export)
 
 use std::{
+    io,
     ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     sync::Arc,
@@ -13,8 +14,8 @@ use futures_util::{future::BoxFuture, stream::BoxStream, FutureExt};
 use tracing::trace;
 
 use crate::{
-    device::DeviceId, DirectoryError, RelativeDirectoryPath, RelativeDirectoryPathBuf,
-    RelativeFilePath, TransactionError,
+    device::DeviceId, RelativeDirectoryPath, RelativeDirectoryPathBuf, RelativeFilePath,
+    TransactionError,
 };
 
 mod device;
@@ -108,7 +109,7 @@ pub trait FileServiceTrait {
     async fn metadata_directory(
         &self,
         directory: &RelativeDirectoryPath,
-    ) -> Result<std::fs::Metadata, DirectoryError>;
+    ) -> io::Result<std::fs::Metadata>;
     async fn list_recursive(&self, path: &RelativeDirectoryPath) -> std::io::Result<Vec<PathBuf>>;
     // If the parent doesn't exist, it will be created recursively
     async fn add_file_unchecked(
@@ -117,10 +118,7 @@ pub trait FileServiceTrait {
         data: &[u8],
     ) -> Result<(), anyhow::Error>;
     async fn remove_file(&self, filename: &RelativeFilePath) -> Result<(), TransactionError>;
-    async fn remove_directory(
-        &self,
-        directory: &RelativeDirectoryPath,
-    ) -> Result<(), DirectoryError>;
+    async fn remove_directory(&self, directory: &RelativeDirectoryPath) -> io::Result<()>;
     async fn get_file(&self, filename: &RelativeFilePath) -> Result<Vec<u8>, TransactionError>;
     async fn list_files(
         &self,
