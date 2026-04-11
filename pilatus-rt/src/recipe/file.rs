@@ -8,7 +8,7 @@ use std::{
 
 use futures::{
     stream::{self, BoxStream},
-    AsyncRead, Stream, StreamExt, TryStreamExt,
+    AsyncRead, AsyncWrite, Stream, StreamExt, TryStreamExt,
 };
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
@@ -16,7 +16,7 @@ use pilatus::{
     RelativeFilePath,
 };
 use tokio::{fs, io::AsyncReadExt};
-use tokio_util::compat::TokioAsyncReadCompatExt;
+use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tracing::trace;
 
 use crate::with_file_context;
@@ -139,6 +139,21 @@ impl FileServiceTrait for TokioFileService {
             .map_err(with_file_context(filename))?;
 
         Ok(Box::pin(f.compat()))
+    }
+
+    async fn write_file_unbuffered(
+        &self,
+        filename: &RelativeFilePath,
+    ) -> io::Result<Pin<Box<dyn AsyncWrite + Send + Sync>>> {
+        self.get_or_create_directory(filename.relative_dir())
+            .await?;
+        let p = self.get_filepath(filename);
+
+        let f = fs::File::create(p)
+            .await
+            .map_err(with_file_context(filename))?;
+
+        Ok(Box::pin(f.compat_write()))
     }
 
     fn stream_files_recursive(
@@ -273,7 +288,7 @@ impl TokioFileService {
 
 #[cfg(test)]
 mod tests {
-    use futures::{future::BoxFuture, FutureExt};
+    use futures::{future::BoxFuture, AsyncReadExt, AsyncWriteExt, FutureExt};
     use pilatus::{device::DeviceId, FileServiceExt, Validator};
     use tempfile::TempDir;
     use testresult::TestResult;
@@ -387,18 +402,29 @@ mod tests {
 
     #[tokio::test]
     async fn read_buffered() -> TestResult {
+        const CONTENT: &str = "Hello world";
         let tmp = TempDir::new()?;
         let device_id = DeviceId::new_v4();
-        let device_dir = tmp.path().join(device_id.to_string());
-        tokio::fs::create_dir_all(&device_dir).await?;
-        tokio::fs::write(device_dir.join("test.txt"), "Hello world").await?;
+        // let device_dir = tmp.path().join(device_id.to_string());
+
+        // tokio::fs::create_dir_all(&device_dir).await?;
+        //tokio::fs::write(device_dir.join("test.txt"), CONTENT).await?;
         let svc = TokioFileService::builder(tmp.path()).build(device_id);
-        svc.read_file_bufferd(&RelativeFilePath::new("test.txt")?)
+        let path = RelativeFilePath::new("test.txt")?;
+        let mut write = svc.write_file_buffered(&path).await?;
+        write.write_all(CONTENT.as_bytes()).await?;
+        write.flush().await?;
+
+        let mut content = String::new();
+        svc.read_file_bufferd(&path)
+            .await?
+            .read_to_string(&mut content)
             .await?;
+
+        assert_eq!(CONTENT, content);
 
         Ok(())
     }
-
     #[tokio::test]
     async fn list_files() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;

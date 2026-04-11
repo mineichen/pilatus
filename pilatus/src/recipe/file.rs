@@ -11,7 +11,7 @@ use std::{
 };
 
 pub use device::*;
-use futures_util::{future::BoxFuture, io::BufReader, stream::BoxStream, FutureExt};
+use futures_util::{future::BoxFuture, io::BufReader, io::BufWriter, stream::BoxStream, FutureExt};
 use tracing::trace;
 
 use crate::{device::DeviceId, RelativeDirectoryPath, RelativeDirectoryPathBuf, RelativeFilePath};
@@ -105,9 +105,19 @@ impl<T> FileService<T> {
             self.inner.read_file_unbuffered(filename).await?,
         ))
     }
+
+    pub async fn write_file_buffered(
+        &self,
+        filename: &RelativeFilePath,
+    ) -> io::Result<BufWriter<DynWriter>> {
+        Ok(BufWriter::new(
+            self.inner.write_file_unbuffered(filename).await?,
+        ))
+    }
 }
 
 type DynReader = Pin<Box<dyn futures_util::io::AsyncRead + Send + Sync>>;
+type DynWriter = Pin<Box<dyn futures_util::io::AsyncWrite + Send + Sync>>;
 
 #[async_trait::async_trait]
 pub trait FileServiceTrait {
@@ -124,6 +134,7 @@ pub trait FileServiceTrait {
     async fn remove_directory(&self, directory: &RelativeDirectoryPath) -> io::Result<()>;
     async fn get_file(&self, filename: &RelativeFilePath) -> io::Result<Vec<u8>>;
     async fn read_file_unbuffered(&self, filename: &RelativeFilePath) -> io::Result<DynReader>;
+    async fn write_file_unbuffered(&self, filename: &RelativeFilePath) -> io::Result<DynWriter>;
     async fn list_files(&self, path: &RelativeDirectoryPath) -> io::Result<Vec<RelativeFilePath>>;
     async fn get_or_create_directory(
         &self,
