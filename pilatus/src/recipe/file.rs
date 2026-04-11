@@ -3,14 +3,15 @@
 //! If a Recipe is not running, the RecipeService is allowed to modify files (e.g. import/export)
 
 use std::{
-    io,
-    ops::{Deref, DerefMut},
+    io::{self},
+    ops::Deref,
     path::{Path, PathBuf},
+    pin::Pin,
     sync::Arc,
 };
 
 pub use device::*;
-use futures_util::{future::BoxFuture, stream::BoxStream, FutureExt};
+use futures_util::{future::BoxFuture, io::BufReader, stream::BoxStream, FutureExt};
 use tracing::trace;
 
 use crate::{device::DeviceId, RelativeDirectoryPath, RelativeDirectoryPathBuf, RelativeFilePath};
@@ -94,11 +95,19 @@ impl<T> Deref for FileService<T> {
         self.inner.as_ref()
     }
 }
-impl<T> DerefMut for FileService<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.inner.as_mut()
+
+impl<T> FileService<T> {
+    pub async fn read_file_bufferd(
+        &self,
+        filename: &RelativeFilePath,
+    ) -> io::Result<BufReader<DynReader>> {
+        Ok(BufReader::new(
+            self.inner.read_file_unbuffered(filename).await?,
+        ))
     }
 }
+
+type DynReader = Pin<Box<dyn futures_util::io::AsyncRead + Send + Sync>>;
 
 #[async_trait::async_trait]
 pub trait FileServiceTrait {
@@ -114,6 +123,7 @@ pub trait FileServiceTrait {
     async fn remove_file(&self, filename: &RelativeFilePath) -> io::Result<()>;
     async fn remove_directory(&self, directory: &RelativeDirectoryPath) -> io::Result<()>;
     async fn get_file(&self, filename: &RelativeFilePath) -> io::Result<Vec<u8>>;
+    async fn read_file_unbuffered(&self, filename: &RelativeFilePath) -> io::Result<DynReader>;
     async fn list_files(&self, path: &RelativeDirectoryPath) -> io::Result<Vec<RelativeFilePath>>;
     async fn get_or_create_directory(
         &self,

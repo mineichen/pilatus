@@ -2,12 +2,13 @@ use std::{
     fs::FileType,
     io::{self, ErrorKind},
     path::{Path, PathBuf},
+    pin::Pin,
     sync::Arc,
 };
 
 use futures::{
     stream::{self, BoxStream},
-    Stream, StreamExt, TryStreamExt,
+    AsyncRead, Stream, StreamExt, TryStreamExt,
 };
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
@@ -15,6 +16,7 @@ use pilatus::{
     RelativeFilePath,
 };
 use tokio::{fs, io::AsyncReadExt};
+use tokio_util::compat::TokioAsyncReadCompatExt;
 use tracing::trace;
 
 use crate::with_file_context;
@@ -124,6 +126,19 @@ impl FileServiceTrait for TokioFileService {
         tokio::io::BufReader::new(f).read_to_end(&mut buf).await?;
 
         Ok(buf)
+    }
+
+    async fn read_file_unbuffered(
+        &self,
+        filename: &RelativeFilePath,
+    ) -> io::Result<Pin<Box<dyn AsyncRead + Send + Sync>>> {
+        let p = self.get_filepath(filename);
+
+        let f = fs::File::open(p)
+            .await
+            .map_err(with_file_context(filename))?;
+
+        Ok(Box::pin(f.compat()))
     }
 
     fn stream_files_recursive(
@@ -260,6 +275,8 @@ impl TokioFileService {
 mod tests {
     use futures::{future::BoxFuture, FutureExt};
     use pilatus::{device::DeviceId, FileServiceExt, Validator};
+    use tempfile::TempDir;
+    use testresult::TestResult;
 
     use super::*;
     use pilatus::{FileService, RelativeDirectoryPathBuf, RelativeFilePath};
@@ -364,6 +381,20 @@ mod tests {
                 png_path.to_str().unwrap().to_string()
             ]
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_buffered() -> TestResult {
+        let tmp = TempDir::new()?;
+        let device_id = DeviceId::new_v4();
+        let device_dir = tmp.path().join(device_id.to_string());
+        tokio::fs::create_dir_all(&device_dir).await?;
+        tokio::fs::write(device_dir.join("test.txt"), "Hello world").await?;
+        let svc = TokioFileService::builder(tmp.path()).build(device_id);
+        svc.read_file_bufferd(&RelativeFilePath::new("test.txt")?)
+            .await?;
 
         Ok(())
     }

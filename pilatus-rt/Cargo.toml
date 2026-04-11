@@ -37,7 +37,7 @@ tracing-appender = { version = "0.2", optional = true }
 
 [dev-dependencies]
 pilatus = { workspace = true, features = ["unstable"] }
-
+testresult.workspace = true
 
 [features]
 default = ["tracing"]
