@@ -156,6 +156,12 @@ impl FileServiceTrait for TokioFileService {
         Ok(Box::pin(f.compat_write()))
     }
 
+    async fn rename_file(&self, from: &RelativeFilePath, to: &RelativeFilePath) -> io::Result<()> {
+        let from_path = self.get_filepath(from);
+        let to_path = self.get_filepath(to);
+        fs::rename(from_path, to_path).await
+    }
+
     fn stream_files_recursive(
         &self,
         path: &RelativeDirectoryPath,
@@ -425,6 +431,88 @@ mod tests {
 
         Ok(())
     }
+    #[tokio::test]
+    async fn update_file_transactional_success() -> TestResult {
+        let tmp = TempDir::new()?;
+        let device_id = DeviceId::new_v4();
+        let svc = TokioFileService::builder(tmp.path()).build(device_id);
+        let path = RelativeFilePath::new("test.txt")?;
+        let original = b"original";
+        svc.add_file_unchecked(&path, original).await?;
+
+        let updated = b"updated";
+        svc.update_file_buffered(&path, |mut w| async move {
+            w.write_all(updated).await?;
+            Ok(w)
+        })
+        .await?;
+
+        let result = svc.get_file(&path).await?;
+        assert_eq!(updated.as_slice(), result.as_slice());
+        assert!(
+            !svc.has_file(&RelativeFilePath::new("test.txt_swp")?)
+                .await?
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_file_transactional_success_new_file_in_subdir() -> TestResult {
+        let tmp = TempDir::new()?;
+        let device_id = DeviceId::new_v4();
+        let svc = TokioFileService::builder(tmp.path()).build(device_id);
+        let path = RelativeFilePath::new("sub/file.txt")?;
+
+        assert!(!svc.has_file(&path).await?);
+
+        let content = b"new file";
+        svc.update_file_buffered(&path, |mut w| async move {
+            w.write_all(content).await?;
+            Ok(w)
+        })
+        .await?;
+
+        let result = svc.get_file(&path).await?;
+        assert_eq!(content.as_slice(), result.as_slice());
+        assert!(
+            !svc.has_file(&RelativeFilePath::new("sub/file.txt_swp")?)
+                .await?
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_file_transactional_failure_rollback() -> TestResult {
+        let tmp = TempDir::new()?;
+        let device_id = DeviceId::new_v4();
+        let svc = TokioFileService::builder(tmp.path()).build(device_id);
+        let path = RelativeFilePath::new("test.txt")?;
+        let original = b"original";
+        svc.add_file_unchecked(&path, original).await?;
+
+        let err = svc
+            .update_file_buffered(&path, |mut w| async move {
+                w.write_all(b"partial").await?;
+                Err(io::Error::new(io::ErrorKind::Other, "closure failed"))
+            })
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+        assert_eq!(err.to_string(), "closure failed");
+
+        let result = svc.get_file(&path).await?;
+        assert_eq!(original.as_slice(), result.as_slice());
+        assert!(
+            !svc.has_file(&RelativeFilePath::new("test.txt_swp")?)
+                .await?
+        );
+
+        Ok(())
+    }
+
     #[tokio::test]
     async fn list_files() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;

@@ -11,7 +11,9 @@ use std::{
 };
 
 pub use device::*;
-use futures_util::{future::BoxFuture, io::BufReader, io::BufWriter, stream::BoxStream, FutureExt};
+use futures_util::{
+    future::BoxFuture, io::BufReader, io::BufWriter, stream::BoxStream, AsyncWriteExt, FutureExt,
+};
 use tracing::trace;
 
 use crate::{device::DeviceId, RelativeDirectoryPath, RelativeDirectoryPathBuf, RelativeFilePath};
@@ -114,6 +116,41 @@ impl<T> FileService<T> {
             self.inner.write_file_unbuffered(filename).await?,
         ))
     }
+
+    pub async fn update_file_buffered<TFut, F>(
+        &self,
+        path: &RelativeFilePath,
+        c: F,
+    ) -> io::Result<()>
+    where
+        F: FnOnce(BufWriter<DynWriter>) -> TFut,
+        TFut: std::future::Future<Output = io::Result<BufWriter<DynWriter>>>,
+    {
+        let temp_relative = {
+            let temp_name = format!("{}_swp", path.file_name());
+            let temp_path = path.parent().unwrap_or(Path::new("")).join(temp_name);
+            RelativeFilePath::new(temp_path)?
+        };
+
+        let writer = self.write_file_buffered(&temp_relative).await?;
+
+        let mut writer = match c(writer).await {
+            Ok(w) => w,
+            Err(e) => {
+                let _ = self.inner.remove_file(&temp_relative).await;
+                return Err(e);
+            }
+        };
+
+        writer.close().await?;
+
+        if let Err(e) = self.inner.rename_file(&temp_relative, path).await {
+            let _ = self.inner.remove_file(&temp_relative).await;
+            Err(e)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 type DynReader = Pin<Box<dyn futures_util::io::AsyncRead + Send + Sync>>;
@@ -135,6 +172,7 @@ pub trait FileServiceTrait {
     async fn get_file(&self, filename: &RelativeFilePath) -> io::Result<Vec<u8>>;
     async fn read_file_unbuffered(&self, filename: &RelativeFilePath) -> io::Result<DynReader>;
     async fn write_file_unbuffered(&self, filename: &RelativeFilePath) -> io::Result<DynWriter>;
+    async fn rename_file(&self, from: &RelativeFilePath, to: &RelativeFilePath) -> io::Result<()>;
     async fn list_files(&self, path: &RelativeDirectoryPath) -> io::Result<Vec<RelativeFilePath>>;
     async fn get_or_create_directory(
         &self,
