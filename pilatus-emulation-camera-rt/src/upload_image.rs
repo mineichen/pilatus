@@ -43,7 +43,8 @@ impl DeviceState {
             .map_err(ActorError::custom)?;
         self.file_service
             .add_file_unchecked(&relative, &encoded_image)
-            .await?;
+            .await
+            .map_err(ActorError::custom)?;
         Ok(())
     }
 }

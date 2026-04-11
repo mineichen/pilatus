@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
 use futures::{future::BoxFuture, FutureExt};
-use pilatus::{device::DeviceId, AlreadyExistsError, IrreversibleError, Recipe, RecipeId};
+use pilatus::{device::DeviceId, RecipeAlreadyExistsError, IrreversibleError, Recipe, RecipeId};
 
 use crate::recipe::recipes::recipes_try_add_new_with_id;
 
@@ -24,7 +24,7 @@ impl super::MergeStrategy for Duplicate {
         ctx: MergeStrategyContext<'a>,
         recipe_id: RecipeId,
         recipe: Recipe,
-    ) -> BoxFuture<'a, Result<(), AlreadyExistsError>> {
+    ) -> BoxFuture<'a, Result<(), RecipeAlreadyExistsError>> {
         async move {
             let (insert_id, to_insert) = if ctx.recipes_copy.has_recipe(&recipe_id) {
                 let (new_id, duplicate) = ctx.recipes_copy.build_duplicate(recipe_id, &recipe);
@@ -43,7 +43,7 @@ impl super::MergeStrategy for Duplicate {
                 ctx.device_actions,
             )
             .await
-            .map_err(|_| AlreadyExistsError(insert_id))
+            .map_err(|_| RecipeAlreadyExistsError(insert_id))
         }
         .boxed()
     }

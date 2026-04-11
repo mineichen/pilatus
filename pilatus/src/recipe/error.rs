@@ -1,44 +1,34 @@
 use std::fmt::Debug;
 use std::io;
-use std::path::{Path, PathBuf};
 
-use crate::{RecipeId, UnknownDeviceError, UpdateParamsMessageError};
+use crate::{
+    RecipeAlreadyExistsError, RecipeId, UnknownDeviceError, UnknownRecipeError,
+    UpdateParamsMessageError,
+};
 use sealedstruct::ValidationErrors;
 
 #[derive(thiserror::Error, Debug)]
 pub enum TransactionError {
-    #[error("Recipe {0} already exists.")]
-    RecipeAlreadyExists(RecipeId),
+    #[error(transparent)]
+    RecipeAlreadyExists(#[from] RecipeAlreadyExistsError),
 
-    #[error("Invalid recipe id {0}")]
-    UnknownRecipeId(RecipeId),
+    #[error(transparent)]
+    UnknownRecipeId(#[from] UnknownRecipeError),
 
-    #[error("{0}")]
+    #[error(transparent)]
     UnknownDevice(#[from] UnknownDeviceError),
 
-    #[error("File Path {0} not found")]
-    UnknownFilePath(PathBuf),
+    #[error(transparent)]
+    Io(#[from] io::Error),
 
-    #[error("Error in Filesystem: {0}")]
-    FileSystemError(#[from] io::Error),
+    #[error(transparent)]
+    InvalidDeviceConfig(#[from] ValidationErrors),
 
-    #[error("ValidationError: {0}")]
-    InvalidDeviceConfig(ValidationErrors),
-
-    #[error("{0:?}")]
-    InvalidVariable(VariableError),
+    #[error(transparent)]
+    InvalidVariable(#[from] VariableError),
 
     #[error("Other: {0}")]
     Other(#[from] anyhow::Error),
-}
-
-impl TransactionError {
-    pub fn from_io_producer(path: &Path) -> impl Fn(io::Error) -> TransactionError + '_ {
-        |e| match e.kind() {
-            std::io::ErrorKind::NotFound => TransactionError::UnknownFilePath(path.to_path_buf()),
-            _ => TransactionError::FileSystemError(e),
-        }
-    }
 }
 
 impl TransactionError {
@@ -57,7 +47,8 @@ impl From<UpdateParamsMessageError> for TransactionError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("Error in Recipe {recipe_id}: {reason}")]
 pub struct VariableError {
     pub recipe_id: RecipeId,
     pub reason: anyhow::Error,
@@ -69,11 +60,5 @@ impl<T: Into<anyhow::Error>> From<(RecipeId, T)> for VariableError {
             recipe_id,
             reason: reason.into(),
         }
-    }
-}
-
-impl From<VariableError> for TransactionError {
-    fn from(e: VariableError) -> Self {
-        TransactionError::InvalidVariable(e)
     }
 }

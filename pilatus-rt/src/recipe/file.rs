@@ -12,10 +12,12 @@ use futures::{
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
     FileServiceBuilder, FileServiceTrait, RelativeDirectoryPath, RelativeDirectoryPathBuf,
-    RelativeFilePath, TransactionError,
+    RelativeFilePath,
 };
 use tokio::{fs, io::AsyncReadExt};
 use tracing::trace;
+
+use crate::with_file_context;
 
 use super::RecipeServiceFassade;
 
@@ -26,7 +28,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 
 #[async_trait::async_trait]
 impl FileServiceTrait for TokioFileService {
-    async fn has_file(&self, filename: &RelativeFilePath) -> Result<bool, TransactionError> {
+    async fn has_file(&self, filename: &RelativeFilePath) -> io::Result<bool> {
         let s = self.get_filepath(filename);
         Ok(fs::metadata(s).await.is_ok())
     }
@@ -56,7 +58,7 @@ impl FileServiceTrait for TokioFileService {
             })
     }
 
-    async fn list_recursive(&self, root: &RelativeDirectoryPath) -> std::io::Result<Vec<PathBuf>> {
+    async fn list_recursive(&self, root: &RelativeDirectoryPath) -> io::Result<Vec<PathBuf>> {
         pilatus::visit_directory_files(&self.root.join(root))
             .take_while(|f| {
                 std::future::ready(if let Err(e) = f {
@@ -73,7 +75,7 @@ impl FileServiceTrait for TokioFileService {
         &self,
         file_path: &RelativeFilePath,
         data: &[u8],
-    ) -> Result<(), anyhow::Error> {
+    ) -> io::Result<()> {
         trace!(filename = ?file_path, "Create file unchecked");
         self.get_or_create_directory(file_path.relative_dir())
             .await?;
@@ -81,23 +83,17 @@ impl FileServiceTrait for TokioFileService {
         Ok(())
     }
 
-    async fn get_or_create_directory(
-        &self,
-        path: &RelativeDirectoryPath,
-    ) -> anyhow::Result<PathBuf> {
+    async fn get_or_create_directory(&self, path: &RelativeDirectoryPath) -> io::Result<PathBuf> {
         let p = self.get_directory_path(path);
         fs::create_dir_all(&p).await?;
         Ok(p)
     }
 
-    async fn remove_file(&self, filename: &RelativeFilePath) -> Result<(), TransactionError> {
+    async fn remove_file(&self, filename: &RelativeFilePath) -> io::Result<()> {
         let p = self.get_filepath(filename);
 
         //remove file from folder
-        fs::remove_file(&p).await.map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => TransactionError::UnknownFilePath(p.clone()),
-            _ => TransactionError::FileSystemError(e),
-        })?;
+        fs::remove_file(&p).await.map_err(with_file_context(&p))?;
 
         //remove parent folder if it is now empty
         if let Some(p) = p.parent() {
@@ -117,25 +113,23 @@ impl FileServiceTrait for TokioFileService {
         fs::remove_dir_all(p).await
     }
 
-    async fn get_file(&self, filename: &RelativeFilePath) -> Result<Vec<u8>, TransactionError> {
+    async fn get_file(&self, filename: &RelativeFilePath) -> io::Result<Vec<u8>> {
         let p = self.get_filepath(filename);
 
-        if !p.exists() {
-            Err(TransactionError::UnknownFilePath(p))
-        } else {
-            let f = fs::File::open(p).await?;
+        let f = fs::File::open(p)
+            .await
+            .map_err(with_file_context(filename))?;
 
-            let mut buf = Vec::new();
-            tokio::io::BufReader::new(f).read_to_end(&mut buf).await?;
+        let mut buf = Vec::new();
+        tokio::io::BufReader::new(f).read_to_end(&mut buf).await?;
 
-            Ok(buf)
-        }
+        Ok(buf)
     }
 
     fn stream_files_recursive(
         &self,
         path: &RelativeDirectoryPath,
-    ) -> BoxStream<'static, Result<RelativeFilePath, TransactionError>> {
+    ) -> BoxStream<'static, io::Result<RelativeFilePath>> {
         let path = self.root.join(path);
         let root_clone = self.root.clone();
         pilatus::visit_directory_files(&path)
@@ -146,15 +140,13 @@ impl FileServiceTrait for TokioFileService {
                     true
                 })
             })
-            .map_err(TransactionError::other)
             .try_filter_map(move |relative_to_pilatus_entry| {
                 let r = RelativeFilePath::new(
                     relative_to_pilatus_entry
                         .path()
                         .strip_prefix(&root_clone)
                         .expect("Iteration was done in root"),
-                )
-                .map_err(TransactionError::other);
+                );
                 async move { Ok(Some(r?)) }
             })
             .boxed()
@@ -162,12 +154,13 @@ impl FileServiceTrait for TokioFileService {
     fn stream_files(
         &self,
         path: &RelativeDirectoryPath,
-    ) -> BoxStream<'static, Result<RelativeFilePath, TransactionError>> {
+    ) -> BoxStream<'static, io::Result<RelativeFilePath>> {
         self.stream_files_internal(path, |file_type, path| {
-            if !file_type.is_file() {
-                return None;
+            if file_type.is_file() {
+                Ok(Some(RelativeFilePath::new(path)?))
+            } else {
+                Ok(None)
             }
-            Some(RelativeFilePath::new(path).map_err(|e| anyhow::Error::from(e).into()))
         })
         .boxed()
     }
@@ -175,25 +168,24 @@ impl FileServiceTrait for TokioFileService {
     fn stream_directories(
         &self,
         path: &RelativeDirectoryPath,
-    ) -> BoxStream<'static, Result<RelativeDirectoryPathBuf, TransactionError>> {
+    ) -> BoxStream<'static, io::Result<RelativeDirectoryPathBuf>> {
         self.stream_files_internal(path, |file_type, path| {
-            if !file_type.is_dir() {
-                return None;
+            if file_type.is_dir() {
+                Ok(Some(RelativeDirectoryPathBuf::new(path)?))
+            } else {
+                Ok(None)
             }
-            Some(RelativeDirectoryPathBuf::new(path).map_err(|e| anyhow::Error::from(e).into()))
         })
         .boxed()
     }
 
-    async fn list_files(
-        &self,
-        path: &RelativeDirectoryPath,
-    ) -> Result<Vec<RelativeFilePath>, TransactionError> {
+    async fn list_files(&self, path: &RelativeDirectoryPath) -> io::Result<Vec<RelativeFilePath>> {
         self.stream_files_internal(path, |file_type, path| {
-            if !file_type.is_file() {
-                return None;
+            if file_type.is_file() {
+                Ok(Some(RelativeFilePath::new(path)?))
+            } else {
+                Ok(None)
             }
-            Some(RelativeFilePath::new(path).map_err(|e| anyhow::Error::from(e).into()))
         })
         .try_collect::<Vec<RelativeFilePath>>()
         .await
@@ -229,8 +221,8 @@ impl TokioFileService {
     fn stream_files_internal<T: Send + 'static>(
         &self,
         path: &RelativeDirectoryPath,
-        filter_map: fn(FileType, &Path) -> Option<Result<T, TransactionError>>,
-    ) -> impl Stream<Item = Result<T, TransactionError>> + 'static {
+        filter_map: fn(FileType, &Path) -> io::Result<Option<T>>,
+    ) -> impl Stream<Item = io::Result<T>> + 'static {
         let device_dir: Arc<Path> = self.root.to_owned().into();
         let dir_path: Arc<Path> = device_dir.join(path).into();
 
@@ -240,27 +232,17 @@ impl TokioFileService {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     return stream::empty().boxed()
                 }
-                Err(e) => {
-                    return stream::iter([Err(TransactionError::from_io_producer(&dir_path)(e))])
-                        .boxed()
-                }
+                Err(e) => return stream::iter([Err(with_file_context(&dir_path)(e))]).boxed(),
             };
             let dir_path = dir_path.clone();
             let device_dir = device_dir.clone();
             tokio_stream::wrappers::ReadDirStream::new(dir)
-                .filter_map(move |entry| {
+                .try_filter_map(move |entry| {
                     let dir_path = dir_path.clone();
                     let device_dir = device_dir.clone();
                     async move {
-                        let io_err_converter = TransactionError::from_io_producer(&dir_path);
-                        let entry = match entry {
-                            Ok(x) => x,
-                            Err(e) => return Some(Err((io_err_converter)(e))),
-                        };
-                        let file_type = match entry.file_type().await {
-                            Ok(x) => x,
-                            Err(e) => return Some(Err((io_err_converter)(e))),
-                        };
+                        let io_err_converter = with_file_context(&dir_path);
+                        let file_type = entry.file_type().await.map_err(io_err_converter)?;
                         let p = entry.path();
                         let p = p
                             .strip_prefix(device_dir)

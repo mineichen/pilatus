@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 use tracing::trace;
 
 use crate::{device::DeviceId, DeviceConfig, Name, RecipeId};
-use crate::{TransactionError, UntypedDeviceParamsWithVariables};
+use crate::{
+    RecipeAlreadyExistsError, TransactionError, UnknownRecipeError,
+    UntypedDeviceParamsWithVariables,
+};
 
 use super::duplicate_recipe::DuplicateRecipe;
 use super::recipe::Recipe;
@@ -198,7 +201,7 @@ impl Recipes {
                 Ok(ids)
             }
         } else {
-            Err(SetActiveError::UnknownRecipe(id.clone()))
+            Err(UnknownRecipeError(id.clone()).into())
         }
     }
 
@@ -230,13 +233,14 @@ impl Recipes {
         new_id: RecipeId,
     ) -> Result<(), TransactionError> {
         if self.has_recipe(&new_id) {
-            return Err(TransactionError::RecipeAlreadyExists(new_id));
+            return Err(RecipeAlreadyExistsError(new_id).into());
         }
 
         let was_active_id = &self.active_id == old_id;
-        let Some(recipe) = self.all.shift_remove(old_id) else {
-            return Err(TransactionError::UnknownRecipeId(old_id.clone()));
-        };
+        let recipe = self
+            .all
+            .shift_remove(old_id)
+            .ok_or_else(|| UnknownRecipeError(old_id.clone()))?;
 
         if was_active_id {
             self.active_id = new_id.clone();
@@ -287,7 +291,7 @@ impl Recipes {
         } else {
             self.all
                 .shift_remove(id)
-                .ok_or_else(|| RemoveRecipeError::UnknownRecipe(id.clone()))
+                .ok_or_else(|| UnknownRecipeError(id.clone()).into())
         }
     }
 
@@ -335,18 +339,18 @@ impl From<UncommittedChangesError> for TransactionError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SetActiveError {
-    #[error("{0}")]
+    #[error(transparent)]
     UncommittedChanges(#[from] UncommittedChangesError),
 
-    #[error("Unknown Recipe")]
-    UnknownRecipe(RecipeId),
+    #[error(transparent)]
+    UnknownRecipe(#[from] UnknownRecipeError),
 }
 
 impl From<SetActiveError> for TransactionError {
     fn from(value: SetActiveError) -> Self {
         match value {
             SetActiveError::UncommittedChanges(x) => x.into(),
-            SetActiveError::UnknownRecipe(id) => TransactionError::UnknownRecipeId(id),
+            SetActiveError::UnknownRecipe(x) => x.into(),
         }
     }
 }
@@ -355,8 +359,8 @@ impl From<SetActiveError> for TransactionError {
 pub enum RemoveRecipeError {
     #[error("Cannot delete active recipe")]
     IsActive,
-    #[error("Unknown Recipe")]
-    UnknownRecipe(RecipeId),
+    #[error(transparent)]
+    UnknownRecipe(#[from] UnknownRecipeError),
 }
 
 impl From<RemoveRecipeError> for TransactionError {
@@ -412,7 +416,11 @@ mod tests {
         let error = recipes
             .update_recipe_id(&old_id, new_id.clone())
             .unwrap_err();
-        assert!(format!("{error}").contains(&format!("Recipe {new_id} already exists.")));
+        let err = format!("{error}");
+        assert!(
+            err.contains(&format!("Recipe {new_id} already exists")),
+            "{err}"
+        );
     }
 
     #[test]

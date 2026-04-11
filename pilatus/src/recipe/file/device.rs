@@ -1,10 +1,11 @@
-use anyhow::anyhow;
+use std::io;
+
 use bytes::Bytes;
 
 use crate::{
     device::{ActorDevice, ActorError, ActorMessage},
     recipe::file::RelativeFilePath,
-    FileService, FileServiceExt, RelativeDirectoryPathBuf, TransactionError,
+    FileService, FileServiceExt, RelativeDirectoryPathBuf,
 };
 
 #[derive(Debug, Clone)]
@@ -13,7 +14,7 @@ pub struct GetFileMessage {
 }
 impl ActorMessage for GetFileMessage {
     type Output = Vec<u8>;
-    type Error = TransactionError;
+    type Error = io::Error;
 }
 
 #[derive(Debug, Clone)]
@@ -22,7 +23,7 @@ pub struct DeleteFileMessage {
 }
 impl ActorMessage for DeleteFileMessage {
     type Output = ();
-    type Error = TransactionError;
+    type Error = io::Error;
 }
 
 #[derive(Debug, Clone)]
@@ -32,7 +33,7 @@ pub struct AddFileMessage {
 }
 impl ActorMessage for AddFileMessage {
     type Output = ();
-    type Error = anyhow::Error;
+    type Error = io::Error;
 }
 
 #[derive(Debug, Clone)]
@@ -41,21 +42,22 @@ pub struct ListFilesMessage {
 }
 impl ActorMessage for ListFilesMessage {
     type Output = Vec<RelativeFilePath>;
-    type Error = TransactionError;
+    type Error = io::Error;
 }
 
 pub trait RegisterFileHandlersExtension {
     fn add_file_handlers(self) -> Self;
 }
 
-impl<T: AsMut<FileService<T>> + AsRef<FileService<T>> + Send + Sync + 'static>
-    RegisterFileHandlersExtension for ActorDevice<T>
+impl<T> RegisterFileHandlersExtension for ActorDevice<T>
+where
+    T: AsMut<FileService<T>> + AsRef<FileService<T>> + Send + Sync + 'static,
 {
     fn add_file_handlers(self) -> Self {
         async fn get_file<T: AsMut<FileService<T>> + Send + 'static>(
             state: &mut T,
             msg: GetFileMessage,
-        ) -> Result<Vec<u8>, ActorError<TransactionError>> {
+        ) -> Result<Vec<u8>, ActorError<io::Error>> {
             state
                 .as_mut()
                 .get_file(&msg.path)
@@ -68,10 +70,13 @@ impl<T: AsMut<FileService<T>> + AsRef<FileService<T>> + Send + Sync + 'static>
         >(
             state: &mut T,
             msg: AddFileMessage,
-        ) -> Result<(), ActorError<anyhow::Error>> {
+        ) -> Result<(), ActorError<io::Error>> {
             {
                 if !state.has_validator_for(&msg.path) {
-                    return Err(ActorError::custom(anyhow!("Access denied")));
+                    return Err(ActorError::Custom(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "Access denied",
+                    )));
                 }
             }
 
@@ -85,10 +90,13 @@ impl<T: AsMut<FileService<T>> + AsRef<FileService<T>> + Send + Sync + 'static>
         >(
             state: &mut T,
             msg: DeleteFileMessage,
-        ) -> Result<(), ActorError<TransactionError>> {
+        ) -> Result<(), ActorError<io::Error>> {
             {
                 if !state.has_validator_for(&msg.path) {
-                    return Err(ActorError::custom(anyhow!("Access denied")));
+                    return Err(ActorError::Custom(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "Access denied",
+                    )));
                 }
             }
             state
@@ -101,7 +109,7 @@ impl<T: AsMut<FileService<T>> + AsRef<FileService<T>> + Send + Sync + 'static>
         async fn list_files<T: AsMut<FileService<T>> + Send + 'static>(
             state: &mut T,
             ListFilesMessage { path }: ListFilesMessage,
-        ) -> Result<Vec<RelativeFilePath>, ActorError<TransactionError>> {
+        ) -> Result<Vec<RelativeFilePath>, ActorError<io::Error>> {
             state
                 .as_mut()
                 .list_files(&path)

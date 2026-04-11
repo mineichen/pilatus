@@ -23,6 +23,10 @@ pub struct DeviceWithSameIdExists(DeviceId);
 #[error("No device with id {0}")]
 pub struct UnknownDeviceError(pub DeviceId);
 
+#[derive(Debug, thiserror::Error, PartialEq)]
+#[error("No recipe with id {0} exists")]
+pub struct UnknownRecipeError(pub RecipeId);
+
 impl Validator for RecipeMetadataRaw {
     fn check(&self) -> sealedstruct::Result<()> {
         let mut tags = HashSet::new();

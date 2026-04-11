@@ -8,10 +8,11 @@ use std::{
 
 use futures::{StreamExt, TryStreamExt};
 use pilatus::{
-    RelativeDirectoryPath, TransactionError,
+    RelativeDirectoryPath,
     device::{ActorMessage, HandlerResult, Step2, WeakUntypedActorMessageSender},
 };
 use pilatus_engineering::image::{DynamicImage as ImbufDynamicImage, ImageWithMeta};
+use tokio::io;
 use tracing::{debug, warn};
 
 use super::DeviceState;
@@ -132,11 +133,11 @@ impl PublisherState {
     pub async fn get_collection_directory(
         &self,
         state: &super::DeviceState,
-    ) -> Result<PathBuf, TransactionError> {
+    ) -> io::Result<PathBuf> {
         let mut all = state
             .file_service
             .stream_directories(RelativeDirectoryPath::root());
-        let maybe = match &self.params.file.active {
+        match &self.params.file.active {
             ActiveRecipe::Undefined => all
                 .next()
                 .await
@@ -151,13 +152,8 @@ impl PublisherState {
                 .await
             }
             ActiveRecipe::External(path_buf) => path_buf.exists().then(|| Ok(path_buf.clone())),
-        };
-        match maybe {
-            Some(x) => x,
-            None => Err(TransactionError::Other(anyhow::anyhow!(
-                "No collection exists"
-            ))),
         }
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No collection exists"))?
     }
 
     pub(crate) async fn next_image_if_upgradeable(

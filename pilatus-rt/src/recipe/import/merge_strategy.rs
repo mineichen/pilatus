@@ -2,7 +2,7 @@ use std::path::Path;
 
 use futures::future::BoxFuture;
 
-use pilatus::{AlreadyExistsError, IrreversibleError, Recipe, RecipeId, Recipes};
+use pilatus::{RecipeAlreadyExistsError, IrreversibleError, Recipe, RecipeId, Recipes};
 
 mod duplicate;
 mod replace;
@@ -25,7 +25,7 @@ pub(super) trait MergeStrategy: 'static + Send {
         ctx: MergeStrategyContext<'a>,
         new_id: RecipeId,
         recipe: Recipe,
-    ) -> BoxFuture<'a, Result<(), AlreadyExistsError>>;
+    ) -> BoxFuture<'a, Result<(), RecipeAlreadyExistsError>>;
     fn finalize<'a>(
         &'a mut self,
         recipe_root: &'a Path,

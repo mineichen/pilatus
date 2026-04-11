@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use futures::{future::BoxFuture, FutureExt};
-use pilatus::{AlreadyExistsError, IrreversibleError, Recipe, RecipeId};
+use pilatus::{RecipeAlreadyExistsError, IrreversibleError, Recipe, RecipeId};
 
 use crate::recipe::recipes::recipes_try_add_new_with_id;
 
@@ -14,7 +14,7 @@ impl super::MergeStrategy for Unspecified {
         ctx: MergeStrategyContext<'a>,
         new_id: RecipeId,
         recipe: Recipe,
-    ) -> BoxFuture<'a, Result<(), AlreadyExistsError>> {
+    ) -> BoxFuture<'a, Result<(), RecipeAlreadyExistsError>> {
         async move {
             recipes_try_add_new_with_id(
                 ctx.recipes_copy,
@@ -23,7 +23,7 @@ impl super::MergeStrategy for Unspecified {
                 ctx.device_actions,
             )
             .await
-            .map_err(|_| AlreadyExistsError(new_id))
+            .map_err(|_| RecipeAlreadyExistsError(new_id))
         }
         .boxed()
     }

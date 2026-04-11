@@ -1,6 +1,7 @@
 use pilatus::{
     device::{DeviceContext, DeviceId, InfallibleParamApplier},
-    DeviceConfig, Recipe, RecipeId, Recipes, TransactionError, UnknownDeviceError, Variables,
+    DeviceConfig, Recipe, RecipeId, Recipes, TransactionError, UnknownDeviceError,
+    UnknownRecipeError, Variables,
 };
 
 use super::actions::DeviceActions;
@@ -39,20 +40,25 @@ pub(super) async fn recipes_try_add_new_with_id(
 }
 
 pub(super) trait RecipesExt {
-    fn get_with_id_or_error(&self, id: &RecipeId) -> Result<&Recipe, TransactionError>;
-    fn get_with_id_or_error_mut(&mut self, id: &RecipeId) -> Result<&mut Recipe, TransactionError>;
+    fn get_with_id_or_error(&self, id: &RecipeId) -> Result<&Recipe, UnknownRecipeError>;
+    fn get_with_id_or_error_mut(
+        &mut self,
+        id: &RecipeId,
+    ) -> Result<&mut Recipe, UnknownRecipeError>;
     fn get_device_or_error(&self, device_id: DeviceId)
         -> Result<&DeviceConfig, UnknownDeviceError>;
 }
 
 impl RecipesExt for Recipes {
-    fn get_with_id_or_error(&self, id: &RecipeId) -> Result<&Recipe, TransactionError> {
-        self.get_with_id(id)
-            .ok_or(TransactionError::UnknownRecipeId(id.clone()))
+    fn get_with_id_or_error(&self, id: &RecipeId) -> Result<&Recipe, UnknownRecipeError> {
+        self.get_with_id(id).ok_or(UnknownRecipeError(id.clone()))
     }
-    fn get_with_id_or_error_mut(&mut self, id: &RecipeId) -> Result<&mut Recipe, TransactionError> {
+    fn get_with_id_or_error_mut(
+        &mut self,
+        id: &RecipeId,
+    ) -> Result<&mut Recipe, UnknownRecipeError> {
         self.get_with_id_mut(id)
-            .ok_or(TransactionError::UnknownRecipeId(id.clone()))
+            .ok_or(UnknownRecipeError(id.clone()))
     }
     fn get_device_or_error(
         &self,

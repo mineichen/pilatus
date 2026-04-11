@@ -75,9 +75,9 @@ pub trait ImporterTrait: Debug {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ImportRecipeError {
-    #[error("Invalid format")]
+    #[error("Invalid format: {0}")]
     InvalidFormat(anyhow::Error),
-    #[error("IO: {0:?}")]
+    #[error(transparent)]
     Io(#[from] io::Error),
 
     /// This shouldn't happen with untampered recipes but only, if a recipe_id is manually changed. There is no plan needed to continue
@@ -92,7 +92,7 @@ pub enum ImportRecipeError {
     #[error("Can't import recipe which is currently active")]
     ContainsActiveRecipe,
 
-    #[error("{0:?}")]
+    #[error(transparent)]
     Irreversible(#[from] IrreversibleError),
 }
 
@@ -101,8 +101,8 @@ pub enum ImportRecipeError {
 pub struct IrreversibleError(#[from] io::Error);
 
 #[derive(Debug, thiserror::Error)]
-#[error("{0:?} already exists")]
-pub struct AlreadyExistsError(pub RecipeId);
+#[error("Recipe {0} already exists")]
+pub struct RecipeAlreadyExistsError(pub RecipeId);
 
 pub type RecipeService = Arc<dyn RecipeServiceTrait + Send + Sync>;
 #[async_trait]

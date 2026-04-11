@@ -1,7 +1,7 @@
 use std::{collections::HashSet, path::Path};
 
 use futures::{future::BoxFuture, FutureExt};
-use pilatus::{device::DeviceId, AlreadyExistsError, IrreversibleError, Recipe, RecipeId};
+use pilatus::{device::DeviceId, RecipeAlreadyExistsError, IrreversibleError, Recipe, RecipeId};
 
 use crate::recipe::recipes::recipes_try_add_new_with_id;
 
@@ -24,7 +24,7 @@ impl super::MergeStrategy for Replace {
         ctx: MergeStrategyContext<'a>,
         new_id: RecipeId,
         recipe: Recipe,
-    ) -> BoxFuture<'a, Result<(), AlreadyExistsError>> {
+    ) -> BoxFuture<'a, Result<(), RecipeAlreadyExistsError>> {
         async move {
             if let Ok(x) = ctx.recipes_copy.remove(&new_id) {
                 self.delete_devices
@@ -37,7 +37,7 @@ impl super::MergeStrategy for Replace {
                 ctx.device_actions,
             )
             .await
-            .map_err(|_| AlreadyExistsError(new_id))
+            .map_err(|_| RecipeAlreadyExistsError(new_id))
         }
         .boxed()
     }

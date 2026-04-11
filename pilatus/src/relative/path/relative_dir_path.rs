@@ -1,6 +1,7 @@
 use std::{
     borrow::Borrow,
     fmt::{self, Display, Formatter},
+    io,
     ops::Deref,
     path::{Component, Path, PathBuf},
     str::FromStr,
@@ -35,6 +36,11 @@ impl RelativePathError for RelativeDirPathError {
 
     fn from_invalid_path(path: &Path) -> Self {
         RelativeDirPathError::InvalidRelativePath(path.to_string_lossy().to_string())
+    }
+}
+impl From<RelativeDirPathError> for io::Error {
+    fn from(value: RelativeDirPathError) -> Self {
+        io::Error::new(io::ErrorKind::InvalidFilename, value)
     }
 }
 

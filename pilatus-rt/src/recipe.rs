@@ -28,6 +28,8 @@ use tokio::{
 use tracing::{debug, error, trace};
 use uuid::Uuid;
 
+use crate::with_file_context;
+
 use self::recipes::RecipesExt;
 
 mod actions;
@@ -371,13 +373,13 @@ impl<T: DerefMut<Target = Recipes>> RecipeDataService<'_, T> {
         self.check_active_files().await?;
 
         let active_devices = self.recipes.set_active(&id)?;
-        self.copy_backup_files(active_devices).await
+        Ok(self.copy_backup_files(active_devices).await?)
     }
 
     async fn copy_backup_files(
         &self,
         device_ids: impl IntoIterator<Item = DeviceId>,
-    ) -> Result<(), TransactionError> {
+    ) -> io::Result<()> {
         let path = self.recipe_dir_path();
         let dst_folder = path.join("backup");
         tokio::fs::remove_dir_all(&dst_folder).await.ok();
@@ -390,7 +392,7 @@ impl<T: DerefMut<Target = Recipes>> RecipeDataService<'_, T> {
                 if meta.is_dir() {
                     clone_directory_deep(&src_path, dst_path)
                         .await
-                        .map_err(TransactionError::from_io_producer(&src_path))?;
+                        .map_err(with_file_context(&src_path))?;
                 }
             }
         }
@@ -412,7 +414,7 @@ impl<T: DerefMut<Target = Recipes>> RecipeDataService<'_, T> {
                 if meta.is_dir() {
                     clone_directory_deep(&src_path, dst_path)
                         .await
-                        .map_err(TransactionError::from_io_producer(&src_path))?;
+                        .map_err(with_file_context(&src_path))?;
                 }
             }
         }

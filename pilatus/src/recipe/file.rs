@@ -13,10 +13,7 @@ pub use device::*;
 use futures_util::{future::BoxFuture, stream::BoxStream, FutureExt};
 use tracing::trace;
 
-use crate::{
-    device::DeviceId, RelativeDirectoryPath, RelativeDirectoryPathBuf, RelativeFilePath,
-    TransactionError,
-};
+use crate::{device::DeviceId, RelativeDirectoryPath, RelativeDirectoryPathBuf, RelativeFilePath};
 
 mod device;
 
@@ -105,41 +102,35 @@ impl<T> DerefMut for FileService<T> {
 
 #[async_trait::async_trait]
 pub trait FileServiceTrait {
-    async fn has_file(&self, filename: &RelativeFilePath) -> Result<bool, TransactionError>;
+    async fn has_file(&self, filename: &RelativeFilePath) -> io::Result<bool>;
     async fn metadata_directory(
         &self,
         directory: &RelativeDirectoryPath,
     ) -> io::Result<std::fs::Metadata>;
-    async fn list_recursive(&self, path: &RelativeDirectoryPath) -> std::io::Result<Vec<PathBuf>>;
+    async fn list_recursive(&self, path: &RelativeDirectoryPath) -> io::Result<Vec<PathBuf>>;
     // If the parent doesn't exist, it will be created recursively
-    async fn add_file_unchecked(
-        &self,
-        file_path: &RelativeFilePath,
-        data: &[u8],
-    ) -> Result<(), anyhow::Error>;
-    async fn remove_file(&self, filename: &RelativeFilePath) -> Result<(), TransactionError>;
+    async fn add_file_unchecked(&self, file_path: &RelativeFilePath, data: &[u8])
+        -> io::Result<()>;
+    async fn remove_file(&self, filename: &RelativeFilePath) -> io::Result<()>;
     async fn remove_directory(&self, directory: &RelativeDirectoryPath) -> io::Result<()>;
-    async fn get_file(&self, filename: &RelativeFilePath) -> Result<Vec<u8>, TransactionError>;
-    async fn list_files(
-        &self,
-        path: &RelativeDirectoryPath,
-    ) -> Result<Vec<RelativeFilePath>, TransactionError>;
+    async fn get_file(&self, filename: &RelativeFilePath) -> io::Result<Vec<u8>>;
+    async fn list_files(&self, path: &RelativeDirectoryPath) -> io::Result<Vec<RelativeFilePath>>;
     async fn get_or_create_directory(
         &self,
         dir_path: &RelativeDirectoryPath,
-    ) -> anyhow::Result<PathBuf>;
+    ) -> io::Result<PathBuf>;
     fn stream_files_recursive(
         &self,
         path: &RelativeDirectoryPath,
-    ) -> BoxStream<'static, Result<RelativeFilePath, TransactionError>>;
+    ) -> BoxStream<'static, io::Result<RelativeFilePath>>;
     fn stream_files(
         &self,
         path: &RelativeDirectoryPath,
-    ) -> BoxStream<'static, Result<RelativeFilePath, TransactionError>>;
+    ) -> BoxStream<'static, io::Result<RelativeFilePath>>;
     fn stream_directories(
         &self,
         path: &RelativeDirectoryPath,
-    ) -> BoxStream<'static, Result<RelativeDirectoryPathBuf, TransactionError>>;
+    ) -> BoxStream<'static, io::Result<RelativeDirectoryPathBuf>>;
     fn get_filepath(&self, file_path: &RelativeFilePath) -> PathBuf;
     fn get_directory_path(&self, file_path: &RelativeDirectoryPath) -> PathBuf;
     fn get_root(&self) -> &Path;
@@ -151,7 +142,7 @@ pub trait FileServiceExt {
         &'a mut self,
         file_path: &'a RelativeFilePath,
         data: &'a [u8],
-    ) -> BoxFuture<'a, Result<(), anyhow::Error>>;
+    ) -> BoxFuture<'a, io::Result<()>>;
 }
 
 impl<T: AsMut<FileService<T>> + AsRef<FileService<T>> + Send + Sync> FileServiceExt for T {
@@ -165,7 +156,7 @@ impl<T: AsMut<FileService<T>> + AsRef<FileService<T>> + Send + Sync> FileService
         &'a mut self,
         file_path: &'a RelativeFilePath,
         data: &'a [u8],
-    ) -> BoxFuture<'a, Result<(), anyhow::Error>> {
+    ) -> BoxFuture<'a, io::Result<()>> {
         trace!(filename = ?file_path, "Create file validated");
         async move {
             let validators = self.as_mut().validators.clone();
@@ -173,9 +164,10 @@ impl<T: AsMut<FileService<T>> + AsRef<FileService<T>> + Send + Sync> FileService
             validators
                 .iter()
                 .find(|x| x.is_responsible(file_path))
-                .ok_or_else(|| anyhow::anyhow!("Coultn't find responsible validator"))?
+                .ok_or_else(|| io::Error::other("Coultn't find responsible validator"))?
                 .validate(data, self)
-                .await?;
+                .await
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
             self.as_mut().add_file_unchecked(file_path, data).await
         }
         .boxed()

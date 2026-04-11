@@ -1,5 +1,6 @@
 use std::{
     fmt::{self, Display, Formatter},
+    io,
     ops::Deref,
     path::{Component, Path, PathBuf},
     str::FromStr,
@@ -18,6 +19,12 @@ pub enum RelativeFilePathError {
     InvalidCharacter(String, char, usize),
     #[error("Path has no file extension: {0}")]
     FileExtensionMissing(String),
+}
+
+impl From<RelativeFilePathError> for io::Error {
+    fn from(value: RelativeFilePathError) -> Self {
+        io::Error::new(io::ErrorKind::InvalidFilename, value)
+    }
 }
 
 impl RelativePathError for RelativeFilePathError {
