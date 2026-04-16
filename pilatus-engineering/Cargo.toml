@@ -12,7 +12,7 @@ bytes.workspace = true
 futures.workspace = true
 imask = { workspace = true, features = ["async-io"] }
 imbuf.workspace = true
-jpeg-encoder = { version = "0.6", features = ["simd"], optional = true }
+jpeg-encoder = { version = "0.7", features = ["simd"], optional = true }
 nalgebra = { version = "0.34", optional = true }
 pilatus = { workspace = true, features = ["subscribe"] }
 pilatus-axum = { workspace = true, optional = true }
