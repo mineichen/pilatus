@@ -12,6 +12,7 @@ use std::{
 
 use anyhow::{anyhow, Context};
 use bytes::BufMut;
+use imask::{ImageDimension, WithRoi};
 use imbuf::{
     DynamicImage, DynamicImageChannel, DynamicSize, Image, ImageChannel, PixelTypePrimitive,
 };
@@ -180,9 +181,13 @@ fn encode_dynamic_raw_image<T: Serialize>(
     for mask in extensions.iter::<imask::SortedRanges<u64, u64>>() {
         buf.push(super::KIND_MASK);
         //println!("{}", buf.len());
+        let roi = mask.bounds();
         futures::executor::block_on(imask::AsyncRangeWriter::new(
             &mut buf,
-            futures::stream::iter(mask.iter::<RangeInclusive<u64>>()),
+            WithRoi::new(
+                futures::stream::iter(mask.iter_roi::<RangeInclusive<u64>>()),
+                roi,
+            ),
         ))?;
         //panic!("{}", buf.len());
         // Both dimensions cannot be 0... If we find 14 consecutive, we know it's impossible to be valid data

@@ -66,6 +66,7 @@ fn calculate_buf_len(
 mod tests {
     use std::num::NonZeroU32;
 
+    use imask::ImaskSet;
     use imbuf::{Image, PixelType};
     use testresult::TestResult;
 
@@ -111,9 +112,12 @@ mod tests {
     fn encode_decode_with_imask() -> TestResult {
         type Ranges = imask::SortedRanges<u64, u64>;
         let image = Image::<u8, 1>::new_vec_flat(vec![128], NonZeroU32::MIN, NonZeroU32::MIN);
+        let width = const { NonZeroU32::new(10).unwrap() };
+        let height = const { NonZeroU32::new(20).unwrap() };
+        let roi = imask::Rect::new(100, 100, width, height);
         let ranges = [
-            Ranges::try_from_ordered_iter([0u32..10, 15..20])?,
-            Ranges::try_from_ordered_iter([30u32..40, 45..50])?,
+            Ranges::try_from_ordered_iter([0u32..10, 15..20].with_bounds(width, height))?,
+            Ranges::try_from_ordered_iter([30u32..40, 45..50].with_roi(roi))?,
         ];
         let mut meta = ImageWithMeta::with_hash(image.clone().into(), None);
         for range in ranges.iter() {

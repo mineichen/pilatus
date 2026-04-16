@@ -1,11 +1,11 @@
 use std::{
-    num::{NonZeroU16, NonZeroU32, NonZeroU8, Saturating},
+    num::{NonZero, NonZeroU16, NonZeroU32, NonZeroU8, Saturating},
     ops::{Deref, DerefMut},
     sync::Arc,
 };
 
 use anyhow::{anyhow, Context};
-use imask::{AsyncRangeStream, SortedRanges};
+use imask::{AsyncRangeStream, ImaskSet, SortedRanges};
 use imbuf::{DynamicImage, DynamicImageChannel, ImageChannel};
 use pilatus::MissedItemsError;
 use serde::de::DeserializeOwned;
@@ -53,8 +53,8 @@ pub fn decode(
             input
         ));
     }
-    debug_assert_eq!(input[2], 0);
-    debug_assert_eq!(input[3], 0);
+    debug_assert_eq!(input[2], 0, "Using reserved space input[2]: {}", input[2]);
+    debug_assert_eq!(input[3], 0, "Using reserved space input[3]: {}", input[3]);
     match u16::from_le_bytes([input[0], input[1]]) {
         super::CODE_OK => extract_metaimage(input),
         #[expect(deprecated)]
@@ -157,9 +157,14 @@ fn read_mask(input: &[u8]) -> anyhow::Result<(SortedRanges<u64, u64>, &[u8])> {
         .position(|x| x == &super::MASK_SENTINEL)
         .ok_or_else(|| anyhow!("Sentinel for RangeEnd not found"))?;
     let (ranges, rest) = input.split_at(end_pos);
+
+    let stream = futures::executor::block_on(AsyncRangeStream::new(ranges))?;
+    let roi = stream.roi();
+    let width = NonZero::try_from(roi.offset_x + roi.width.get())?;
+    let height = NonZero::try_from(roi.offset_y + roi.height.get())?;
     Ok((
         imask::SortedRanges::<u64, u64>::try_from_ordered_iter(
-            futures::executor::block_on_stream(AsyncRangeStream::new(ranges))
+            futures::executor::block_on_stream(stream.into_roi_stream())
                 .map(|input| match input {
                     Ok(x) => Some(x),
                     Err(e) => {
@@ -168,7 +173,8 @@ fn read_mask(input: &[u8]) -> anyhow::Result<(SortedRanges<u64, u64>, &[u8])> {
                     }
                 })
                 .take_while(|x| x.is_some())
-                .map(|x| x.unwrap()),
+                .map(|x| x.unwrap())
+                .with_bounds(width, height), //.with_roi(rect),
         )
         .map_err(|s| anyhow::anyhow!("Cannot create SortedRanges: {s}"))?,
         &rest[super::MASK_SENTINEL.len()..],
