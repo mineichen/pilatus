@@ -25,7 +25,9 @@ impl<T, TErr: Debug> From<ActorError<TErr>> for DeviceJsonResponse<T, TErr> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+#[error("{error}")]
 pub struct DeviceJsonError<TErr: Debug> {
     pub error: ActorError<TErr>,
 }
@@ -78,7 +80,7 @@ pub fn map_actor_error_to_status_text<T: Debug>(e: ActorError<T>) -> Response {
             ActorError::Timeout => StatusCode::REQUEST_TIMEOUT,
             _ => StatusCode::BAD_REQUEST,
         },
-        format!("{e:?}"),
+        format!("{e}"),
     )
         .into_response()
 }

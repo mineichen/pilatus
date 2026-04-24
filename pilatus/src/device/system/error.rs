@@ -10,19 +10,19 @@ use super::ActorMessage;
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ActorError<TCustom: Debug> {
-    #[error("{0}")]
+    #[error(transparent)]
     UnknownDevice(#[from] ActorErrorUnknownDevice),
 
     #[error("Message cannot be processed by this device: {0}")]
     UnknownMessageType(&'static str),
 
-    #[error("Error occured within the device: {0:?}")]
+    #[error("{0:?}")]
     Custom(TCustom),
 
     #[error("Too much load on the system: {0}")]
     Busy(#[from] ActorErrorBusy),
 
-    #[error("Request was aborted by it's handler.")]
+    #[error("Requested action was aborted")]
     Aborted,
 
     #[error("Running into timeout when handling request")]
