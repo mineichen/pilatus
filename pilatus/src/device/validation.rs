@@ -33,11 +33,7 @@ impl DeviceValidationContext<'_> {
     {
         {
             let resolved = self.raw.variables.resolve(&self.raw.params_with_vars)?;
-
-            resolved
-                .params_as::<T>()
-                .map_err(Into::into)
-                .and_then(|x| x.seal().map_err(Into::into))
+            Ok(resolved.params_as::<T>()?.seal()?)
         }
     }
 

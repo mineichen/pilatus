@@ -1,12 +1,13 @@
 use std::marker::PhantomData;
 
+use anyhow::Context;
 use coinbase_pro_rs::{structs::wsfeed::*, WSFeed};
 use futures::channel::mpsc::Receiver;
 use futures::{channel::mpsc, future::Either, stream::FusedStream, SinkExt, StreamExt};
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
     device::{
-        ActorError, ActorMessage, ActorResult, ActorSystem, DeviceContext, DeviceResult,
+        ActorMessage, ActorResult, ActorSystem, DeviceContext, DeviceResult,
         DeviceValidationContext,
     },
     prelude::*,
@@ -105,9 +106,7 @@ impl DeviceState {
         self.topic_subscribe
             .send(T::create_fn(m.product_id, tx))
             .await
-            .map_err(|e| {
-                ActorError::custom(anyhow::Error::from(e).context("Too many requests pending"))
-            })?;
+            .context("Too many requests pending")?;
         debug!("Subscription sent to async task");
         Ok(rx)
     }

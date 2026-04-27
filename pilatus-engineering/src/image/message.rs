@@ -2,7 +2,7 @@ use std::{convert::Infallible, fmt::Debug, sync::Arc};
 
 use futures::stream::BoxStream;
 use pilatus::{
-    device::{ActorError, ActorMessage, DeviceId},
+    device::{ActorError, ActorMessage, CustomActorError, DeviceId},
     MissedItemsError, SubscribeMessage,
 };
 
@@ -24,6 +24,8 @@ pub enum StreamImageError<TImage> {
     #[error("ActorError: {0:?}")]
     ActorError(Arc<ActorError<Infallible>>),
 }
+
+impl<T> CustomActorError for StreamImageError<T> {}
 
 impl<T: Debug> From<ActorError<(T, anyhow::Error)>> for StreamImageError<T> {
     fn from(value: ActorError<(T, anyhow::Error)>) -> Self {
@@ -66,7 +68,7 @@ pub struct SubscribeImageMessage {}
 pub type SubscribeDynamicImageMessage = SubscribeMessage<
     SubscribeImageQuery,
     Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
-    (),
+    Infallible,
 >;
 
 impl ActorMessage for SubscribeImageMessage {

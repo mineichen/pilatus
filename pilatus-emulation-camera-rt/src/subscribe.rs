@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{convert::Infallible, sync::Arc};
 
 use futures::{StreamExt, TryFutureExt};
 use pilatus::{
@@ -35,7 +35,7 @@ impl DeviceState {
                 })
                 .boxed()
             })
-            .map_actor_error(|_| anyhow::anyhow!("Streaming error"))
+            .map_actor_error(|_: Infallible| unreachable!())
     }
 
     pub(super) async fn subscribe(

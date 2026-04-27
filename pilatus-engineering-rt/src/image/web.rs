@@ -1,15 +1,17 @@
-use std::time::SystemTime;
+use std::{convert::Infallible, time::SystemTime};
 
+use anyhow::anyhow;
 use axum::{extract::Query, response::sse::Event};
 use futures::{stream::BoxStream, Stream, StreamExt};
-use image::ImageResult;
 use minfac::ServiceCollection;
-use pilatus::device::{ActorSystem, DeviceId, DynamicIdentifier};
+use pilatus::device::{
+    ActorError, ActorErrorResultExtensions, ActorSystem, DeviceId, DynamicIdentifier,
+};
 use pilatus_axum::{
     extract::{ws::WebSocketUpgrade, InjectRegistered, Json, Path},
     http::StatusCode,
     sse::Sse,
-    AppendHeaders, Html, IntoResponse, ServiceCollectionExtensions,
+    AppendHeaders, DeviceJsonError, Html, IntoResponse, ServiceCollectionExtensions,
 };
 use pilatus_engineering::image::{
     DefaultImageStreamer, ImageStreamer, LocalizableImageStreamer, StreamingImageFormat,
@@ -44,11 +46,10 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 async fn stream_frame_interval(
     Path(device_id): Path<DeviceId>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
-) -> Result<Sse<impl Stream<Item = Result<Event, anyhow::Error>>>, StatusCode> {
+) -> Result<Sse<impl Stream<Item = Result<Event, anyhow::Error>>>, DeviceJsonError<anyhow::Error>> {
     let sender = actor_system
         .ask(device_id, SubscribeImageMessage::default())
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .await?;
 
     let mut last_timestamp: Option<SystemTime> = None;
 
@@ -67,14 +68,13 @@ async fn stream_frame_interval(
 async fn single_luma_image_handler(
     Path(device_id): Path<DeviceId>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
-) -> Result<impl IntoResponse, StatusCode> {
+) -> Result<impl IntoResponse, DeviceJsonError<anyhow::Error>> {
     let img = LumaImage::from(
         actor_system
             .ask(device_id, GetImageMessage::default())
-            .await
-            .map_err(|_| StatusCode::BAD_REQUEST)?,
+            .await?,
     );
-    pilatus::execute_blocking(move || {
+    Ok(pilatus::execute_blocking(move || {
         let dims = img.dimensions();
         let mut buf = Vec::with_capacity(dims.0.get() as usize * dims.1.get() as usize / 4);
         let codec = image::codecs::png::PngEncoder::new(&mut buf);
@@ -87,7 +87,7 @@ async fn single_luma_image_handler(
             image::ExtendedColorType::L8,
         )?;
         let name = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S");
-        ImageResult::Ok((
+        anyhow::Ok((
             AppendHeaders([(
                 "Content-Disposition",
                 format!("attachment; filename=\"{name}.png\""),
@@ -96,24 +96,24 @@ async fn single_luma_image_handler(
         ))
     })
     .await
-    .map_err(|_| StatusCode::BAD_REQUEST)
+    .map_err(ActorError::custom)?)
 }
 
 async fn single_dynamic_image_handler(
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
     InjectRegistered(image_encoder): InjectRegistered<ImageEncoder>,
     Query(id): Query<DynamicIdentifier>,
-) -> Result<impl IntoResponse, StatusCode> {
+) -> Result<impl IntoResponse, DeviceJsonError<anyhow::Error>> {
     let img = actor_system
         .ask(id, SubscribeDynamicImageMessage::default())
         .await
-        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .map_actor_error(|_: Infallible| unreachable!())?
         .next()
         .await
-        .ok_or(StatusCode::BAD_REQUEST)?
-        .map_err(|_| StatusCode::BAD_REQUEST)?
+        .ok_or_else(|| ActorError::Custom(anyhow!("No images in stream")))?
+        .map_err(ActorError::custom)?
         .image;
-    pilatus::execute_blocking(move || {
+    Ok(pilatus::execute_blocking(move || {
         let buf = image_encoder.encode(img)?;
         let name = chrono::Utc::now().format("%Y-%m-%d_%H-%M-%S-%f");
         anyhow::Ok((
@@ -125,7 +125,7 @@ async fn single_dynamic_image_handler(
         ))
     })
     .await
-    .map_err(|_| StatusCode::BAD_REQUEST)
+    .map_err(ActorError::custom)?)
 }
 
 #[cfg(debug_assertions)]

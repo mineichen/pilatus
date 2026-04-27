@@ -29,7 +29,7 @@ impl Settings {
         let (_, cache) = self.0.as_ref();
         let data = cache.read().unwrap();
         let data = data.get(key).ok_or_else(|| anyhow!("Unknown key {key}"))?;
-        T::deserialize(data).map_err(Into::into)
+        Ok(T::deserialize(data)?)
     }
 
     /// Inserts or updates the given key

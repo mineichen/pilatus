@@ -109,7 +109,7 @@ impl Variables {
                 .collect(),
             )
         })?;
-        serde_json::from_value(x).map_err(Into::into)
+        Ok(serde_json::from_value(x)?)
     }
 
     pub fn unresolve_var<T: RawVariable>(

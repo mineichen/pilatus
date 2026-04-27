@@ -130,7 +130,7 @@ impl Params {
         &mut self,
         _msg: GetImageUrlMessage,
     ) -> ActorResult<GetImageUrlMessage> {
-        Uri::from_str(&self.url).map_err(ActorError::custom)
+        Ok(Uri::from_str(&self.url)?)
     }
 }
 
@@ -255,7 +255,7 @@ impl Params {
         &mut self,
         _msg: GetImageUrlMessage,
     ) -> ActorResult<GetImageUrlMessage> {
-        Uri::from_str(&self.url).map_err(ActorError::custom)
+        Ok(Uri::from_str(&self.url)?)
     }
 }
 

@@ -226,7 +226,7 @@ fn encode_dynamic_jpeg_image<T: Serialize>(
         //     encode_jpeg(buf, &mut_buf, ColorType::Luma, dims)
         // }
         (DynamicImageChannel::U8(_typed), 3, 1) => {
-            let image = Image::<u8, 3>::try_from(image).map_err(|e| anyhow!("{e:?}"))?;
+            let image = Image::<u8, 3>::try_from(image)?;
             let interleaved = Image::<[u8; 3], 1>::from_planar_image(&image);
             encode_jpeg(buf, interleaved.buffer_flat(), ColorType::Rgb, dims)
         }
@@ -238,7 +238,7 @@ impl<T: Serialize> StreamableImage for (LumaImage, T) {
     fn encode(self) -> anyhow::Result<Vec<u8>> {
         let dims = self.0.dimensions();
         encode_legacy(self.0.buffer(), ColorType::Luma, dims, |b| {
-            serde_json::to_writer(b, &self.1).map_err(Into::into)
+            Ok(serde_json::to_writer(b, &self.1)?)
         })
     }
 }
@@ -267,7 +267,7 @@ impl<T: Serialize> StreamableImage for RgbImageWithMetadata<T> {
         let dims = self.0.dimensions();
         let packed = self.0.into_interleaved();
         encode_legacy(packed.buffer_flat(), ColorType::Rgb, dims, |b| {
-            serde_json::to_writer(b, &self.1).map_err(Into::into)
+            Ok(serde_json::to_writer(b, &self.1)?)
         })
     }
 }

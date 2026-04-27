@@ -19,7 +19,9 @@ pub const DEVICE_TYPE: &str = "pilatus-greeter";
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<Registered<ActorSystem>>()
         .register_device(DEVICE_TYPE, validator, device);
-    c.register_web(DEVICE_TYPE, |r| r.http("/greet/{name}", |f| f.get(greet_web)));
+    c.register_web(DEVICE_TYPE, |r| {
+        r.http("/greet/{name}", |f| f.get(greet_web))
+    });
 }
 
 async fn validator(

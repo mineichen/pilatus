@@ -323,13 +323,8 @@ where
                 return Err(UpdateDeviceError::Other(anyhow::anyhow!("Unexpected migration")))
             }
 
-            actor_system
-                .ask(
-                    ctx.id,
-                    crate::UpdateParamsMessage::<TParam>::new(typed_params.data),
-                )
-                .await
-                .map_err(Into::into)
+            let msg = crate::UpdateParamsMessage::<TParam>::new(typed_params.data);
+            Ok(actor_system.ask(ctx.id, msg).await?)
         }
         .boxed()
     }

@@ -38,6 +38,7 @@ pub use broadcaster::*;
 // use image::{GenericImageView, Rgb8Image};
 pub use logo::*;
 pub use meta::*;
+use pilatus::device::CustomActorError;
 pub use protocol::*;
 #[cfg(feature = "axum")]
 pub use web::*;
@@ -144,9 +145,13 @@ pub enum EncodeError {
     Unknown(String),
 }
 
+impl CustomActorError for EncodeError {}
+
 #[derive(Debug, thiserror::Error)]
 #[error("Unsupported format {1}")]
 pub struct UnsupportedImageError<TIn>(TIn, Cow<'static, str>);
+
+impl<TIn> CustomActorError for UnsupportedImageError<TIn> {}
 
 #[cfg(test)]
 mod tests {

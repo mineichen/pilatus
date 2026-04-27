@@ -1,18 +1,18 @@
-use std::{num::NonZeroU32, sync::Arc, time::SystemTime};
+use std::{convert::Infallible, num::NonZeroU32, sync::Arc, time::SystemTime};
 
 use super::DeviceState;
+use anyhow::anyhow;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use futures::{StreamExt, TryStreamExt};
 use minfac::ServiceCollection;
 use pilatus::{
     FileService, Name, RelativeFilePath,
-    device::{ActorErrorResultExtensions, ActorSystem, DeviceId, HandlerResult, Step2},
+    device::{ActorError, ActorErrorResultExtensions, ActorSystem, DeviceId, HandlerResult, Step2},
 };
 use pilatus_axum::{
-    ServiceCollectionExtensions,
+    DeviceJsonError, ServiceCollectionExtensions,
     extract::{InjectRegistered, Json, Path},
-    http::StatusCode,
 };
 use pilatus_engineering::image::{
     ImageEncoderTrait, ImageKey, ImageWithMeta, SubscribeDynamicImageMessage,
@@ -39,7 +39,7 @@ impl DeviceState {
             .actor_system
             .ask(msg.source_id, SubscribeDynamicImageMessage::default())
             .await
-            .map_actor_error(|_| anyhow::anyhow!("unknown error"));
+            .map_actor_error(|_: Infallible| unreachable!());
         let file_service = self.file_service.clone();
         let encoder = self.encoder.clone();
         Step2(async move {
@@ -149,26 +149,16 @@ async fn record_web(
         source_id,
         max_size_mb,
     }): Json<RecordBody>,
-) -> Result<(), (StatusCode, String)> {
-    if let Some(x) = max_size_mb
-        && x.get() > 100_000
-    {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "max_size_mb mut be <= 100_000".into(),
-        ));
-    }
+) -> Result<(), DeviceJsonError<anyhow::Error>> {
+    let max_size = match max_size_mb {
+        Some(x) if x.get() > 100_000 => {
+            return Err(ActorError::Custom(anyhow!("max_size_mb mut be <= 100_000")).into());
+        }
+        Some(x) => x,
+        None => const { NonZeroU32::new(100).unwrap() },
+    };
 
-    let msg = RecordMessage::with_max_size(
-        source_id,
-        collection_name,
-        max_size_mb.unwrap_or(const { NonZeroU32::new(100).unwrap() }),
-    );
-
-    actor_system
-        .ask(device_id, msg)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-
+    let msg = RecordMessage::with_max_size(source_id, collection_name, max_size);
+    actor_system.ask(device_id, msg).await?;
     Ok(())
 }

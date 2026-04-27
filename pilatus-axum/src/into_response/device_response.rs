@@ -27,7 +27,7 @@ impl<T, TErr: Debug> From<ActorError<TErr>> for DeviceJsonResponse<T, TErr> {
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-#[error("{error}")]
+#[error(transparent)]
 pub struct DeviceJsonError<TErr: Debug> {
     pub error: ActorError<TErr>,
 }

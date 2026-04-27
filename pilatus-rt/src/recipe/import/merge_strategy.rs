@@ -2,7 +2,7 @@ use std::path::Path;
 
 use futures::future::BoxFuture;
 
-use pilatus::{RecipeAlreadyExistsError, IrreversibleError, Recipe, RecipeId, Recipes};
+use pilatus::{IrreversibleError, Recipe, RecipeAlreadyExistsError, RecipeId, Recipes};
 
 mod duplicate;
 mod replace;

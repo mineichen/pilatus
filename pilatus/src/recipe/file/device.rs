@@ -58,11 +58,7 @@ where
             state: &mut T,
             msg: GetFileMessage,
         ) -> Result<Vec<u8>, ActorError<io::Error>> {
-            state
-                .as_mut()
-                .get_file(&msg.path)
-                .await
-                .map_err(ActorError::Custom)
+            Ok(state.as_mut().get_file(&msg.path).await?)
         }
 
         async fn add_file<
@@ -80,9 +76,7 @@ where
                 }
             }
 
-            FileServiceExt::add_file_validated(state, &msg.path, &msg.data[..])
-                .await
-                .map_err(ActorError::custom)
+            Ok(FileServiceExt::add_file_validated(state, &msg.path, &msg.data[..]).await?)
         }
 
         async fn delete_file<
@@ -99,22 +93,14 @@ where
                     )));
                 }
             }
-            state
-                .as_mut()
-                .remove_file(&msg.path)
-                .await
-                .map_err(ActorError::Custom)
+            Ok(state.as_mut().remove_file(&msg.path).await?)
         }
 
         async fn list_files<T: AsMut<FileService<T>> + Send + 'static>(
             state: &mut T,
             ListFilesMessage { path }: ListFilesMessage,
         ) -> Result<Vec<RelativeFilePath>, ActorError<io::Error>> {
-            state
-                .as_mut()
-                .list_files(&path)
-                .await
-                .map_err(ActorError::Custom)
+            Ok(state.as_mut().list_files(&path).await?)
         }
 
         self.add_handler(get_file)

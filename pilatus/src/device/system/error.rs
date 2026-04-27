@@ -1,9 +1,16 @@
-use std::{borrow::Cow, collections::HashSet, fmt::Debug};
+use std::{
+    borrow::Cow,
+    collections::HashSet,
+    convert::Infallible,
+    fmt::Debug,
+    num::{ParseFloatError, ParseIntError},
+    str::ParseBoolError,
+};
 
 use futures_channel::oneshot;
 use futures_util::stream::Aborted;
 
-use crate::{device::DeviceId, Name};
+use crate::{device::DeviceId, Name, RelativeDirPathError, RelativeFilePathError};
 
 use super::ActorMessage;
 
@@ -29,6 +36,27 @@ pub enum ActorError<TCustom: Debug> {
     Timeout,
 }
 
+pub trait CustomActorError {}
+
+impl CustomActorError for anyhow::Error {}
+impl CustomActorError for std::io::Error {}
+impl CustomActorError for ParseIntError {}
+impl CustomActorError for ParseFloatError {}
+impl CustomActorError for ParseBoolError {}
+impl CustomActorError for Infallible {}
+impl CustomActorError for Box<dyn std::error::Error + Send + Sync> {}
+impl CustomActorError for Box<dyn std::error::Error + Send> {}
+impl CustomActorError for chrono::format::ParseError {}
+impl CustomActorError for futures_channel::mpsc::SendError {}
+impl CustomActorError for RelativeDirPathError {}
+impl CustomActorError for RelativeFilePathError {}
+
+impl<F: CustomActorError, T: From<F> + Debug> From<F> for ActorError<T> {
+    fn from(value: F) -> Self {
+        ActorError::Custom(value.into())
+    }
+}
+
 impl<T: Debug> From<Aborted> for ActorError<T> {
     fn from(_: Aborted) -> Self {
         ActorError::Aborted
@@ -50,12 +78,6 @@ impl<T: Debug> From<tokio::time::error::Elapsed> for ActorError<T> {
 
 pub type ActorResult<TMsg> =
     Result<<TMsg as ActorMessage>::Output, ActorError<<TMsg as ActorMessage>::Error>>;
-
-impl From<anyhow::Error> for ActorError<anyhow::Error> {
-    fn from(e: anyhow::Error) -> Self {
-        ActorError::Custom(e)
-    }
-}
 
 impl From<()> for ActorError<()> {
     fn from(i: ()) -> Self {

@@ -7,9 +7,9 @@ use pilatus::{
 };
 use pilatus_axum::{
     extract::{InjectRegistered, Json, Path},
-    http::StatusCode,
-    IntoResponse, ServiceCollectionExtensions,
+    DeviceJsonError, IntoResponse, ServiceCollectionExtensions,
 };
+use tokio::io;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     #[rustfmt::skip]
@@ -28,49 +28,41 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 async fn get_file(
     Path((device_id, path)): Path<(DeviceId, RelativeFilePath)>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
-    actor_system
-        .ask(device_id, GetFileMessage { path })
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Bummer, it failed: {e:?}")))
+) -> Result<impl IntoResponse, DeviceJsonError<io::Error>> {
+    Ok(actor_system.ask(device_id, GetFileMessage { path }).await?)
 }
 
 async fn delete_file(
     Path((device_id, path)): Path<(DeviceId, RelativeFilePath)>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
-    actor_system
-        .ask(device_id, DeleteFileMessage { path })
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Bummer, it failed: {e:?}")))
+) -> Result<impl IntoResponse, DeviceJsonError<io::Error>> {
+    let msg = DeleteFileMessage { path };
+    Ok(actor_system.ask(device_id, msg).await?)
 }
 
 async fn add_file(
     Path((device_id, path)): Path<(DeviceId, RelativeFilePath)>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
     data: Bytes,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
-    actor_system
-        .ask(device_id, AddFileMessage { path, data })
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Bummer, it failed: {e:?}")))
+) -> Result<impl IntoResponse, DeviceJsonError<io::Error>> {
+    let msg = AddFileMessage { path, data };
+    Ok(actor_system.ask(device_id, msg).await?)
 }
 
 async fn list_files_root(
     Path(device_id): Path<DeviceId>,
     inj: InjectRegistered<ActorSystem>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
+) -> Result<impl IntoResponse, DeviceJsonError<io::Error>> {
     list_files(Path((device_id, RelativeDirectoryPathBuf::root())), inj).await
 }
 
 async fn list_files(
     Path((device_id, path)): Path<(DeviceId, RelativeDirectoryPathBuf)>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
+) -> Result<impl IntoResponse, DeviceJsonError<io::Error>> {
     let files = actor_system
         .ask(device_id, ListFilesMessage { path })
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Bummer, it failed: {e:?}")))?;
+        .await?;
 
     Ok(Json(files))
 }

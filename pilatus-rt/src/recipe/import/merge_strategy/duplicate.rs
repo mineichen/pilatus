@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
 use futures::{future::BoxFuture, FutureExt};
-use pilatus::{device::DeviceId, RecipeAlreadyExistsError, IrreversibleError, Recipe, RecipeId};
+use pilatus::{device::DeviceId, IrreversibleError, Recipe, RecipeAlreadyExistsError, RecipeId};
 
 use crate::recipe::recipes::recipes_try_add_new_with_id;
 

@@ -3,7 +3,7 @@ use std::io;
 use minfac::ServiceCollection;
 use pilatus::{
     Name, RelativeDirectoryPath,
-    device::{ActorError, ActorMessage, ActorResult, ActorSystem, DynamicIdentifier},
+    device::{ActorMessage, ActorResult, ActorSystem, DynamicIdentifier},
 };
 use pilatus_axum::{
     DeviceResponse, IntoResponse, ServiceCollectionExtensions,
@@ -34,14 +34,8 @@ impl DeviceState {
         &mut self,
         msg: DeleteCollectionMessage,
     ) -> ActorResult<DeleteCollectionMessage> {
-        let collection_path = RelativeDirectoryPath::new(msg.collection_name.as_str())
-            .map_err(|e| ActorError::Custom(std::io::Error::other(e)))?;
-
-        self.file_service
-            .remove_directory(collection_path)
-            .await
-            .map_err(ActorError::custom)?;
-
+        let collection_path = RelativeDirectoryPath::new(msg.collection_name.as_str())?;
+        self.file_service.remove_directory(collection_path).await?;
         Ok(())
     }
 }

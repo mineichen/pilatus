@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use futures::{future::BoxFuture, FutureExt};
-use pilatus::{RecipeAlreadyExistsError, IrreversibleError, Recipe, RecipeId};
+use pilatus::{IrreversibleError, Recipe, RecipeAlreadyExistsError, RecipeId};
 
 use crate::recipe::recipes::recipes_try_add_new_with_id;
 

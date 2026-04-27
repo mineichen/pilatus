@@ -38,13 +38,11 @@ impl DeviceState {
         )
         .expect("Name is always a valid path");
         let encoder = self.encoder.clone();
-        let encoded_image = pilatus::execute_blocking(move || encoder.encode(msg.image))
-            .await
-            .map_err(ActorError::custom)?;
+        let encoded_image =
+            pilatus::execute_blocking(move || Ok(encoder.encode(msg.image)?)).await?;
         self.file_service
             .add_file_unchecked(&relative, &encoded_image)
-            .await
-            .map_err(ActorError::custom)?;
+            .await?;
         Ok(())
     }
 }
@@ -55,21 +53,15 @@ async fn upload_image_to_collection(
     Query(id): Query<DynamicIdentifier>,
     data: bytes::Bytes,
 ) -> Result<(), DeviceJsonError<anyhow::Error>> {
-    let decode_image = pilatus::execute_blocking(move || image::load_from_memory(&data))
-        .await
-        .map_err(ActorError::custom)?;
+    let decode_image =
+        pilatus::execute_blocking(move || Ok(image::load_from_memory(&data)?)).await?;
 
     let image = pilatus_engineering::image::DynamicImage::try_from(decode_image)
         .map_err(ActorError::custom)?;
-
-    Ok(actor_system
-        .ask(
-            id,
-            AddImageMessage {
-                image_name,
-                image,
-                collection_name,
-            },
-        )
-        .await?)
+    let msg = AddImageMessage {
+        image_name,
+        image,
+        collection_name,
+    };
+    Ok(actor_system.ask(id, msg).await?)
 }
