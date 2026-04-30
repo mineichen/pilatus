@@ -14,7 +14,12 @@ cargo add minfac
 Pilatus heavily relies on the [minfac](http://crates.io/crates/minfac) inversion of control library. It allows making concepts to other code available. We are gonna add a new http route to the my-pilatus-app. To do so, we change the `lib.rs` to:
 
 
-``` rust
+```rust
+# extern crate minfac;
+# extern crate pilatus_axum;
+# extern crate serde;
+# extern crate anyhow;
+# extern crate tracing;
 use pilatus_axum::{IntoResponse, ServiceCollectionExtensions};
 
 pub extern "C" fn register(collection: &mut minfac::ServiceCollection) {
@@ -37,13 +42,19 @@ cd ../my-pilatus-app
 cargo add my-pilatus-extension-rt --path ../my-pilatus-extension-rt
 ```
 
-To use your new extension, you just add a `my_pilatus_extension_rt` to your main.rs. It should now look something like this:
-``` rust
+To use your new extension, you just add a `my_pilatus_extension_rt` to your main.rs. It should now look like this:
+```rust,no_run
+# extern crate minfac;
+# extern crate pilatus_axum_rt;
+# extern crate pilatus_rt;
+# mod my_pilatus_extension_rt {
+#   pub extern "C" fn register(c: &mut minfac::ServiceCollection) {}
+# }
 fn main() {
     pilatus_rt::Runtime::default()
         .register(pilatus_axum_rt::register)
         .register(my_pilatus_extension_rt::register)
-        .run();
+        .run(); 
 }
 ```
 
@@ -64,4 +75,3 @@ Pilatus extensions just register data into the `minfac::ServiceCollection` (e.g.
 ## Next Steps
 
 Congratullations, you just wrote your first pilatus extension. If you want a deeper understanding on how the extension system works, take a look at [minfac](http://crates.io/crates/minfac). If you are comfortable to accept, that this feels a little magic right now, I encourage you to just continue. In the next chapter, where we build our first device, you should feel much more comfortable.
-

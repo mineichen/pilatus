@@ -2,6 +2,7 @@
 /data
 /docker/build
 /pilatus_running
+/book/target/*
 Cargo.lock
 examples/stream/data/*
 !examples/stream/data/config.json

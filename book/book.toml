@@ -23,3 +23,6 @@ boost-hierarchy = 1
 boost-paragraph = 1
 expand = true
 heading-split-level = 3
+
+[rust]
+edition = "2024"

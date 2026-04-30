@@ -17,13 +17,14 @@ cargo add pilatus-axum-rt --git https://github.com/mineichen/pilatus.git
 
 Here's a minimal example to get you started, which includes the axum webserver:
 
-```rust
+```rust,no_run
+# extern crate pilatus_rt;
+# extern crate pilatus_axum_rt;
 fn main() {
     pilatus_rt::Runtime::default()
         .register(pilatus_axum_rt::register)
         .run();
 }
-
 ```
 
 ## Run the app
@@ -58,5 +59,3 @@ This should show you the time on the system where the server is running. Congrat
 ## Next Steps
 
 Now that you have a basic setup, we can add your first extension
-
-

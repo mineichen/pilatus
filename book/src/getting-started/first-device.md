@@ -13,21 +13,28 @@ cargo add tracing
 We are now finally getting to implement the custom camera. To do so, we'll add a new module `camera.rs` in our extension library.
 
 
-```bash
+```rust
+# extern crate minfac;
+# mod _pilatus_book_wrapper {
 use minfac::ServiceCollection;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     // TODO: Implement the camera service
 }
+# }
 ```
 
-Add the mod to your `lib.rs` and call the `regsiter_services` from within the `register` function:
-```
-pub extern "C" fn register(collection: &mut minfac::ServiceCollection) {
+Add the mod to your `lib.rs` and call the `register_services` from within the `register` function:
+```rust
+# extern crate minfac;
+
+pub extern "C" fn register(c: &mut minfac::ServiceCollection) {
     // ... Existing code
-    camera::register_services(collection);
+    camera::register_services(c);
 }
-
+# mod camera {
+#    pub(super) fn register_services(c: &mut minfac::ServiceCollection) {}
+# }
 ```
 Now run `cargo run` in your app to make sure, everything still works fine.
 
@@ -35,6 +42,13 @@ Now run `cargo run` in your app to make sure, everything still works fine.
 It is now time to create and register a device. 
 
 ```rust
+# extern crate minfac;
+# extern crate pilatus;
+# extern crate pilatus_axum;
+# extern crate serde;
+# extern crate anyhow;
+# extern crate tracing;
+# mod _pilatus_book_wrapper {
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
     UpdateParamsMessageError,
@@ -69,6 +83,7 @@ async fn device(
     Ok(())
 }
 
+# }
 ```
 
 While this compiles already, it's never doing anything yet. Devices are only run, if they are part of a so called `recipe`. By default, there is only one recipe without any devices at all. In practice, you can add devices to existing recipes via api calls or you can overwrite the default recipe, so it contains the devices your specific app needs. A Recipe can also contain multiple Instances of the same Device (e.g. 2 Cameras). To dig deeper, have a look at [Recipes](../core-concepts/recipes.md).
@@ -119,6 +134,13 @@ The device currently only waits on `execute` to shut itself down. So we cannot i
 To do so, we are going to create a ActorMessage. ActorMessages are the protocol, which allows interfaces (e.g. Web-route) or other Actors to communicate with one other. As a simple example, we're going to add a GetImageUri message, which only makes sense for cameras, which load images from e.g. file or http.
 
 ```rust
+# extern crate pilatus;
+# extern crate pilatus_axum;
+# extern crate anyhow;
+# use pilatus::device::{ActorMessage, ActorResult};
+# use pilatus_axum::http::Uri;
+# use std::str::FromStr;
+# struct Params { url: String }
 struct GetImageUrlMessage;
 impl ActorMessage for GetImageUrlMessage {
     type Output = pilatus_axum::http::Uri;
@@ -130,23 +152,21 @@ impl Params {
         &mut self,
         _msg: GetImageUrlMessage,
     ) -> ActorResult<GetImageUrlMessage> {
-        Ok(Uri::from_str(&self.url)?)
+        Ok(Uri::from_str(&self.url).map_err(anyhow::Error::new)?)
     }
 }
-
 ```
 
 Next, we need to tell our device to handle such messages, if someone asks them.
 This is just one more registration inside the device function. Just replace
 
 
-```rust
+```rust,ignore
 actor_system.register(ctx.id).execute(params).await;
-
 ```
 with
 
-```rust
+```rust,ignore
  actor_system
     .register(ctx.id)
     .add_handler(Params::handle_image_url)
@@ -162,7 +182,26 @@ At this point, we could call this device from another device, but we don't yet h
 
 ## Add a Http-Route
 We are going to expose another http endpoint, which is calling the ActorSystem with the GetImageUrl Message and returns that response via HTTP. 
-``` rust
+```rust
+# extern crate minfac;
+# extern crate pilatus;
+# extern crate pilatus_axum;
+# extern crate serde;
+# extern crate anyhow;
+# extern crate tracing;
+# mod _pilatus_book_wrapper {
+# struct GetImageUrlMessage;
+# impl pilatus::device::ActorMessage for GetImageUrlMessage {
+#     type Output = pilatus_axum::http::Uri;
+#     type Error = anyhow::Error;
+# }
+use minfac::ServiceCollection;
+use pilatus::device::{ActorSystem, DynamicIdentifier};
+use pilatus_axum::{
+    DeviceResponse, IntoResponse,
+    extract::{InjectRegistered, Query},
+    ServiceCollectionExtensions,
+};
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     // ... Device registration
@@ -180,7 +219,7 @@ async fn get_image_url_web(
             .map(|url| url.to_string()),
     )
 }
-
+# }
 ```
 
 ## Test the message handler via HTTP
@@ -194,6 +233,13 @@ You shoud see the image urls as output.
 ## Summary
 Here is the full code of the camera example
 ```rust
+# mod _pilatus_book_wrapper {
+# extern crate minfac;
+# extern crate pilatus;
+# extern crate pilatus_axum;
+# extern crate serde;
+# extern crate anyhow;
+# extern crate tracing;
 use std::str::FromStr;
 
 use minfac::{Registered, ServiceCollection};
@@ -255,7 +301,7 @@ impl Params {
         &mut self,
         _msg: GetImageUrlMessage,
     ) -> ActorResult<GetImageUrlMessage> {
-        Ok(Uri::from_str(&self.url)?)
+        Ok(Uri::from_str(&self.url).map_err(|e| anyhow::Error::new(e))?)
     }
 }
 
@@ -270,6 +316,7 @@ async fn get_image_url_web(
             .map(|url| url.to_string()),
     )
 }
+# }
 ```
 
 ## Next steps

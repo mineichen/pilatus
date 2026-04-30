@@ -8,4 +8,4 @@ Pilatus has almost no system dependencies on purpose, so it stays lightweight an
 - Cargo (comes with Rust)
 - Openssl installation
 
-Extensions with system dependencies for e.g. Opencv or aravis camera are kept in a separate repository. 
+Extensions with system dependencies (e.g. Opencv or aravis) are kept in a dedicated repository.

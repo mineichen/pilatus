@@ -9,7 +9,6 @@ use pilatus::device::{
 };
 use pilatus_axum::{
     extract::{ws::WebSocketUpgrade, InjectRegistered, Json, Path},
-    http::StatusCode,
     sse::Sse,
     AppendHeaders, DeviceJsonError, Html, IntoResponse, ServiceCollectionExtensions,
 };
@@ -129,7 +128,9 @@ async fn single_dynamic_image_handler(
 }
 
 #[cfg(debug_assertions)]
-async fn image_viewer() -> Result<Html<String>, StatusCode> {
+async fn image_viewer() -> Result<Html<String>, pilatus_axum::http::StatusCode> {
+    use std::str::FromStr;
+
     tokio::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("resources")
@@ -137,7 +138,7 @@ async fn image_viewer() -> Result<Html<String>, StatusCode> {
     )
     .await
     .map(Into::into)
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    .map_err(|_| pilatus_axum::http::StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 #[cfg(not(debug_assertions))]
