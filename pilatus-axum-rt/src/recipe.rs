@@ -1,4 +1,3 @@
-use std::fmt::{self, Display, Formatter, Write};
 use std::io::{self, ErrorKind};
 
 use async_zip::error::ZipError;
@@ -17,7 +16,6 @@ use pilatus_axum::{
     http::StatusCode,
     IntoResponse, ServiceCollectionExtensions,
 };
-use sealedstruct::ValidationErrors;
 use tracing::{debug, trace};
 use uuid::Uuid;
 
@@ -183,25 +181,7 @@ async fn update_device_params(
     service
         .update_device_params_with(recipe_id, device_id, param_update, options)
         .await
-        .map_err(|e| {
-            struct DeviceConfigWrapper(ValidationErrors);
-            impl Display for DeviceConfigWrapper {
-                fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-                    for x in self.0.iter() {
-                        f.write_str(&x.reason)?;
-                        f.write_char('\n')?;
-                    }
-                    Ok(())
-                }
-            }
-            (
-                StatusCode::BAD_REQUEST,
-                match e {
-                    TransactionError::InvalidDeviceConfig(e) => DeviceConfigWrapper(e).to_string(),
-                    _ => e.to_string(),
-                },
-            )
-        })
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }
 
 async fn update_recipe_metadata(

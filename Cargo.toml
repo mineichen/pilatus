@@ -22,7 +22,7 @@ bytes = "1"
 chrono = "0.4"
 futures = "0.3"
 futures-channel = "0.3"
-futures-util = "0.3"
+futures-util = { version = "0.3", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
 imask = { git = "https://github.com/mineichen/imask.git" }
 imbuf = "0.3.3"
@@ -49,3 +49,4 @@ uuid = "1"
 
 # [patch.crates-io]
 # imbuf = { path = "../imbuf" }
+# sealedstruct = { path = "../sealedstruct/sealedstruct" }
