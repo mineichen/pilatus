@@ -5,5 +5,20 @@
 [build]
 rustflags = ["--cfg", "tokio_unstable"]
 
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["--cfg", "tokio_unstable", "-C", "link-arg=-fuse-ld=mold"]
+# Running `cargo build --timings --target-dir {version}_target with different linters (04/2026, rust 1.95)
+# - mold
+#   - clean: 20.0, 20.0
+#   - incremental: 1.42s, 1.39s
+# - lld
+#   - clean: 17.28, 18.05
+#   - incremental: 1.36s, 1.34
+#
+# Infos
+# - change in pilatus/Name.rs for incremental testing
+# - `--target-dir` avoids `cargo clean` which might come with tasks like simultanous IDES language-server rebuilts.
+# Conclusion: Mold is no longer worth it
+
+
+#[target.x86_64-unknown-linux-gnu]
+#rustflags = ["--cfg", "tokio_unstable", "-C", "link-arg=-fuse-ld=mold"]
+

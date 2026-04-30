@@ -19,7 +19,7 @@
         stableToolchain = with inputs.fenix.packages.${system}; combine [
           stable.toolchain
         ];
-        
+
         # Nightly toolchain for Miri
         nightlyToolchain = inputs.fenix.packages.${system}.latest.withComponents [
           "cargo"
@@ -27,17 +27,16 @@
           "rustfmt"
           "miri"
         ];
-        
+
         # Common build inputs
         commonBuildInputs = [
           pkgs.pkg-config
-          pkgs.mold
           pkgs.bashInteractive
           pkgs.openssl
           pkgs.gcc
           pkgs.binutils
         ];
-        
+
         # Helper function to create shell scripts with error handling
         # Sets up common build environment (gcc, binutils, mold, pkg-config, openssl)
         # Note: PKG_CONFIG_PATH should be sufficient for openssl-sys to find OpenSSL
@@ -49,14 +48,14 @@
             export PKG_CONFIG_PATH="${pkgs.openssl.dev}/lib/pkgconfig"
             ${script}
           '');
-        
+
         # Pure package for miri-test (built in sandbox)
         miriTestPure = pkgs.writeShellApplication {
           name = "miri-test-pure";
           runtimeInputs = [
             nightlyToolchain
           ] ++ commonBuildInputs;
-          
+
           text = ''
             set -e
             # Additional environment setup (runtimeInputs handles PATH for binaries)
