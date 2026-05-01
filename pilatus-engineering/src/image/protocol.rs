@@ -24,8 +24,9 @@ const CODE_ACQUISITION: u16 = 4 << 4 | (VERSION as u16) << 8;
 const KIND_IMAGE: u8 = 1 << 4;
 const KIND_MASK: u8 = 2 << 4;
 
+#[cfg(feature = "encode")]
 pub trait StreamableImage: Sized {
-    fn encode(self) -> anyhow::Result<Vec<u8>>;
+    fn encode(self, encoder: &MetaImageEncoder) -> anyhow::Result<Vec<u8>>;
 }
 
 #[repr(u8)]
@@ -70,7 +71,7 @@ mod tests {
     use imbuf::{Image, PixelType};
     use testresult::TestResult;
 
-    use crate::image::{ImageWithMeta, StableHash};
+    use crate::image::{protocol::encode::MetaImageEncoder, ImageWithMeta, StableHash};
 
     use super::*;
 
@@ -101,7 +102,8 @@ mod tests {
         let hash = StableHash::from_hashable(42);
         let encodable_image = ImageWithMeta::with_hash(image.clone().into(), Some(hash));
 
-        let bytes = (Ok(encodable_image.clone()), StreamingImageFormat::Raw).encode()?;
+        let encoder = MetaImageEncoder::new();
+        let bytes = encoder.encode(Ok(encodable_image.clone()), StreamingImageFormat::Raw)?;
         let back = crate::image::decode(&bytes)??.try_convert_image::<Image<T, CHANNELS>>()?;
         assert_eq!(image.buffers(), back.image.buffers());
         assert_eq!(encodable_image.meta, back.meta);
@@ -133,7 +135,8 @@ mod tests {
 
         let encodable_image = Ok(meta);
 
-        let bytes = (encodable_image, StreamingImageFormat::Raw).encode()?;
+        let encoder = MetaImageEncoder::new();
+        let bytes = encoder.encode(encodable_image, StreamingImageFormat::Raw)?;
         let back = crate::image::decode(&bytes)??.try_convert_image::<Image<u8, 1>>()?;
 
         assert_eq!(image.buffers(), back.image.buffers());

@@ -29,7 +29,7 @@ use super::{
 };
 
 impl StreamableImage for LumaImage {
-    fn encode(self) -> anyhow::Result<Vec<u8>> {
+    fn encode(self, _encoder: &MetaImageEncoder) -> anyhow::Result<Vec<u8>> {
         let dims = self.dimensions();
         encode_legacy(self.buffer(), ColorType::Luma, dims, |_| Ok(()))
     }
@@ -65,17 +65,23 @@ pub enum StreamingImageFormat {
 /// - Streaming data (Size not known when write starts) could drastically reduce memory footprint
 /// - ImageMasks from imask could easily be streamed with its async encoder/decoder pair
 /// - Extendability was not a pririty when writing this
-impl StreamableImage
-    for (
-        Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
-        StreamingImageFormat,
-    )
-{
-    fn encode(self) -> anyhow::Result<Vec<u8>> {
-        match self.0 {
-            Ok(x) => self
-                .1
-                .encode_dynamic_image(CODE_OK, x.image, x.extensions, x.meta),
+#[derive(Clone)]
+pub struct MetaImageEncoder {
+    _private: (),
+}
+
+impl MetaImageEncoder {
+    pub fn new() -> Self {
+        Self { _private: () }
+    }
+
+    pub fn encode(
+        &self,
+        image: Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
+        format: StreamingImageFormat,
+    ) -> anyhow::Result<Vec<u8>> {
+        match image {
+            Ok(x) => format.encode_dynamic_image(CODE_OK, x.image, x.extensions, x.meta),
             Err(e) => match e {
                 #[expect(deprecated)]
                 StreamImageError::MissedItems(MissedItemsError { number, .. }) => {
@@ -85,7 +91,7 @@ impl StreamableImage
                 }
                 StreamImageError::ProcessingError { image, error } => {
                     debug!("Processing error: {error}");
-                    self.1.encode_dynamic_image(
+                    format.encode_dynamic_image(
                         CODE_PROCESSING,
                         image,
                         Default::default(),
@@ -98,6 +104,17 @@ impl StreamableImage
                 _ => Err(anyhow::anyhow!("Unknown error: {e:?}")),
             },
         }
+    }
+}
+
+pub struct MetaImageEncodeTask {
+    pub image: Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
+    pub format: StreamingImageFormat,
+}
+
+impl StreamableImage for MetaImageEncodeTask {
+    fn encode(self, encoder: &MetaImageEncoder) -> anyhow::Result<Vec<u8>> {
+        encoder.encode(self.image, self.format)
     }
 }
 
@@ -235,7 +252,7 @@ fn encode_dynamic_jpeg_image<T: Serialize>(
 }
 
 impl<T: Serialize> StreamableImage for (LumaImage, T) {
-    fn encode(self) -> anyhow::Result<Vec<u8>> {
+    fn encode(self, _encoder: &MetaImageEncoder) -> anyhow::Result<Vec<u8>> {
         let dims = self.0.dimensions();
         encode_legacy(self.0.buffer(), ColorType::Luma, dims, |b| {
             Ok(serde_json::to_writer(b, &self.1)?)
@@ -263,7 +280,7 @@ impl<T: Debug> Debug for RgbImageWithMetadata<T> {
 }
 
 impl<T: Serialize> StreamableImage for RgbImageWithMetadata<T> {
-    fn encode(self) -> anyhow::Result<Vec<u8>> {
+    fn encode(self, _encoder: &MetaImageEncoder) -> anyhow::Result<Vec<u8>> {
         let dims = self.0.dimensions();
         let packed = self.0.into_interleaved();
         encode_legacy(packed.buffer_flat(), ColorType::Rgb, dims, |b| {

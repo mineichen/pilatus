@@ -7,6 +7,8 @@ mod web;
 pub use logo::*;
 
 pub(super) fn register_services(c: &mut minfac::ServiceCollection) {
+    c.register(pilatus_engineering::image::MetaImageEncoder::new);
+
     logo::register_services(c);
     png::register_services(c);
     #[cfg(feature = "axum")]
