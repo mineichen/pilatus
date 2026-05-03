@@ -104,7 +104,10 @@ mod tests {
 
         let encoder = MetaImageEncoder::new();
         let bytes = encoder.encode(Ok(encodable_image.clone()), StreamingImageFormat::Raw)?;
-        let back = crate::image::decode(&bytes)??.try_convert_image::<Image<T, CHANNELS>>()?;
+        let decoder = MetaImageDecoder::new();
+        let back = decoder
+            .decode(&bytes)??
+            .try_convert_image::<Image<T, CHANNELS>>()?;
         assert_eq!(image.buffers(), back.image.buffers());
         assert_eq!(encodable_image.meta, back.meta);
 
@@ -137,7 +140,10 @@ mod tests {
 
         let encoder = MetaImageEncoder::new();
         let bytes = encoder.encode(encodable_image, StreamingImageFormat::Raw)?;
-        let back = crate::image::decode(&bytes)??.try_convert_image::<Image<u8, 1>>()?;
+        let decoder = MetaImageDecoder::new();
+        let back = decoder
+            .decode(&bytes)??
+            .try_convert_image::<Image<u8, 1>>()?;
 
         assert_eq!(image.buffers(), back.image.buffers());
         assert_eq!(

@@ -22,11 +22,13 @@ impl Deref for AlignedBuf {
         unsafe { std::slice::from_raw_parts(self.0.as_ptr() as *const u8, self.0.len() * 8) }
     }
 }
+
 impl DerefMut for AlignedBuf {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { std::slice::from_raw_parts_mut(self.0.as_mut_ptr() as *mut u8, self.0.len() * 8) }
     }
 }
+
 impl From<AlignedBuf> for Vec<u8> {
     fn from(mut value: AlignedBuf) -> Self {
         let r = unsafe {
@@ -43,60 +45,72 @@ impl From<AlignedBuf> for Vec<u8> {
 
 /// Returns `Ok(None)` for MissingFrame error
 // imbuf::Image<[u8; 3], 1>
-pub fn decode(
-    input: &[u8],
-) -> anyhow::Result<Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>> {
-    if input.len() < 8 {
-        return Err(anyhow!(
-            "Header is only {} bytes long: {:?}",
-            input.len(),
-            input
-        ));
-    }
-    debug_assert_eq!(input[2], 0, "Using reserved space input[2]: {}", input[2]);
-    debug_assert_eq!(input[3], 0, "Using reserved space input[3]: {}", input[3]);
-    match u16::from_le_bytes([input[0], input[1]]) {
-        super::CODE_OK => extract_metaimage(input),
-        #[expect(deprecated)]
-        super::CODE_MISSED_ITEM => {
-            let number = input
-                .get(5..)
-                .and_then(|s| serde_json::from_slice(s).ok())
-                .unwrap_or_else(|| {
-                    warn!("Couldn't read missed_items {input:?}, use u16::MAX instead");
-                    u16::MAX
-                });
-            let number = Saturating(number);
-            Ok(Err(StreamImageError::MissedItems(MissedItemsError::new(
-                number,
-            ))))
-            // return Err(anyhow!(
-            //     "Get MISSING_FRAME_ERROR({number:?}), which is no longer supported and should be migrated to MetaData {{ missing_frames }} in all InputItems",
-            // ));
-        }
-        super::CODE_PROCESSING => {
-            println!("ExtractMetaImage");
+#[derive(Clone)]
+pub struct MetaImageDecoder {
+    _private: (),
+}
 
-            let (msg, image, _rest) = extract_meta_and_image::<String>(input)?;
-            Ok(Err(StreamImageError::ProcessingError {
-                image,
-                error: Arc::new(anyhow!("{msg}")),
-            }))
+impl MetaImageDecoder {
+    pub fn new() -> Self {
+        Self { _private: () }
+    }
+
+    pub fn decode(
+        &self,
+        input: &[u8],
+    ) -> anyhow::Result<Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>> {
+        if input.len() < 8 {
+            return Err(anyhow!(
+                "Header is only {} bytes long: {:?}",
+                input.len(),
+                input
+            ));
         }
-        _ => {
-            let version = input[1];
-            let command_nr = (input[0] & 0b11110000) >> 4;
-            Err(if version != super::VERSION {
-                let input_start = &input[0..input.len().min(20)];
-                anyhow!(
+        debug_assert_eq!(input[2], 0, "Using reserved space input[2]: {}", input[2]);
+        debug_assert_eq!(input[3], 0, "Using reserved space input[3]: {}", input[3]);
+        match u16::from_le_bytes([input[0], input[1]]) {
+            super::CODE_OK => extract_metaimage(input),
+            #[expect(deprecated)]
+            super::CODE_MISSED_ITEM => {
+                let number = input
+                    .get(5..)
+                    .and_then(|s| serde_json::from_slice(s).ok())
+                    .unwrap_or_else(|| {
+                        warn!("Couldn't read missed_items {input:?}, use u16::MAX instead");
+                        u16::MAX
+                    });
+                let number = Saturating(number);
+                Ok(Err(StreamImageError::MissedItems(MissedItemsError::new(
+                    number,
+                ))))
+                // return Err(anyhow!(
+                //     "Get MISSING_FRAME_ERROR({number:?}), which is no longer supported and should be migrated to MetaData {{ missing_frames }} in all InputItems",
+                // ));
+            }
+            super::CODE_PROCESSING => {
+                println!("ExtractMetaImage");
+
+                let (msg, image, _rest) = extract_meta_and_image::<String>(input)?;
+                Ok(Err(StreamImageError::ProcessingError {
+                    image,
+                    error: Arc::new(anyhow!("{msg}")),
+                }))
+            }
+            _ => {
+                let version = input[1];
+                let command_nr = (input[0] & 0b11110000) >> 4;
+                Err(if version != super::VERSION {
+                    let input_start = &input[0..input.len().min(20)];
+                    anyhow!(
                     "Unexpected version for command {command_nr}: Decoder: {}, Encoder: {version}, got: {:?} ({})",
                     super::VERSION,
                     input_start,
                     String::from_utf8_lossy(input_start)
                 )
-            } else {
-                anyhow!("Stream item with error, which is not yet supported: {command_nr}")
-            })
+                } else {
+                    anyhow!("Stream item with error, which is not yet supported: {command_nr}")
+                })
+            }
         }
     }
 }
