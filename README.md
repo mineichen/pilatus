@@ -14,11 +14,12 @@ A modular, extendable application framework which is currently used for industri
 Currently, just a few modules are publicly available
 - Axum: Collects web-routes from other modules an serves them on a single http port
 - Engineering: Working with images and other engineering-related stuff like angles, matrices
-- Soon: Leptos microfrontends
-- Soon: Emulation of cameras
+- Emulation of camera
+- Leptos frontend available at [pilatus-leptos](https://github.com/mineichen/pilatus-leptos) (beta)
+- Opencv integration at [pilatus-opencv](https://github.com/mineichen/pilatus-opencv)
+- GigE/Ueye-Camera via aravis: Discovery, settings gige-params, image streams [pilatus-aravis](https://github.com/mineichen/pilatus-aravis)
 
 Some extensions which are implemented, but not (yet) publicly available:
-- GigE/Ueye-Camera: Discovery, settings gige-params, image streams
 - Image-Coordinates to 3D: Intrinsic calibration assistant, calibration plate management, origin determination
 - Matching: Find shapes in images, which can be teached entirely in the web-ui (inkl. collision-detection if part has to be grippable by robot)
 - Halcon: perform image analysis using hdpl-procedures, manage licenses, rust-bindings
