@@ -9,6 +9,7 @@ members = [
     "pilatus-emulation-camera-rt",
     "pilatus-engineering",
     "pilatus-engineering-rt",
+    "pilatus-imask",
     "pilatus-rt",
     "examples/stream",
     "examples/tick",
@@ -36,6 +37,7 @@ pilatus-emulation-camera = { path = "pilatus-emulation-camera" }
 pilatus-emulation-camera-rt = { path = "pilatus-emulation-camera-rt" }
 pilatus-engineering = { path = "pilatus-engineering" }
 pilatus-engineering-rt = { path = "pilatus-engineering-rt" }
+pilatus-imask = { path = "pilatus-imask" }
 pilatus-tick = { path = "examples/tick" }
 pilatus-tick-rt = { path = "examples/tick-rt" }
 serde = "1"

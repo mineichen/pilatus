@@ -4,15 +4,15 @@
 /// The new design still allows all previous workflows by simply adding .take_while() and therefore volunatarely close the stream.
 /// Furthermore, the new design allows errors to contain images, for situations, where e.g.
 use std::{
+    collections::HashMap,
     fmt::{self, Debug, Formatter},
     io::Write,
     num::{NonZeroU16, NonZeroU32, NonZeroU8},
-    ops::RangeInclusive,
+    sync::Arc,
 };
 
 use anyhow::{anyhow, Context};
 use bytes::BufMut;
-use imask::{ImageDimension, WithRoi};
 use imbuf::{
     DynamicImage, DynamicImageChannel, DynamicSize, Image, ImageChannel, PixelTypePrimitive,
 };
@@ -21,12 +21,31 @@ use pilatus::MissedItemsError;
 use serde::Serialize;
 use tracing::{debug, trace};
 
-use crate::image::{protocol::calculate_buf_len, AnyMultiMap, DataType};
+use crate::image::{
+    protocol::{calculate_buf_len, into_extensions_map},
+    AnyMultiMap, DataType,
+};
 
 use super::{
     super::{ImageWithMeta, LumaImage, Rgb8Image, StreamImageError},
     StreamableImage, CODE_ACTOR_ERROR, CODE_MISSED_ITEM, CODE_OK, CODE_PROCESSING,
 };
+
+type EncodeExtensionWriter =
+    Box<dyn Fn(&AnyMultiMap, &mut Vec<u8>) -> std::io::Result<()> + Send + Sync>;
+pub struct EncodeExtension {
+    pub kind: u8,
+    pub writer: EncodeExtensionWriter,
+}
+#[derive(Default)]
+pub struct EncodeExtensions(HashMap<u8, EncodeExtensionWriter>);
+
+impl EncodeExtensions {
+    pub fn new(extensions: impl IntoIterator<Item = EncodeExtension>) -> Self {
+        let iter = extensions.into_iter().map(|x| (x.kind, x.writer));
+        Self(into_extensions_map(iter))
+    }
+}
 
 impl StreamableImage for LumaImage {
     fn encode(self, _encoder: &MetaImageEncoder) -> anyhow::Result<Vec<u8>> {
@@ -67,12 +86,12 @@ pub enum StreamingImageFormat {
 /// - Extendability was not a pririty when writing this
 #[derive(Clone)]
 pub struct MetaImageEncoder {
-    _private: (),
+    extensions: Arc<EncodeExtensions>,
 }
 
 impl MetaImageEncoder {
-    pub fn new() -> Self {
-        Self { _private: () }
+    pub fn with_extensions(extensions: Arc<EncodeExtensions>) -> Self {
+        Self { extensions }
     }
 
     pub fn encode(
@@ -81,7 +100,13 @@ impl MetaImageEncoder {
         format: StreamingImageFormat,
     ) -> anyhow::Result<Vec<u8>> {
         match image {
-            Ok(x) => format.encode_dynamic_image(CODE_OK, x.image, x.extensions, x.meta),
+            Ok(x) => format.encode_dynamic_image(
+                CODE_OK,
+                x.image,
+                x.extensions,
+                x.meta,
+                &self.extensions,
+            ),
             Err(e) => match e {
                 #[expect(deprecated)]
                 StreamImageError::MissedItems(MissedItemsError { number, .. }) => {
@@ -96,6 +121,7 @@ impl MetaImageEncoder {
                         image,
                         Default::default(),
                         error.to_string(),
+                        &self.extensions,
                     )
                 }
                 StreamImageError::ActorError(_) => {
@@ -125,10 +151,13 @@ impl StreamingImageFormat {
         image: DynamicImage,
         ext: AnyMultiMap,
         meta: T,
+        write_extensions: &EncodeExtensions,
     ) -> anyhow::Result<Vec<u8>> {
         match self {
             StreamingImageFormat::Jpeg => encode_dynamic_jpeg_image(code, image, meta),
-            StreamingImageFormat::Raw => encode_dynamic_raw_image(code, image, ext, meta),
+            StreamingImageFormat::Raw => {
+                encode_dynamic_raw_image(code, image, ext, meta, write_extensions)
+            }
         }
     }
 }
@@ -156,6 +185,7 @@ fn encode_dynamic_raw_image<T: Serialize>(
     image: DynamicImage,
     extensions: AnyMultiMap,
     meta: T,
+    write_extensions: &EncodeExtensions,
 ) -> anyhow::Result<Vec<u8>> {
     fn encode_typed<TPixel: PixelTypePrimitive>(
         x: &ImageChannel<DynamicSize<TPixel>>,
@@ -195,22 +225,8 @@ fn encode_dynamic_raw_image<T: Serialize>(
         "Reserve-Exact should only be used if capacity is correct"
     );
 
-    for mask in extensions.iter::<imask::SortedRanges<u64, u64>>() {
-        buf.push(super::KIND_MASK);
-        //println!("{}", buf.len());
-        let roi = mask.bounds();
-        futures::executor::block_on(imask::AsyncRangeWriter::new(
-            &mut buf,
-            WithRoi::new(
-                futures::stream::iter(mask.iter_roi::<RangeInclusive<u64>>()),
-                roi,
-            ),
-        ))?;
-        //panic!("{}", buf.len());
-        // Both dimensions cannot be 0... If we find 14 consecutive, we know it's impossible to be valid data
-        // the ending 42 is there, to make sure, we don't cut numbers which still belong to a number
-
-        buf.extend_from_slice(&super::MASK_SENTINEL);
+    for (_kind, ext) in write_extensions.0.iter() {
+        (ext)(&extensions, &mut buf)?;
     }
     Ok(buf)
 }

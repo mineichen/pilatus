@@ -2,12 +2,16 @@ mod decode;
 #[cfg(feature = "encode")]
 mod encode;
 
-use std::num::{NonZeroU32, NonZeroU8};
+use std::{
+    collections::HashMap,
+    num::{NonZeroU32, NonZeroU8},
+};
 
 use anyhow::Context;
 pub use decode::*;
 #[cfg(feature = "encode")]
 pub use encode::*;
+use tracing::error;
 
 const VERSION: u8 = 1;
 const CHANNEL_HEADER_BYTE_SIZE: u8 = 10;
@@ -22,7 +26,6 @@ const CODE_ACTOR_ERROR: u16 = 3 << 4 | (VERSION as u16) << 8;
 const CODE_ACQUISITION: u16 = 4 << 4 | (VERSION as u16) << 8;
 
 const KIND_IMAGE: u8 = 1 << 4;
-const KIND_MASK: u8 = 2 << 4;
 
 #[cfg(feature = "encode")]
 pub trait StreamableImage: Sized {
@@ -34,12 +37,6 @@ pub(crate) enum DataType {
     U8,
     U16,
 }
-
-const MASK_SENTINEL: [u8; 15] = {
-    let mut sentinel = [0; 15];
-    sentinel[14] = 42;
-    sentinel
-};
 
 impl TryFrom<u8> for DataType {
     type Error = anyhow::Error;
@@ -63,11 +60,30 @@ fn calculate_buf_len(
     Ok(width * height * pixel_elements)
 }
 
+pub(crate) fn into_extensions_map<T>(items: impl IntoIterator<Item = (u8, T)>) -> HashMap<u8, T> {
+    let mut conflicts = Vec::new();
+    let mut result = HashMap::new();
+    for (k, v) in items {
+        if let Some(_) = result.insert(k, v) {
+            conflicts.push(k);
+        }
+    }
+    if !conflicts.is_empty() {
+        error!(
+            kind_ids = ?conflicts,
+            "Duplicate extension kinds detected. All conflicting extensions are filtered out"
+        );
+        for conflict in conflicts {
+            result.remove(&conflict).unwrap();
+        }
+    }
+    result
+}
+
 #[cfg(all(test, feature = "encode"))]
 mod tests {
-    use std::num::NonZeroU32;
+    use std::{num::NonZeroU32, sync::Arc};
 
-    use imask::ImaskSet;
     use imbuf::{Image, PixelType};
     use testresult::TestResult;
 
@@ -102,57 +118,14 @@ mod tests {
         let hash = StableHash::from_hashable(42);
         let encodable_image = ImageWithMeta::with_hash(image.clone().into(), Some(hash));
 
-        let encoder = MetaImageEncoder::new();
+        let encoder = MetaImageEncoder::with_extensions(Arc::default());
         let bytes = encoder.encode(Ok(encodable_image.clone()), StreamingImageFormat::Raw)?;
-        let decoder = MetaImageDecoder::new();
+        let decoder = MetaImageDecoder::with_extensions(Arc::default());
         let back = decoder
             .decode(&bytes)??
             .try_convert_image::<Image<T, CHANNELS>>()?;
         assert_eq!(image.buffers(), back.image.buffers());
         assert_eq!(encodable_image.meta, back.meta);
-
-        Ok(())
-    }
-    #[test]
-    fn encode_decode_with_imask() -> TestResult {
-        type Ranges = imask::SortedRanges<u64, u64>;
-        let image = Image::<u8, 1>::new_vec_flat(vec![128], NonZeroU32::MIN, NonZeroU32::MIN);
-        let width = const { NonZeroU32::new(10).unwrap() };
-        let height = const { NonZeroU32::new(20).unwrap() };
-        let roi = imask::Rect::new(100, 100, width, height);
-        let ranges = [
-            Ranges::try_from_ordered_iter([0u32..10, 15..20].with_bounds(width, height))?,
-            Ranges::try_from_ordered_iter([30u32..40, 45..50].with_roi(roi))?,
-        ];
-        let mut meta = ImageWithMeta::with_hash(image.clone().into(), None);
-        for range in ranges.iter() {
-            meta.extensions.insert(range.clone());
-        }
-        assert_eq!(
-            ranges.clone().to_vec(),
-            meta.extensions
-                .iter::<Ranges>()
-                .map(|x| x.clone())
-                .collect::<Vec<_>>()
-        );
-
-        let encodable_image = Ok(meta);
-
-        let encoder = MetaImageEncoder::new();
-        let bytes = encoder.encode(encodable_image, StreamingImageFormat::Raw)?;
-        let decoder = MetaImageDecoder::new();
-        let back = decoder
-            .decode(&bytes)??
-            .try_convert_image::<Image<u8, 1>>()?;
-
-        assert_eq!(image.buffers(), back.image.buffers());
-        assert_eq!(
-            ranges.clone().to_vec(),
-            back.extensions
-                .iter::<Ranges>()
-                .map(|x| x.clone())
-                .collect::<Vec<_>>()
-        );
 
         Ok(())
     }

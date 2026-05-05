@@ -1,17 +1,37 @@
 use std::{
-    num::{NonZero, NonZeroU16, NonZeroU32, NonZeroU8, Saturating},
+    collections::HashMap,
+    io,
+    num::{NonZeroU16, NonZeroU32, NonZeroU8, Saturating},
     ops::{Deref, DerefMut},
     sync::Arc,
 };
 
 use anyhow::{anyhow, Context};
-use imask::{AsyncRangeStream, ImaskSet, SortedRanges};
 use imbuf::{DynamicImage, DynamicImageChannel, ImageChannel};
 use pilatus::MissedItemsError;
 use serde::de::DeserializeOwned;
 use tracing::warn;
 
-use crate::image::{protocol::calculate_buf_len, DataType, ImageWithMeta, StreamImageError};
+use crate::image::{
+    protocol::{calculate_buf_len, into_extensions_map},
+    AnyMultiMap, DataType, ImageWithMeta, StreamImageError,
+};
+type DecodeExtensionReader =
+    Box<dyn for<'a> Fn(&'a [u8], &mut AnyMultiMap) -> io::Result<&'a [u8]> + Send + Sync>;
+pub struct DecodeExtension {
+    pub kind: u8,
+    pub reader: DecodeExtensionReader,
+}
+
+#[derive(Default)]
+pub struct DecodeExtensions(HashMap<u8, DecodeExtensionReader>);
+
+impl DecodeExtensions {
+    pub fn new(extensions: impl IntoIterator<Item = DecodeExtension>) -> Self {
+        let iter = extensions.into_iter().map(|x| (x.kind, x.reader));
+        Self(into_extensions_map(iter))
+    }
+}
 
 pub struct AlignedBuf(Vec<u64>);
 
@@ -47,14 +67,15 @@ impl From<AlignedBuf> for Vec<u8> {
 // imbuf::Image<[u8; 3], 1>
 #[derive(Clone)]
 pub struct MetaImageDecoder {
-    _private: (),
+    extensions: Arc<DecodeExtensions>,
 }
 
 impl MetaImageDecoder {
-    pub fn new() -> Self {
-        Self { _private: () }
+    pub fn with_extensions(extensions: Arc<DecodeExtensions>) -> Self {
+        Self { extensions }
     }
 
+    /// Returns a nested Error... The outer is due to encoding/decoding/io, the inner is expected to happen
     pub fn decode(
         &self,
         input: &[u8],
@@ -69,7 +90,7 @@ impl MetaImageDecoder {
         debug_assert_eq!(input[2], 0, "Using reserved space input[2]: {}", input[2]);
         debug_assert_eq!(input[3], 0, "Using reserved space input[3]: {}", input[3]);
         match u16::from_le_bytes([input[0], input[1]]) {
-            super::CODE_OK => extract_metaimage(input),
+            super::CODE_OK => extract_metaimage(input, &self.extensions),
             #[expect(deprecated)]
             super::CODE_MISSED_ITEM => {
                 let number = input
@@ -142,6 +163,7 @@ fn extract_meta_and_image<T: DeserializeOwned>(
 
 fn extract_metaimage(
     input: &[u8],
+    extensions: &DecodeExtensions,
 ) -> anyhow::Result<Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>> {
     let (meta, image, mut input) = extract_meta_and_image(input)?;
     let mut meta_image = ImageWithMeta::with_meta(image, meta);
@@ -151,48 +173,17 @@ fn extract_metaimage(
             [super::KIND_IMAGE, rest @ ..] => {
                 let (_image, rest) = read_image(rest)?;
                 input = rest;
-                // todo store image in image.other
             }
-            [super::KIND_MASK, rest @ ..] => {
-                let (mask, rest) = read_mask(rest)?;
-                meta_image.extensions.insert(mask);
-                input = rest;
+            [kind, rest @ ..] => {
+                let ext = extensions.0.get(kind).ok_or_else(|| {
+                    anyhow!("Unknown extension {kind}. Add the corresponding encoder. In the future, a per request kind-whitelist should be added to only get known extensions for e.g. HTTP")
+                })?;
+                input = (ext)(rest, &mut meta_image.extensions)?;
             }
             _ => break,
         }
     }
     Ok(Ok(meta_image))
-}
-
-fn read_mask(input: &[u8]) -> anyhow::Result<(SortedRanges<u64, u64>, &[u8])> {
-    let mut err = anyhow::Ok(());
-    let end_pos = input
-        .array_windows()
-        .position(|x| x == &super::MASK_SENTINEL)
-        .ok_or_else(|| anyhow!("Sentinel for RangeEnd not found"))?;
-    let (ranges, rest) = input.split_at(end_pos);
-
-    let stream = futures::executor::block_on(AsyncRangeStream::new(ranges))?;
-    let roi = stream.roi();
-    let width = NonZero::try_from(roi.offset_x + roi.width.get())?;
-    let height = NonZero::try_from(roi.offset_y + roi.height.get())?;
-    Ok((
-        imask::SortedRanges::<u64, u64>::try_from_ordered_iter(
-            futures::executor::block_on_stream(stream.into_roi_stream())
-                .map(|input| match input {
-                    Ok(x) => Some(x),
-                    Err(e) => {
-                        err = Err(e.into());
-                        None
-                    }
-                })
-                .take_while(|x| x.is_some())
-                .map(|x| x.unwrap())
-                .with_bounds(width, height), //.with_roi(rect),
-        )
-        .map_err(|s| anyhow::anyhow!("Cannot create SortedRanges: {s}"))?,
-        &rest[super::MASK_SENTINEL.len()..],
-    ))
 }
 
 fn read_image(input: &[u8]) -> anyhow::Result<(DynamicImage, &[u8])> {
