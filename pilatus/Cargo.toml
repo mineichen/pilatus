@@ -33,7 +33,7 @@ futures-util = { workspace = true, features = ["io"] }
 futures-channel.workspace = true
 impex = { workspace = true, optional = true }
 minfac = { workspace = true, optional = true }
-sealedstruct = { version = "0.1.0", features = ["serde"] }
+sealedstruct.workspace = true
 tracing.workspace = true
 
 # Unstable private

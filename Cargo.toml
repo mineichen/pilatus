@@ -25,7 +25,7 @@ futures-channel = "0.3"
 futures-util = { version = "0.3", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
 imbuf = "0.3.3"
-impex = { git = "https://github.com/mineichen/impex.git" }
+impex = "0.1.0"
 minfac = "0.1"
 pilatus = { path = "pilatus" }
 pilatus-rt = { path = "pilatus-rt" }
