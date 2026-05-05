@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod delete_collection;
 mod device;
 mod get_image;

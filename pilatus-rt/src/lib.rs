@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod device;
 mod logo;
 mod metadata_future;

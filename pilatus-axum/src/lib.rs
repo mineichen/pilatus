@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod abort;
 mod dependency_provider;
 mod inject;

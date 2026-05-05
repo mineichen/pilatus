@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::path::PathBuf;
 
 use pilatus::{Name, device::DeviceId, unstable_pub};

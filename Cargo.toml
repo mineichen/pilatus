@@ -21,6 +21,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MPL-2.0"
 repository = "https://github.com/mineichen/pilatus"
+readme = "README.md"
 keywords = ["async", "actors", "framework", "industrial", "computer-vision"]
 categories = ["asynchronous", "rust-patterns", "science"]
 
