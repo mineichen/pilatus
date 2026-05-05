@@ -14,7 +14,7 @@ imbuf = { workspace = true, features = ["image_0_25"] }
 minfac.workspace = true
 pilatus = { workspace = true, features = ["minfac"] }
 pilatus-axum = { workspace = true, optional = true }
-pilatus-engineering.workspace = true
+pilatus-engineering = { workspace = true, features = ["encode"] }
 resvg = { version = "0.47.0" }
 thiserror.workspace = true
 tracing.workspace = true

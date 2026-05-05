@@ -76,14 +76,11 @@ pub enum StreamingImageFormat {
 /// 1..               |   data (kind determines end)  |
 ///
 /// Chunks - RawImage (kind = 0)
-/// Chunks - Mask (kind = 1), must currently be the last item to allow unknown size
 ///
 ///
 /// (There is currently no time to build a clean Zip-File with adequate file formats
 /// - BigTiff instead of rawImage has async rust encoders/decoders for uncompressed data (nocopy on client side)
 /// - Streaming data (Size not known when write starts) could drastically reduce memory footprint
-/// - ImageMasks from imask could easily be streamed with its async encoder/decoder pair
-/// - Extendability was not a pririty when writing this
 #[derive(Clone)]
 pub struct MetaImageEncoder {
     extensions: Arc<EncodeExtensions>,
