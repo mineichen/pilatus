@@ -38,6 +38,7 @@ pilatus-engineering-rt = { path = "pilatus-engineering-rt" }
 pilatus-tick = { path = "examples/tick" }
 pilatus-tick-rt = { path = "examples/tick-rt" }
 serde = "1"
+sealedstruct = { version = "0.1.0", features = ["serde"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 smallvec = "1"
 thiserror = "2"
