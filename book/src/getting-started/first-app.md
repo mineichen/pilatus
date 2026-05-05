@@ -7,10 +7,12 @@ Let's create a simple Pilatus application to get familiar with the framework.
 First, create a new Rust project:
 
 ```bash
-cargo new my-pilatus-app
-cd my-pilatus-app
-cargo add pilatus-rt --git https://github.com/mineichen/pilatus.git
-cargo add pilatus-axum-rt --git https://github.com/mineichen/pilatus.git
+mkdir my_project
+cd my_project
+printf '[workspace]\nmembers = ["app"]\nresolver="3"\n' > Cargo.toml
+cargo new app
+cd app
+cargo add pilatus-rt pilatus-axum-rt
 ```
 
 ## A Simple Example

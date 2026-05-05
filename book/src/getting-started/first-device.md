@@ -2,7 +2,7 @@
 
 ## Add new dependencies to your library project
 ```bash
-cargo add pilatus --git https://github.com/mineichen/pilatus.git --features tokio
+cargo add pilatus --features tokio
 cargo add serde --features derive
 cargo add anyhow
 cargo add tracing

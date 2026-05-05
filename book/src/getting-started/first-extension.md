@@ -3,9 +3,9 @@
 ## Create a new project
 Pilatus encourages you, to split your code into multiple separate creates. So we are gonna do that here:
 
-``` bash
+``` bash 
 cargo init --lib my-pilatus-extension-rt
-cargo add pilatus-axum --git https://github.com/mineichen/pilatus.git
+cargo add pilatus-axum
 cargo add minfac
 
 ```
