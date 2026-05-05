@@ -13,8 +13,7 @@ use pilatus_axum::{
     AppendHeaders, DeviceJsonError, Html, IntoResponse, ServiceCollectionExtensions,
 };
 use pilatus_engineering::image::{
-    DefaultImageStreamer, ImageStreamer, LocalizableImageStreamer, MetaImageEncodeTask,
-    MetaImageEncoder, StreamingImageFormat,
+    DefaultImageStreamer, ImageStreamer, LocalizableImageStreamer, MetaImageEncoder,
 };
 use pilatus_engineering::image::{
     DynamicImage, GetImageMessage, ImageEncoder, ImageEncoderTrait, ImageWithMeta, LumaImage,
@@ -172,7 +171,6 @@ async fn list_localizable_stream_devices(
 
 async fn subscribe_image_handler(
     upgrade: WebSocketUpgrade,
-    Query(StreamQuery { format }): Query<StreamQuery>,
     Query(device_identifier): Query<DynamicIdentifier>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
     InjectRegistered(encoder): InjectRegistered<MetaImageEncoder>,
@@ -183,13 +181,10 @@ async fn subscribe_image_handler(
         upgrade,
         device_identifier,
         actor_system,
-        move |x: Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>| async move {
-            Ok(MetaImageEncodeTask {
-                image: x,
-                format,
-            })
-        },
         encoder,
+        move |x: Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>| async move {
+            Ok(x)
+        },
     )
     .await
     .map_err(|e| {
@@ -205,9 +200,13 @@ async fn stream_image_handler(
     InjectRegistered(encoder): InjectRegistered<MetaImageEncoder>,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
     debug!("Start streaming images: {device_identifier:?}");
-    DefaultImageStreamer::stream_image(upgrade, device_identifier, actor_system, |x| async {
-        Ok(x.image)
-    }, encoder)
+    DefaultImageStreamer::stream_image(
+        upgrade,
+        device_identifier,
+        actor_system,
+        encoder,
+        |x| async { Ok(x.image) },
+    )
     .await
     .map_err(|e| {
         warn!("Couldn't establish connection: {e:?}");
@@ -222,18 +221,16 @@ async fn stream_localizable_image_handler(
     InjectRegistered(encoder): InjectRegistered<MetaImageEncoder>,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
     debug!("Start streaming images: {device_identifier:?}");
-    LocalizableImageStreamer::stream_image(upgrade, device_identifier, actor_system, |x| async {
-        Ok(x.image)
-    }, encoder)
+    LocalizableImageStreamer::stream_image(
+        upgrade,
+        device_identifier,
+        actor_system,
+        encoder,
+        |x| async { Ok(x.image) },
+    )
     .await
     .map_err(|e| {
         warn!("Couldn't establish connection: {e:?}");
         e
     })
-}
-
-#[derive(serde::Deserialize)]
-struct StreamQuery {
-    #[serde(default)]
-    format: StreamingImageFormat,
 }

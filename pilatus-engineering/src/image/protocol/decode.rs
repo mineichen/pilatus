@@ -18,16 +18,16 @@ use crate::image::{
 };
 type DecodeExtensionReader =
     Box<dyn for<'a> Fn(&'a [u8], &mut AnyMultiMap) -> io::Result<&'a [u8]> + Send + Sync>;
-pub struct DecodeExtension {
+pub struct MetaDecodeExtension {
     pub kind: u8,
     pub reader: DecodeExtensionReader,
 }
 
 #[derive(Default)]
-pub struct DecodeExtensions(HashMap<u8, DecodeExtensionReader>);
+pub struct MetaDecodeExtensions(HashMap<u8, DecodeExtensionReader>);
 
-impl DecodeExtensions {
-    pub fn new(extensions: impl IntoIterator<Item = DecodeExtension>) -> Self {
+impl MetaDecodeExtensions {
+    pub fn new(extensions: impl IntoIterator<Item = MetaDecodeExtension>) -> Self {
         let iter = extensions.into_iter().map(|x| (x.kind, x.reader));
         Self(into_extensions_map(iter))
     }
@@ -67,11 +67,11 @@ impl From<AlignedBuf> for Vec<u8> {
 // imbuf::Image<[u8; 3], 1>
 #[derive(Clone)]
 pub struct MetaImageDecoder {
-    extensions: Arc<DecodeExtensions>,
+    extensions: Arc<MetaDecodeExtensions>,
 }
 
 impl MetaImageDecoder {
-    pub fn with_extensions(extensions: Arc<DecodeExtensions>) -> Self {
+    pub fn with_extensions(extensions: Arc<MetaDecodeExtensions>) -> Self {
         Self { extensions }
     }
 
@@ -163,7 +163,7 @@ fn extract_meta_and_image<T: DeserializeOwned>(
 
 fn extract_metaimage(
     input: &[u8],
-    extensions: &DecodeExtensions,
+    extensions: &MetaDecodeExtensions,
 ) -> anyhow::Result<Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>> {
     let (meta, image, mut input) = extract_meta_and_image(input)?;
     let mut meta_image = ImageWithMeta::with_meta(image, meta);

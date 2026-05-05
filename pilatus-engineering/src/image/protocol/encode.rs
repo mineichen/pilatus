@@ -13,10 +13,7 @@ use std::{
 
 use anyhow::{anyhow, Context};
 use bytes::BufMut;
-use imbuf::{
-    DynamicImage, DynamicImageChannel, DynamicSize, Image, ImageChannel, PixelTypePrimitive,
-};
-use jpeg_encoder::{ColorType, Encoder};
+use imbuf::{DynamicImage, DynamicSize, ImageChannel, PixelTypePrimitive};
 use pilatus::MissedItemsError;
 use serde::Serialize;
 use tracing::{debug, trace};
@@ -33,32 +30,24 @@ use super::{
 
 type EncodeExtensionWriter =
     Box<dyn Fn(&AnyMultiMap, &mut Vec<u8>) -> std::io::Result<()> + Send + Sync>;
-pub struct EncodeExtension {
+pub struct MetaEncodeExtension {
     pub kind: u8,
     pub writer: EncodeExtensionWriter,
 }
 #[derive(Default)]
-pub struct EncodeExtensions(HashMap<u8, EncodeExtensionWriter>);
+pub struct MetaEncodeExtensions(HashMap<u8, EncodeExtensionWriter>);
 
-impl EncodeExtensions {
-    pub fn new(extensions: impl IntoIterator<Item = EncodeExtension>) -> Self {
+impl MetaEncodeExtensions {
+    pub fn new(extensions: impl IntoIterator<Item = MetaEncodeExtension>) -> Self {
         let iter = extensions.into_iter().map(|x| (x.kind, x.writer));
         Self(into_extensions_map(iter))
     }
 }
-
 impl StreamableImage for LumaImage {
-    fn encode(self, _encoder: &MetaImageEncoder) -> anyhow::Result<Vec<u8>> {
-        let dims = self.dimensions();
-        encode_legacy(self.buffer(), ColorType::Luma, dims, |_| Ok(()))
+    fn encode(self, encoder: &MetaImageEncoder) -> anyhow::Result<Vec<u8>> {
+        let meta = ImageWithMeta::with_hash(self.into(), None);
+        encoder.encode(Ok(meta))
     }
-}
-
-#[derive(Default, serde::Deserialize, Clone, Copy)]
-pub enum StreamingImageFormat {
-    #[default]
-    Jpeg,
-    Raw,
 }
 
 /// Protocol Spec
@@ -83,27 +72,20 @@ pub enum StreamingImageFormat {
 /// - Streaming data (Size not known when write starts) could drastically reduce memory footprint
 #[derive(Clone)]
 pub struct MetaImageEncoder {
-    extensions: Arc<EncodeExtensions>,
+    extensions: Arc<MetaEncodeExtensions>,
 }
 
 impl MetaImageEncoder {
-    pub fn with_extensions(extensions: Arc<EncodeExtensions>) -> Self {
+    pub fn with_extensions(extensions: Arc<MetaEncodeExtensions>) -> Self {
         Self { extensions }
     }
 
     pub fn encode(
         &self,
         image: Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
-        format: StreamingImageFormat,
     ) -> anyhow::Result<Vec<u8>> {
         match image {
-            Ok(x) => format.encode_dynamic_image(
-                CODE_OK,
-                x.image,
-                x.extensions,
-                x.meta,
-                &self.extensions,
-            ),
+            Ok(x) => encode_dynamic_image(CODE_OK, x.image, x.extensions, x.meta, &self.extensions),
             Err(e) => match e {
                 #[expect(deprecated)]
                 StreamImageError::MissedItems(MissedItemsError { number, .. }) => {
@@ -113,7 +95,7 @@ impl MetaImageEncoder {
                 }
                 StreamImageError::ProcessingError { image, error } => {
                     debug!("Processing error: {error}");
-                    format.encode_dynamic_image(
+                    encode_dynamic_image(
                         CODE_PROCESSING,
                         image,
                         Default::default(),
@@ -130,32 +112,9 @@ impl MetaImageEncoder {
     }
 }
 
-pub struct MetaImageEncodeTask {
-    pub image: Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
-    pub format: StreamingImageFormat,
-}
-
-impl StreamableImage for MetaImageEncodeTask {
+impl StreamableImage for Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>> {
     fn encode(self, encoder: &MetaImageEncoder) -> anyhow::Result<Vec<u8>> {
-        encoder.encode(self.image, self.format)
-    }
-}
-
-impl StreamingImageFormat {
-    fn encode_dynamic_image<T: Serialize>(
-        self,
-        code: u16,
-        image: DynamicImage,
-        ext: AnyMultiMap,
-        meta: T,
-        write_extensions: &EncodeExtensions,
-    ) -> anyhow::Result<Vec<u8>> {
-        match self {
-            StreamingImageFormat::Jpeg => encode_dynamic_jpeg_image(code, image, meta),
-            StreamingImageFormat::Raw => {
-                encode_dynamic_raw_image(code, image, ext, meta, write_extensions)
-            }
-        }
+        encoder.encode(self)
     }
 }
 
@@ -177,12 +136,12 @@ fn prepare_dynamic_image_buf<T: Serialize>(
     encode_meta(buf, meta_writer)
 }
 
-fn encode_dynamic_raw_image<T: Serialize>(
+fn encode_dynamic_image<T: Serialize>(
     flag: u16,
     image: DynamicImage,
     extensions: AnyMultiMap,
     meta: T,
-    write_extensions: &EncodeExtensions,
+    write_extensions: &MetaEncodeExtensions,
 ) -> anyhow::Result<Vec<u8>> {
     fn encode_typed<TPixel: PixelTypePrimitive>(
         x: &ImageChannel<DynamicSize<TPixel>>,
@@ -228,51 +187,6 @@ fn encode_dynamic_raw_image<T: Serialize>(
     Ok(buf)
 }
 
-fn encode_dynamic_jpeg_image<T: Serialize>(
-    flag: u16,
-    image: DynamicImage,
-    meta: T,
-) -> anyhow::Result<Vec<u8>> {
-    let first = image.first();
-    let dims = first.dimensions();
-    let pixel_elements = first.pixel_elements();
-
-    let buf = prepare_dynamic_image_buf(
-        flag,
-        meta,
-        dims.0.get() as usize * dims.1.get() as usize / 2,
-    )?;
-    match (first, image.len(), pixel_elements.get()) {
-        (DynamicImageChannel::U8(i), 1, 1) => {
-            encode_jpeg(buf, i.buffer_flat(), ColorType::Luma, dims)
-        }
-        // This code was once active, but is wrong... We should just say its not supported
-        // (DynamicImageChannel::U16(i), 1, 1) => {
-        //     let mut_buf = i
-        //         .buffer_flat()
-        //         .iter()
-        //         .map(|x| (x >> 8) as u8)
-        //         .collect::<Vec<_>>();
-        //     encode_jpeg(buf, &mut_buf, ColorType::Luma, dims)
-        // }
-        (DynamicImageChannel::U8(_typed), 3, 1) => {
-            let image = Image::<u8, 3>::try_from(image)?;
-            let interleaved = Image::<[u8; 3], 1>::from_planar_image(&image);
-            encode_jpeg(buf, interleaved.buffer_flat(), ColorType::Rgb, dims)
-        }
-        _ => Err(anyhow!("Unsupported image format: {:?}", image)),
-    }
-}
-
-impl<T: Serialize> StreamableImage for (LumaImage, T) {
-    fn encode(self, _encoder: &MetaImageEncoder) -> anyhow::Result<Vec<u8>> {
-        let dims = self.0.dimensions();
-        encode_legacy(self.0.buffer(), ColorType::Luma, dims, |b| {
-            Ok(serde_json::to_writer(b, &self.1)?)
-        })
-    }
-}
-
 pub struct RgbImageWithMetadata<T>(pub Rgb8Image, pub T);
 
 impl<T> RgbImageWithMetadata<T> {
@@ -291,50 +205,6 @@ impl<T: Debug> Debug for RgbImageWithMetadata<T> {
             .finish()
     }
 }
-
-impl<T: Serialize> StreamableImage for RgbImageWithMetadata<T> {
-    fn encode(self, _encoder: &MetaImageEncoder) -> anyhow::Result<Vec<u8>> {
-        let dims = self.0.dimensions();
-        let packed = self.0.into_interleaved();
-        encode_legacy(packed.buffer_flat(), ColorType::Rgb, dims, |b| {
-            Ok(serde_json::to_writer(b, &self.1)?)
-        })
-    }
-}
-
-fn encode_legacy(
-    image: &[u8],
-    color: ColorType,
-    (width, height): (NonZeroU32, NonZeroU32),
-    meta: impl FnOnce(&mut Vec<u8>) -> anyhow::Result<()>,
-) -> anyhow::Result<Vec<u8>> {
-    let target = Vec::with_capacity(width.get() as usize * height.get() as usize);
-    let (width, height) = (width, height);
-    let mut buf = encode_meta(target, meta)?;
-    let encoder = Encoder::new(&mut buf, 80);
-    let t = std::time::Instant::now();
-    encoder.encode(image, width.get() as u16, height.get() as u16, color)?;
-    trace!("encoding time: {}ms", t.elapsed().as_millis());
-    Ok(buf)
-}
-
-fn encode_jpeg(
-    mut buf: Vec<u8>,
-    image: &[u8],
-    color: ColorType,
-    (width, height): (NonZeroU32, NonZeroU32),
-) -> anyhow::Result<Vec<u8>> {
-    buf.extend_from_slice(&[0, 0, 0, 0]);
-    let offset = buf.len();
-    let encoder = Encoder::new(&mut buf, 80);
-    let t = std::time::Instant::now();
-    encoder.encode(image, width.get() as u16, height.get() as u16, color)?;
-    trace!("encoding time: {}ms", t.elapsed().as_millis());
-    let size = (buf.len() - offset) as u32;
-    buf[offset - 4..offset].copy_from_slice(&size.to_le_bytes());
-    Ok(buf)
-}
-
 // Currently only supports planar images
 fn encode_raw(
     mut buf: Vec<u8>,

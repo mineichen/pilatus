@@ -1,5 +1,4 @@
 mod decode;
-#[cfg(feature = "encode")]
 mod encode;
 
 use std::{
@@ -9,7 +8,6 @@ use std::{
 
 use anyhow::Context;
 pub use decode::*;
-#[cfg(feature = "encode")]
 pub use encode::*;
 use tracing::error;
 
@@ -27,7 +25,6 @@ const CODE_ACQUISITION: u16 = 4 << 4 | (VERSION as u16) << 8;
 
 const KIND_IMAGE: u8 = 1 << 4;
 
-#[cfg(feature = "encode")]
 pub trait StreamableImage: Sized {
     fn encode(self, encoder: &MetaImageEncoder) -> anyhow::Result<Vec<u8>>;
 }
@@ -80,7 +77,7 @@ pub(crate) fn into_extensions_map<T>(items: impl IntoIterator<Item = (u8, T)>) -
     result
 }
 
-#[cfg(all(test, feature = "encode"))]
+#[cfg(test)]
 mod tests {
     use std::{num::NonZeroU32, sync::Arc};
 
@@ -119,7 +116,7 @@ mod tests {
         let encodable_image = ImageWithMeta::with_hash(image.clone().into(), Some(hash));
 
         let encoder = MetaImageEncoder::with_extensions(Arc::default());
-        let bytes = encoder.encode(Ok(encodable_image.clone()), StreamingImageFormat::Raw)?;
+        let bytes = encoder.encode(Ok(encodable_image.clone()))?;
         let decoder = MetaImageDecoder::with_extensions(Arc::default());
         let back = decoder
             .decode(&bytes)??

@@ -49,12 +49,17 @@ where
         upgrade: WebSocketUpgrade,
         device_id: DynamicIdentifier,
         actor_system: ActorSystem,
-        transformer: TFn,
         encoder: MetaImageEncoder,
+        transformer: TFn,
     ) -> Result<impl IntoResponse, (StatusCode, String)> {
-        Self::bidirectional_stream_image(upgrade, device_id, actor_system, transformer, |_| async {
-            Ok(())
-        }, encoder)
+        Self::bidirectional_stream_image(
+            upgrade,
+            device_id,
+            actor_system,
+            transformer,
+            |_| async { Ok(()) },
+            encoder,
+        )
         .await
     }
     pub async fn bidirectional_stream_image<
@@ -133,7 +138,8 @@ where
             while let Some(image) = broadcast.next().await {
                 let image = (transformer)(image).await?;
                 let encoder = encoder.clone();
-                let encoded_image = pilatus::execute_blocking(move || image.encode(&encoder)).await?;
+                let encoded_image =
+                    pilatus::execute_blocking(move || image.encode(&encoder)).await?;
                 tx.send(encoded_image).await?;
             }
             debug!("Close connection because broadcast is closed");
