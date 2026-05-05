@@ -1,9 +1,12 @@
 [package]
-edition = "2021"
 name = "pilatus"
-version = "0.1.0"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Modular, extendable application framework for deterministic simulation of autonomous subsystems"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 # Stable

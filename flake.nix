@@ -34,7 +34,7 @@
           pkgs.bashInteractive
           pkgs.openssl
           pkgs.gcc
-          pkgs.binutils
+          pkgs.busybox
         ];
 
         # Helper function to create shell scripts with error handling
@@ -43,7 +43,7 @@
         writeShellScriptWithError = name: script:
           toString (pkgs.writeShellScript name ''
             set -e
-            export PATH="${pkgs.gcc}/bin:${pkgs.binutils}/bin:${pkgs.mold}/bin:${pkgs.pkg-config}/bin"
+            export PATH="${pkgs.gcc}/bin:${pkgs.busybox}/bin:${pkgs.mold}/bin:${pkgs.pkg-config}/bin"
             export LD_LIBRARY_PATH="${pkgs.openssl.out}/lib"
             export PKG_CONFIG_PATH="${pkgs.openssl.dev}/lib/pkgconfig"
             ${script}
@@ -122,6 +122,20 @@
           program = writeShellScriptWithError "test-all-features" ''
             export PATH="${stableToolchain}/bin:$PATH"
             cargo test --all-features
+          '';
+        };
+
+        apps.copy-release-files = {
+          type = "app";
+          program = writeShellScriptWithError "copy-release-files" ''
+            cp README.md LICENSE pilatus
+            cp README.md LICENSE pilatus-rt
+            cp README.md LICENSE pilatus-axum
+            cp README.md LICENSE pilatus-axum-rt
+            cp README.md LICENSE pilatus-engineering
+            cp README.md LICENSE pilatus-engineering-rt
+            cp README.md LICENSE pilatus-emulation-camera
+            cp README.md LICENSE pilatus-emulation-camera-rt
           '';
         };
 

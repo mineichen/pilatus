@@ -1,7 +1,12 @@
 [package]
 name = "pilatus-emulation-camera"
-version = "0.1.0"
+description = "Camera emulation for the Pilatus framework"
+version.workspace = true
 edition = "2024"
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 pilatus.workspace = true

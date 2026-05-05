@@ -16,6 +16,14 @@ members = [
     "examples/tick-rt",
 ]
 
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+repository = "https://github.com/mineichen/pilatus"
+keywords = ["async", "actors", "framework", "industrial", "computer-vision"]
+categories = ["asynchronous", "rust-patterns", "science"]
+
 [workspace.dependencies]
 anyhow = "1"
 bytes = "1"

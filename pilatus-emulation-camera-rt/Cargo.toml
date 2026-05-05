@@ -1,7 +1,12 @@
 [package]
 name = "pilatus-emulation-camera-rt"
-version = "0.1.0"
+description = "Runtime for Pilatus camera emulation"
+version.workspace = true
 edition = "2024"
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 anyhow.workspace = true
