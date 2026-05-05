@@ -15,7 +15,7 @@ bytes.workspace = true
 chrono.workspace = true
 futures.workspace = true
 image.workspace = true
-imbuf.workspace = true
+imbuf = { workspace = true, features = ["image_0_25"] }
 minfac.workspace = true
 pilatus = { workspace = true, features = ["minfac"] }
 pilatus-emulation-camera = { workspace = true, features = ["unstable"] }
@@ -37,14 +37,13 @@ reqwest = { version = "0.13", optional = true }
 [dev-dependencies]
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 tokio = { workspace = true, features = ["sync", "macros"]}
-imbuf = { workspace = true, features = ["image_0_25"] }
 
 [features]
 integration = [
-    "tempfile", 
-    "serde_json", 
-    "pilatus-rt", 
-    "pilatus-axum-rt", 
-    "pilatus-engineering-rt", 
+    "tempfile",
+    "serde_json",
+    "pilatus-rt",
+    "pilatus-axum-rt",
+    "pilatus-engineering-rt",
     "reqwest"
 ]
