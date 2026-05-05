@@ -19,7 +19,7 @@ imbuf.workspace = true
 minfac.workspace = true
 pilatus = { workspace = true, features = ["minfac"] }
 pilatus-emulation-camera = { workspace = true, features = ["unstable"] }
-pilatus-engineering = { path = "../pilatus-engineering" }
+pilatus-engineering.workspace = true
 pilatus-axum.workspace = true
 serde.workspace = true
 tokio = { workspace = true, features = ["sync"] }
