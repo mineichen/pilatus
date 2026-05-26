@@ -26,13 +26,12 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 }
 
 pub const DEVICE_TYPE: &str = "pilatus-emulation-camera";
+type StreamItem = Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>;
 
 pub(super) struct DeviceState {
     pub(crate) encoder: ImageEncoder,
     pub(crate) paused: bool,
-    pub(crate) stream: tokio::sync::broadcast::Sender<
-        Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
-    >,
+    pub(crate) stream: tokio::sync::broadcast::Sender<StreamItem>,
     pub(crate) file_service: Arc<FileService<()>>,
     pub(crate) publisher: Arc<PublisherState>,
     pub(crate) actor_system: ActorSystem,

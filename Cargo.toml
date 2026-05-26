@@ -50,6 +50,7 @@ serde = "1"
 sealedstruct = { version = "0.1.0", features = ["serde"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 smallvec = "1"
+sync_wrapper = "1"
 thiserror = "2"
 testresult = "0.4.1"
 tokio = "1"

@@ -471,7 +471,7 @@ impl<TState> ActorDevice<TState> {
 impl<TState: 'static + Send> ActorDevice<TState> {
     pub fn add_handler<TMsg: ActorMessage>(
         mut self,
-        closure: impl for<'a> AsyncHandlerClosure<'a, TState, TMsg> + 'static + Send + Sync + Clone,
+        closure: impl for<'a> AsyncHandlerClosure<'a, TState, TMsg> + 'static + Send + Clone,
     ) -> Self {
         let typeid = TypeId::of::<TMsg>();
 

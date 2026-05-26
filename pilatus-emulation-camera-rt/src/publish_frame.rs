@@ -8,7 +8,7 @@ use std::{
 
 use futures::{StreamExt, TryStreamExt};
 use pilatus::{
-    RelativeDirectoryPath,
+    FileService, RelativeDirectoryPath,
     device::{ActorMessage, HandlerResult, Step2, WeakUntypedActorMessageSender},
 };
 use pilatus_engineering::image::{DynamicImage as ImbufDynamicImage, ImageWithMeta};
@@ -37,40 +37,38 @@ impl DeviceState {
         msg: PublishImageMessage,
     ) -> impl HandlerResult<PublishImageMessage> {
         let move_to_next = !self.paused;
-        let re_schedule =
-            match PublisherState::next_image_if_upgradeable(&msg.0, self, move_to_next).await {
-                Ok(Some((image, path))) => {
-                    debug!(
-                        "Publish '{:?}' to {} receivers: {:?}",
-                        &path.0.file_name().and_then(|x| x.to_str()).unwrap_or(""),
-                        self.stream.receiver_count(),
-                        &image
-                    );
-                    self.stream
-                        .send(Ok(ImageWithMeta::with_hash(image, None)))
-                        .ok()
-                        .map(|_| msg.0)
-                }
-                Ok(None) => {
-                    debug!("Stop acquisition");
-                    None
-                }
-                Err(e) => {
-                    warn!("Stop due to acquisition error: {e:?}");
-                    if self
-                        .stream
-                        .send(Err(
-                            pilatus_engineering::image::StreamImageError::Acquisition {
-                                error: Arc::new(e),
-                            },
-                        ))
-                        .is_err()
-                    {
-                        warn!("Couldn't send error to any subscriber")
-                    }
-                    None
-                }
-            };
+        let re_schedule = match PublisherState::next_image_if_upgradeable(
+            &msg.0,
+            &self.file_service,
+            move_to_next,
+        )
+        .await
+        {
+            Ok(Some((image, path))) => {
+                debug!(
+                    "Publish '{:?}' to {} receivers: {:?}",
+                    &path.0.file_name().and_then(|x| x.to_str()).unwrap_or(""),
+                    self.stream.receiver_count(),
+                    &image
+                );
+                let image = ImageWithMeta::with_hash(image, None);
+                self.stream.send(Ok(image)).ok().map(|_| msg.0)
+            }
+            Ok(None) => {
+                debug!("Stop acquisition");
+                None
+            }
+            Err(e) => {
+                warn!("Stop due to acquisition error: {e:?}");
+                let error = pilatus_engineering::image::StreamImageError::Acquisition {
+                    error: Arc::new(e),
+                };
+                let _ = self.stream.send(Err(error)).inspect_err(|e| {
+                    warn!("Couldn't send error to any subscriber: {e}");
+                });
+                None
+            }
+        };
 
         Step2(async move {
             if let Some(weak) = re_schedule {
@@ -97,7 +95,7 @@ impl PublisherState {
         Self {
             self_sender,
             params,
-            pending_active: Default::default(),
+            pending_active: tokio::sync::Mutex::default(),
         }
     }
 
@@ -108,7 +106,7 @@ impl PublisherState {
     pub async fn enqueue(self: &Arc<Self>, state: &DeviceState) -> anyhow::Result<()> {
         let mut lock = self.pending_active.lock().await;
         if lock.0.is_empty() {
-            lock.0 = self.load_collection(state).await?;
+            lock.0 = self.load_collection(&state.file_service).await?;
         } else {
             debug!("Items are still available. Use them");
         }
@@ -130,23 +128,18 @@ impl PublisherState {
         }
     }
 
-    pub async fn get_collection_directory(
-        &self,
-        state: &super::DeviceState,
-    ) -> io::Result<PathBuf> {
-        let mut all = state
-            .file_service
-            .stream_directories(RelativeDirectoryPath::root());
+    pub async fn get_collection_directory(&self, state: &FileService) -> io::Result<PathBuf> {
+        let mut all = state.stream_directories(RelativeDirectoryPath::root());
         match &self.params.file.active {
             ActiveRecipe::Undefined => all
                 .next()
                 .await
-                .map(|result| result.map(|f| state.file_service.get_directory_path(&f))),
+                .map(|result| result.map(|f| state.get_directory_path(&f))),
             ActiveRecipe::Named(name) => {
                 std::pin::pin!(all.try_filter_map(|x| async move {
                     Ok(x.file_name()
                         .filter(|filename| *filename == name.as_str())
-                        .map(|_| state.file_service.get_directory_path(&x)))
+                        .map(|_| state.get_directory_path(&x)))
                 }))
                 .next()
                 .await
@@ -158,20 +151,27 @@ impl PublisherState {
 
     pub(crate) async fn next_image_if_upgradeable(
         weak: &Weak<Self>,
-        state: &mut super::DeviceState,
+        state: &FileService,
         move_to_next: bool,
     ) -> anyhow::Result<Option<(ImbufDynamicImage, ExistingCollectionEntry)>> {
         let Some(this) = weak.upgrade() else {
             return Ok(None);
         };
+        this.next_image(state, move_to_next).await
+    }
+    pub(crate) async fn next_image(
+        &self,
+        state: &FileService,
+        move_to_next: bool,
+    ) -> anyhow::Result<Option<(ImbufDynamicImage, ExistingCollectionEntry)>> {
         let next = {
-            let mut lock = this.pending_active.lock().await;
+            let mut lock = self.pending_active.lock().await;
             let (heap, last) = lock.deref_mut();
             if heap.is_empty() {
-                if !this.params.file.auto_restart {
+                if !self.params.file.auto_restart {
                     return Ok(None);
                 }
-                *heap = this.load_collection(state).await?;
+                *heap = self.load_collection(state).await?;
             }
             if move_to_next || last.is_none() {
                 *last = heap.pop();
@@ -194,10 +194,10 @@ impl PublisherState {
 
     async fn load_collection(
         &self,
-        state: &DeviceState,
+        state: &FileService,
     ) -> Result<BinaryHeap<ExistingCollectionEntry>, anyhow::Error> {
         Ok(
-            pilatus::visit_directory_files(self.get_collection_directory(state).await?)
+            pilatus::visit_directory_files(self.get_collection_directory(&state).await?)
                 .filter_map(|x| async {
                     let entry = x.ok()?;
 

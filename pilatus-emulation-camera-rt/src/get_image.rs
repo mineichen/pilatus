@@ -19,7 +19,7 @@ impl DeviceState {
         trace!("Move to next: {move_to_next:?}");
         let image = PublisherState::next_image_if_upgradeable(
             &Arc::downgrade(&self.publisher),
-            self,
+            &self.file_service,
             move_to_next,
         )
         .await;

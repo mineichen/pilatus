@@ -6,7 +6,7 @@ use pilatus::{
     device::{ActorErrorResultExtensions, ActorResult},
 };
 use pilatus_engineering::image::{
-    BroadcastImage, LumaImage, StreamImageError, SubscribeDynamicImageMessage,
+    BroadcastImage, ImageWithMeta, LumaImage, StreamImageError, SubscribeDynamicImageMessage,
     SubscribeImageMessage,
 };
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
@@ -44,24 +44,34 @@ impl DeviceState {
     ) -> ActorResult<SubscribeDynamicImageMessage> {
         match self.publisher.params.mode {
             EmulationMode::File => {
-                if Arc::weak_count(&self.publisher) == 0 {
+                let item = if Arc::weak_count(&self.publisher) == 0 {
                     debug!("No PublishImageMessage is stored in the queue. Initialize Publishing");
                     if let Err(e) = self.publisher.enqueue(self).await {
                         warn!("Couldn't enqueue publisher: {e:?}");
                     }
-                }
-                Ok(
-                    tokio_stream::wrappers::BroadcastStream::new(self.stream.subscribe())
-                        .map(|r| {
-                            r.map_err(|BroadcastStreamRecvError::Lagged(e)| {
-                                #[expect(deprecated)]
-                                StreamImageError::MissedItems(MissedItemsError::new(
-                                    std::num::Saturating(e.min(u16::MAX as u64) as u16),
-                                ))
-                            })?
-                        })
-                        .boxed(),
-                )
+                    None
+                } else {
+                    self.publisher
+                        .next_image(&self.file_service, false)
+                        .await
+                        .map(|x| Some(ImageWithMeta::with_hash(x?.0, None)))
+                        .map_err(|e| StreamImageError::Acquisition { error: e.into() })
+                        .transpose()
+                };
+                Ok(futures::stream::iter(item)
+                    .chain(
+                        tokio_stream::wrappers::BroadcastStream::new(self.stream.subscribe()).map(
+                            |r| {
+                                r.map_err(|BroadcastStreamRecvError::Lagged(e)| {
+                                    #[expect(deprecated)]
+                                    StreamImageError::MissedItems(MissedItemsError::new(
+                                        std::num::Saturating(e.min(u16::MAX as u64) as u16),
+                                    ))
+                                })?
+                            },
+                        ),
+                    )
+                    .boxed())
             }
             EmulationMode::Streaming => {
                 let params = &self.publisher.params;
