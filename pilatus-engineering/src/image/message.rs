@@ -39,6 +39,26 @@ impl<T: Debug> From<ActorError<(T, anyhow::Error)>> for StreamImageError<T> {
     }
 }
 
+impl<TSrc> StreamImageError<TSrc> {
+    pub fn try_convert_image<TDst>(self) -> Result<StreamImageError<TDst>, TDst::Error>
+    where
+        TDst: TryFrom<TSrc>,
+    {
+        Ok(match self {
+            StreamImageError::ProcessingError { image, error } => {
+                StreamImageError::ProcessingError {
+                    image: image.try_into()?,
+                    error: error,
+                }
+            }
+            StreamImageError::Acquisition { error } => StreamImageError::Acquisition { error },
+            StreamImageError::ActorError(error) => StreamImageError::ActorError(error),
+            #[expect(deprecated)]
+            StreamImageError::MissedItems(x) => StreamImageError::MissedItems(x),
+        })
+    }
+}
+
 #[derive(Default)]
 #[non_exhaustive]
 pub struct GetImageMessage {}
