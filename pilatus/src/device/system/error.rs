@@ -10,7 +10,7 @@ use std::{
 use futures_channel::oneshot;
 use futures_util::stream::Aborted;
 
-use crate::{device::DeviceId, Name, RelativeDirPathError, RelativeFilePathError};
+use crate::{device::DeviceId, Name, RelativeDirPathError, RelativeResourcePathError};
 
 use super::ActorMessage;
 
@@ -48,8 +48,8 @@ impl CustomActorError for Box<dyn std::error::Error + Send + Sync> {}
 impl CustomActorError for Box<dyn std::error::Error + Send> {}
 impl CustomActorError for chrono::format::ParseError {}
 impl CustomActorError for futures_channel::mpsc::SendError {}
-impl CustomActorError for RelativeDirPathError {}
-impl CustomActorError for RelativeFilePathError {}
+impl<T> CustomActorError for RelativeDirPathError<T> {}
+impl<T> CustomActorError for RelativeResourcePathError<T> {}
 
 impl<F: CustomActorError, T: From<F> + Debug> From<F> for ActorError<T> {
     fn from(value: F) -> Self {

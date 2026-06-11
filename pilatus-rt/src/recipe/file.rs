@@ -389,7 +389,9 @@ mod tests {
             .await?;
 
         let mut baz = svc
-            .stream_files_recursive(RelativeDirectoryPath::new(&base)?)
+            .stream_files_recursive(
+                RelativeDirectoryPath::new(&base).map_err(|e| e.change_t::<PathBuf>())?,
+            )
             .map_ok(|x| x.as_os_str().to_string_lossy().to_string())
             .try_collect::<Vec<_>>()
             .await?;

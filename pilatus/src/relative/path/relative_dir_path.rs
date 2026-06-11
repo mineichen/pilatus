@@ -9,38 +9,48 @@ use std::{
 
 use serde::Deserialize;
 
-use super::RelativePathError;
-
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum RelativeDirPathError {
-    #[error("Invalid relative Path: {0}")]
-    InvalidRelativePath(String),
-
-    #[error("Invalid character '{1}' in Path '{0}' at position {2}")]
-    InvalidCharacter(String, char, usize),
+#[derive(Debug, PartialEq, Eq)]
+pub enum RelativeDirPathError<T> {
+    InvalidRelativePath(T),
+    InvalidCharacter(T, char, usize),
 }
 
-impl RelativePathError for RelativeDirPathError {
-    fn adapt_position(self, offset: usize) -> Self {
+impl<T: AsRef<Path>> Display for RelativeDirPathError<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            RelativeDirPathError::InvalidCharacter(t, c, idx) => {
-                RelativeDirPathError::InvalidCharacter(t, c, idx + offset)
+            Self::InvalidRelativePath(t) => {
+                write!(f, "Invalid relative Path: {}", t.as_ref().display())
             }
-            r => r,
+            Self::InvalidCharacter(t, c, i) => {
+                write!(
+                    f,
+                    "Invalid character '{c}' in Path '{}' at position {i}",
+                    t.as_ref().display(),
+                )
+            }
         }
     }
+}
 
-    fn from_invalid_char(path: &Path, c: char, idx: usize) -> Self {
-        RelativeDirPathError::InvalidCharacter(path.to_string_lossy().to_string(), c, idx)
-    }
+impl<T: AsRef<Path> + fmt::Debug> std::error::Error for RelativeDirPathError<T> {}
 
-    fn from_invalid_path(path: &Path) -> Self {
-        RelativeDirPathError::InvalidRelativePath(path.to_string_lossy().to_string())
+impl<T> RelativeDirPathError<T> {
+    pub fn change_t<U: From<T>>(self) -> RelativeDirPathError<U> {
+        match self {
+            Self::InvalidRelativePath(x) => RelativeDirPathError::InvalidRelativePath(x.into()),
+            Self::InvalidCharacter(x, y, z) => {
+                RelativeDirPathError::InvalidCharacter(x.into(), y, z)
+            }
+        }
     }
 }
-impl From<RelativeDirPathError> for io::Error {
-    fn from(value: RelativeDirPathError) -> Self {
-        io::Error::new(io::ErrorKind::InvalidFilename, value)
+
+impl<T> From<RelativeDirPathError<T>> for io::Error
+where
+    PathBuf: From<T>,
+{
+    fn from(value: RelativeDirPathError<T>) -> Self {
+        io::Error::new(io::ErrorKind::InvalidFilename, value.change_t::<PathBuf>())
     }
 }
 
@@ -54,7 +64,9 @@ impl<'de> Deserialize<'de> for &'de RelativeDirectoryPath {
         D: serde::Deserializer<'de>,
     {
         let s = <&Path>::deserialize(deserializer)?;
-        RelativeDirectoryPath::new(s).map_err(<D::Error as serde::de::Error>::custom)
+        RelativeDirectoryPath::new(s).map_err(|e| {
+            <D::Error as serde::de::Error>::custom("Test" /*e.change_t::<PathBuf>()*/)
+        })
     }
 }
 
@@ -114,10 +126,9 @@ impl RelativeDirectoryPath {
         // safety: RelativeDirectoryPath is repr(transparent)
         unsafe { &*(std::ptr::from_ref(path) as *const RelativeDirectoryPath) }
     }
-    pub fn new<S: AsRef<Path> + ?Sized>(value: &S) -> Result<&Self, RelativeDirPathError> {
-        let buf = value.as_ref();
-        validate(buf)?;
-        Ok(Self::new_unchecked(buf))
+    pub fn new<S: AsRef<Path> + ?Sized>(value: &S) -> Result<&Self, RelativeDirPathError<&'_ S>> {
+        let buf = validate(value)?;
+        Ok(Self::new_unchecked(buf.as_ref()))
     }
 
     pub fn levels(&self) -> usize {
@@ -134,9 +145,9 @@ impl RelativeDirectoryPath {
 }
 
 impl RelativeDirectoryPathBuf {
-    pub fn new(value: impl Into<PathBuf>) -> Result<Self, RelativeDirPathError> {
+    pub fn new(value: impl Into<PathBuf>) -> Result<Self, RelativeDirPathError<PathBuf>> {
         let buf = value.into();
-        validate(&buf)?;
+        let buf = validate(buf)?;
         Ok(Self(buf))
     }
     pub fn root() -> Self {
@@ -170,29 +181,44 @@ impl<'de> Deserialize<'de> for RelativeDirectoryPathBuf {
 }
 
 impl FromStr for RelativeDirectoryPathBuf {
-    type Err = RelativeDirPathError;
+    type Err = RelativeDirPathError<PathBuf>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         RelativeDirectoryPathBuf::new(s)
     }
 }
 
-fn validate(value: impl AsRef<Path>) -> Result<(), RelativeDirPathError> {
+fn validate<T: AsRef<Path>>(value: T) -> Result<T, RelativeDirPathError<T>> {
+    let path = value.as_ref();
     let path = value.as_ref();
 
-    super::validate_parts::<RelativeDirPathError>(
-        path.components().map(|c| match c {
-            Component::Normal(x) => x.to_str(),
-            _ => None,
-        }),
-        |(i, c)| match c {
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' => Ok(()),
-            c => Err((c, i)),
-        },
-        path,
-    )?;
+    let mut iter = path.components().map(|c| match c {
+        Component::Normal(x) => x.to_str(),
+        _ => None,
+    });
 
-    Ok(())
+    let mut offset = 0usize;
+    for x in iter {
+        match x {
+            Some(part) => {
+                for (i, c) in part.chars().enumerate() {
+                    match c {
+                        'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' => {}
+                        c => {
+                            return Err(RelativeDirPathError::InvalidCharacter(
+                                value,
+                                c,
+                                i + offset,
+                            ));
+                        }
+                    }
+                }
+                offset += part.len() + 1;
+            }
+            None => return Err(RelativeDirPathError::InvalidRelativePath(value)),
+        }
+    }
+    Ok(value)
 }
 
 #[cfg(test)]
@@ -224,7 +250,7 @@ mod tests {
         ] {
             assert_eq!(
                 Err(RelativeDirPathError::InvalidCharacter(
-                    invalid_string.to_string(),
+                    invalid_string,
                     char,
                     idx
                 )),
@@ -245,9 +271,7 @@ mod tests {
             ".",
         ] {
             assert_eq!(
-                Err(RelativeDirPathError::InvalidRelativePath(
-                    invalid_string.to_string()
-                )),
+                Err(RelativeDirPathError::InvalidRelativePath(invalid_string)),
                 validate(invalid_string)
             );
         }
