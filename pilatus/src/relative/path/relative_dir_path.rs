@@ -64,9 +64,8 @@ impl<'de> Deserialize<'de> for &'de RelativeDirectoryPath {
         D: serde::Deserializer<'de>,
     {
         let s = <&Path>::deserialize(deserializer)?;
-        RelativeDirectoryPath::new(s).map_err(|e| {
-            <D::Error as serde::de::Error>::custom("Test" /*e.change_t::<PathBuf>()*/)
-        })
+        RelativeDirectoryPath::new(s)
+            .map_err(|e| <D::Error as serde::de::Error>::custom(e.change_t::<PathBuf>()))
     }
 }
 
@@ -190,9 +189,8 @@ impl FromStr for RelativeDirectoryPathBuf {
 
 fn validate<T: AsRef<Path>>(value: T) -> Result<T, RelativeDirPathError<T>> {
     let path = value.as_ref();
-    let path = value.as_ref();
 
-    let mut iter = path.components().map(|c| match c {
+    let iter = path.components().map(|c| match c {
         Component::Normal(x) => x.to_str(),
         _ => None,
     });

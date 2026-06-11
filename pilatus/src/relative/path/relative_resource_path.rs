@@ -55,7 +55,6 @@ impl<T> RelativeResourcePathError<T> {
             }
         }
     }
-
 }
 
 impl<T> From<RelativeResourcePathError<T>> for io::Error
@@ -141,7 +140,7 @@ impl<'a> TryFrom<&'a str> for RelativeResourcePathBuf {
 }
 
 impl RelativeResourcePath {
-    pub(super) fn new_unchecked(path: &Path) -> &Self {
+    fn new_unchecked(path: &Path) -> &Self {
         unsafe { &*(std::ptr::from_ref(path) as *const RelativeResourcePath) }
     }
 
