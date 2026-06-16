@@ -12,31 +12,28 @@ pub(super) async fn recipes_try_add_new_with_id(
     id: RecipeId,
     mut new_recipe: Recipe,
     device_actions: &dyn DeviceActions,
-) -> Result<(), (Recipe, TransactionError)> {
+) -> Result<(), TransactionError> {
     let vars: &Variables = recipes.as_ref();
-    for (&id, device) in new_recipe.devices.iter_mut() {
+    for modifier in new_recipe.iter_device_params_modifier() {
         match device_actions
             .validate(
-                &device.device_type,
-                DeviceContext::new(id, vars.clone(), device.params.clone()),
+                &modifier.device_type,
+                DeviceContext::new(modifier.device_id, vars.clone(), modifier.params.clone()),
             )
             .await
         {
             Ok(changes) => {
-                device.apply(changes).await;
+                modifier.params.apply(changes).await;
             }
 
             Err(e) => {
-                return Err((new_recipe, e));
+                return Err(e);
             }
         };
     }
-    recipes.try_add(id.clone(), new_recipe).map_err(|r| {
-        (
-            r,
-            TransactionError::Other(anyhow::anyhow!("Recipe {id} already exists ")),
-        )
-    })
+    recipes
+        .try_add(id.clone(), new_recipe)
+        .map_err(|_| TransactionError::Other(anyhow::anyhow!("Recipe {id} already exists ")))
 }
 
 pub(super) trait RecipesExt {

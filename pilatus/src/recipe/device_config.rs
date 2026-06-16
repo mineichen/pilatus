@@ -13,6 +13,12 @@ pub struct DeviceConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     committed_params: Option<UntypedDeviceParamsWithVariables>,
 }
+/// Exposes all fields mutably, which can be changed without interferance
+pub struct DeviceConfigModifier<'a> {
+    pub device_type: &'a str,
+    pub device_name: &'a mut Name,
+    pub params: &'a mut UntypedDeviceParamsWithVariables,
+}
 
 #[derive(thiserror::Error, Debug)]
 #[error("No committed configuration found")]
@@ -25,6 +31,14 @@ impl From<NoCommittedConfigurationFound> for TransactionError {
 }
 
 impl DeviceConfig {
+    pub fn modifier(&mut self) -> DeviceConfigModifier<'_> {
+        DeviceConfigModifier {
+            device_type: &self.device_type,
+            device_name: &mut self.device_name,
+            params: &mut self.params,
+        }
+    }
+
     pub fn new<S: Serialize>(
         device_type: impl Into<String>,
         device_name: Name,

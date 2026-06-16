@@ -179,11 +179,7 @@ impl<T: Deref<Target = Recipes>> RecipeDataService<'_, T> {
         let (id, recipe) = self.recipes.active();
         (
             id,
-            recipe
-                .devices
-                .iter()
-                .map(|(k, v)| (*k, v.clone()))
-                .collect(),
+            recipe.iter().map(|(k, v)| (k, v.clone())).collect(),
             self.recipes.as_ref().clone(),
         )
     }
@@ -208,7 +204,7 @@ impl<T: DerefMut<Target = Recipes>> RecipeDataService<'_, T> {
         device_id: DeviceId,
     ) -> Result<(), TransactionError> {
         let recipe = self.recipes.get_with_id_or_error_mut(&recipe_id)?;
-        if recipe.devices.shift_remove(&device_id).is_none() {
+        if recipe.remove_device(device_id).is_none() {
             Err(UnknownDeviceError(device_id))?
         } else {
             tokio::fs::remove_dir_all(self.device_dir(&device_id))
@@ -249,9 +245,9 @@ impl<T: DerefMut<Target = Recipes>> RecipeDataService<'_, T> {
 
     async fn delete_recipe(&mut self, recipe_id: RecipeId) -> Result<(), TransactionError> {
         let removed = self.recipes.remove(&recipe_id)?;
-        for device_id in removed.devices.keys() {
+        for device_id in removed.iter().map(|(k, _)| k) {
             // Ok, as RecipeService creates the subfolder (by default "recipe") and therefore remove_dir_all shouldn't accidentally remove too much
-            if let Err(e) = tokio::fs::remove_dir_all(&self.device_dir(device_id)).await {
+            if let Err(e) = tokio::fs::remove_dir_all(&self.device_dir(&device_id)).await {
                 if e.kind() != ErrorKind::NotFound {
                     return Err(e.into());
                 }
@@ -265,9 +261,8 @@ impl<T: DerefMut<Target = Recipes>> RecipeDataService<'_, T> {
             self.recipes
                 .active()
                 .1
-                .devices
                 .iter()
-                .map(|(id, _)| *id)
+                .map(|(id, _)| id)
                 .collect::<Vec<_>>(),
         )
         .await?;
@@ -520,7 +515,6 @@ pub(crate) mod unstable {
         ) -> Result<(), TransactionError> {
             recipes_try_add_new_with_id(&mut self.recipes, id.clone(), recipe, self.device_actions)
                 .await
-                .map_err(|(_, e)| e)
         }
 
         /// Has no duplication Detection for Device-IDs yet
@@ -863,11 +857,11 @@ mod tests {
         rs.create_device_file(device_in_active_recipe_id, "my_file.txt", b"test").await;
 
         let (new_recipe_id, new_device_config) = rs.duplicate_recipe(rs.get_active_id().await).await.unwrap();
-        assert!(!new_device_config.devices.contains_key(&device_in_other_recipe_id), "Clone contains device with the same id as in the original");
+        assert!(!new_device_config.has_device(&device_in_other_recipe_id), "Clone contains device with the same id as in the original");
 
         let new_device_path_with_file = 'outer: {
-            for device_id in new_device_config.devices.keys() {
-                let device_path = rs.device_dir(device_id);
+            for device_id in new_device_config.iter().map(|(id, _)| id) {
+                let device_path = rs.device_dir(&device_id);
                 if tokio::fs::metadata(&device_path).await.is_ok() {
                     break 'outer device_path;
                 }

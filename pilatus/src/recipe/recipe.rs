@@ -53,7 +53,42 @@ impl Validator for RecipeMetadataRaw {
 pub struct Recipe {
     pub created: DateTime<Utc>,
     pub tags: Vec<Name>,
-    pub devices: IndexMap<DeviceId, DeviceConfig>,
+    devices: IndexMap<DeviceId, DeviceConfig>,
+}
+
+impl IntoIterator for Recipe {
+    type Item = (DeviceId, DeviceConfig);
+    type IntoIter = DevicesIntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        DevicesIntoIter(self.devices.into_iter())
+    }
+}
+impl<'a> IntoIterator for &'a Recipe {
+    type Item = (DeviceId, &'a DeviceConfig);
+    type IntoIter = DevicesIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        DevicesIter(self.devices.iter())
+    }
+}
+
+pub struct DevicesIntoIter(indexmap::map::IntoIter<DeviceId, DeviceConfig>);
+impl<'a> Iterator for DevicesIntoIter {
+    type Item = (DeviceId, DeviceConfig);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+}
+pub struct DevicesIter<'a>(indexmap::map::Iter<'a, DeviceId, DeviceConfig>);
+impl<'a> Iterator for DevicesIter<'a> {
+    type Item = (DeviceId, &'a DeviceConfig);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (k, v) = self.0.next()?;
+        Some((*k, v))
+    }
 }
 
 impl Default for Recipe {
@@ -66,7 +101,36 @@ impl Default for Recipe {
     }
 }
 
+pub struct RecipeItemModifier<'a> {
+    pub device_id: DeviceId,
+    pub device_type: &'a str,
+    pub device_name: &'a Name,
+    pub params: &'a mut UntypedDeviceParamsWithVariables,
+}
+
 impl Recipe {
+    pub fn iter(&self) -> DevicesIter<'_> {
+        self.into_iter()
+    }
+
+    pub fn iter_device_params_modifier(&mut self) -> impl Iterator<Item = RecipeItemModifier<'_>> {
+        self.devices
+            .iter_mut()
+            .map(|(&device_id, v)| RecipeItemModifier {
+                device_id,
+                device_type: &v.device_type,
+                device_name: &v.device_name,
+                params: &mut v.params,
+            })
+    }
+
+    pub fn remove_device(&mut self, device_id: DeviceId) -> Option<DeviceConfig> {
+        self.devices.shift_remove(&device_id)
+    }
+
+    pub fn created(&self) -> DateTime<Utc> {
+        self.created
+    }
     /// This method replaces Uuids in the DeviceConfig too, so all links should still work
     pub fn duplicate(&self) -> DuplicateRecipe {
         let mappings = self

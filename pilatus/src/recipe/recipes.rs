@@ -109,15 +109,14 @@ impl Recipes {
         &self,
     ) -> impl Iterator<Item = Result<ListActiveRecipesItem<'_>, UncommittedChangesError>> {
         self.active_without_id()
-            .devices
             .iter()
             .map(|(running_id, running)| {
                 let backup = self
                     .active_backup
-                    .device_by_id(*running_id)
+                    .device_by_id(running_id)
                     .map_err(|_| UncommittedChangesError)?;
                 Ok(ListActiveRecipesItem {
-                    id: *running_id,
+                    id: running_id,
                     running,
                     backup,
                 })
@@ -154,7 +153,7 @@ impl Recipes {
         ),
     > + 'b {
         self.iter_with_backup().flat_map(|(id, recipe)| {
-            recipe.devices.iter().filter_map(|(device_id, device)| {
+            recipe.iter().filter_map(|(device_id, device)| {
                 device
                     .params
                     .variables_names()
@@ -162,7 +161,7 @@ impl Recipes {
                     .then_some((
                         id.clone(),
                         device.device_type.to_owned(),
-                        *device_id,
+                        device_id,
                         &device.params,
                     ))
             })
@@ -171,7 +170,7 @@ impl Recipes {
 
     pub fn recipeid_per_deviceid(&self) -> impl Iterator<Item = (DeviceId, RecipeId)> + '_ {
         self.iter_with_backup()
-            .flat_map(|(rid, v)| v.devices.iter().map(move |(id, _)| (*id, rid.clone())))
+            .flat_map(|(rid, v)| v.iter().map(move |(id, _)| (id, rid.clone())))
     }
 
     pub fn has_uncommitted_changes(&self, id: &RecipeId) -> bool {
@@ -184,9 +183,8 @@ impl Recipes {
             return true;
         }
         self.active_backup
-            .devices
             .iter()
-            .zip(running.devices.iter())
+            .zip(running.iter())
             .any(|(a, b)| a != b)
     }
 
@@ -195,7 +193,7 @@ impl Recipes {
             if self.has_active_changes() {
                 Err((UncommittedChangesError).into())
             } else {
-                let ids = recipe.devices.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+                let ids = recipe.iter().map(|(id, _)| id).collect::<Vec<_>>();
                 self.active_backup = recipe.clone();
                 self.active_id = id.clone();
                 Ok(ids)
@@ -260,7 +258,7 @@ impl Recipes {
     pub fn get_device(&self, device_id: DeviceId) -> Option<&DeviceConfig> {
         self.all
             .values()
-            .filter_map(|r| r.devices.get(&device_id))
+            .filter_map(|r| r.device_by_id(device_id).ok())
             .next()
     }
 

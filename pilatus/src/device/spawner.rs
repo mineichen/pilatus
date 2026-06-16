@@ -160,8 +160,15 @@ pub struct RecipeServiceParamApplier<'a> {
 #[async_trait]
 impl<'a, T: Send + 'a> InfallibleParamApplier<T> for &'a mut DeviceConfig {
     async fn apply(self, changes: WithInfallibleParamUpdate<T>) -> T {
+        self.params.apply(changes).await
+    }
+}
+
+#[async_trait]
+impl<'a, T: Send + 'a> InfallibleParamApplier<T> for &'a mut UntypedDeviceParamsWithVariables {
+    async fn apply(self, changes: WithInfallibleParamUpdate<T>) -> T {
         if let Some(parameters) = changes.update {
-            self.params = parameters;
+            *self = parameters;
         }
         changes.data
     }
