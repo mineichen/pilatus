@@ -4,7 +4,7 @@ use std::{
     fmt::{self, Display, Formatter},
     io,
     ops::Deref,
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
     str::FromStr,
 };
 
@@ -17,6 +17,7 @@ pub enum RelativeResourcePathError<T> {
     InvalidRelativePath(T),
     InvalidCharacter(T, char, usize),
     FileExtensionMissing(T),
+    FileStemMissing(T),
 }
 
 impl<T: AsRef<Path>> Display for RelativeResourcePathError<T> {
@@ -34,6 +35,9 @@ impl<T: AsRef<Path>> Display for RelativeResourcePathError<T> {
             }
             Self::FileExtensionMissing(t) => {
                 write!(f, "Path has no file extension: {}", t.as_ref().display())
+            }
+            Self::FileStemMissing(t) => {
+                write!(f, "File stem missing: {}", t.as_ref().display())
             }
         }
     }
@@ -53,6 +57,7 @@ impl<T> RelativeResourcePathError<T> {
             Self::FileExtensionMissing(x) => {
                 RelativeResourcePathError::FileExtensionMissing(x.into())
             }
+            Self::FileStemMissing(x) => RelativeResourcePathError::FileStemMissing(x.into()),
         }
     }
 }
@@ -140,7 +145,7 @@ impl<'a> TryFrom<&'a str> for RelativeResourcePathBuf {
 }
 
 impl RelativeResourcePath {
-    fn new_unchecked(path: &Path) -> &Self {
+    const fn new_unchecked(path: &Path) -> &Self {
         unsafe { &*(std::ptr::from_ref(path) as *const RelativeResourcePath) }
     }
 
@@ -150,6 +155,15 @@ impl RelativeResourcePath {
         let path = value.as_ref();
         validate(path)?;
         Ok(Self::new_unchecked(path))
+    }
+
+    pub const fn new_const(path: &str) -> Option<&Self> {
+        if validate_str(path).is_err() {
+            return None;
+        }
+        // Safety: Path is transparent OsStr and Os
+        // Str is transparent [u8]. We checked for ansi during validate
+        Some(unsafe { &*(std::ptr::from_ref(path) as *const RelativeResourcePath) })
     }
 
     pub fn relative_dir(&self) -> &RelativeDirectoryPath {
@@ -170,7 +184,13 @@ impl RelativeResourcePath {
             .to_str()
             .expect("type is not constructable without valid utf8")
     }
-
+    pub fn file_stem(&self) -> &str {
+        self.0
+            .file_stem()
+            .expect("type is not constructable without a filestem")
+            .to_str()
+            .expect("type is not constructable without valid utf8")
+    }
     pub fn get_path(&self) -> &Path {
         &self.0
     }
@@ -216,75 +236,85 @@ impl FromStr for RelativeResourcePathBuf {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ValidationFault {
+    InvalidRelativePath,
+    InvalidCharacter(char, usize),
+    FileExtensionMissing,
+    FileStemMissing,
+}
+
+const fn validate_str(path: &str) -> Result<(), ValidationFault> {
+    let bytes = path.as_bytes();
+    let len = bytes.len();
+
+    if len == 0 {
+        return Err(ValidationFault::FileExtensionMissing);
+    }
+
+    let mut i = 0;
+    let mut last_point_pos = None;
+    let mut alphanumeric_after_last_slash = false;
+    while i < len {
+        match bytes[i] {
+            b'.' => {
+                if i == 0 && i + 1 < len && bytes[i + 1] == b'/' {
+                    return Err(ValidationFault::InvalidRelativePath);
+                } else if let Some(last_point) = last_point_pos {
+                    return if last_point + 1 == i {
+                        Err(ValidationFault::InvalidRelativePath)
+                    } else {
+                        Err(ValidationFault::InvalidCharacter('.', i))
+                    };
+                }
+                last_point_pos = Some(i);
+            }
+            b'/' => {
+                if let Some(x) = last_point_pos {
+                    return Err(ValidationFault::InvalidCharacter('.', x));
+                } else if i == 0 || bytes[i - 1] == b'/' {
+                    return Err(ValidationFault::InvalidRelativePath);
+                }
+                last_point_pos = None;
+            }
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' => {
+                alphanumeric_after_last_slash = true;
+            }
+            b => return Err(ValidationFault::InvalidCharacter(b as char, i)),
+        }
+        i += 1;
+    }
+
+    if let (true, Some(x)) = (alphanumeric_after_last_slash, last_point_pos) {
+        if x == 0 || bytes[x - 1] == b'/' {
+            Err(ValidationFault::FileStemMissing)
+        } else {
+            Ok(())
+        }
+    } else {
+        Err(ValidationFault::FileExtensionMissing)
+    }
+}
+
 fn validate<T: AsRef<Path>>(value: T) -> Result<T, RelativeResourcePathError<T>> {
-    let path = value.as_ref();
-    if path.extension().is_none() {
-        return Err(RelativeResourcePathError::FileExtensionMissing(value));
-    }
-
-    let mut iter = path.components().map(|c| match c {
-        Component::Normal(x) => x.to_str(),
-        _ => None,
-    });
-
-    let filename_part = iter.next_back();
-    let folder_offset = {
-        let mut offset = 0usize;
-        for x in iter {
-            match x {
-                Some(part) => {
-                    for (i, c) in part.chars().enumerate() {
-                        match c {
-                            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' => {}
-                            c => {
-                                return Err(RelativeResourcePathError::InvalidCharacter(
-                                    value,
-                                    c,
-                                    i + offset,
-                                ));
-                            }
-                        }
-                    }
-                    offset += part.len() + 1;
-                }
-                None => return Err(RelativeResourcePathError::InvalidRelativePath(value)),
-            }
-        }
-        offset
+    let Some(as_str) = value.as_ref().to_str() else {
+        return Err(RelativeResourcePathError::InvalidRelativePath(value));
     };
-
-    let mut point_ctr = 0;
-    for x in filename_part.into_iter() {
-        match x {
-            Some(part) => {
-                for (i, c) in part.chars().enumerate() {
-                    match c {
-                        'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' => {}
-                        '.' => {
-                            point_ctr += 1;
-                            if point_ctr != 1 {
-                                return Err(RelativeResourcePathError::InvalidCharacter(
-                                    value,
-                                    c,
-                                    i + folder_offset,
-                                ));
-                            }
-                        }
-                        c => {
-                            return Err(RelativeResourcePathError::InvalidCharacter(
-                                value,
-                                c,
-                                i + folder_offset,
-                            ));
-                        }
-                    }
-                }
+    match validate_str(as_str) {
+        Ok(()) => Ok(value),
+        Err(fault) => Err(match fault {
+            ValidationFault::InvalidRelativePath => {
+                RelativeResourcePathError::InvalidRelativePath(value)
             }
-            None => return Err(RelativeResourcePathError::InvalidRelativePath(value)),
-        }
+            ValidationFault::InvalidCharacter(c, i) => {
+                RelativeResourcePathError::InvalidCharacter(value, c, i)
+            }
+            ValidationFault::FileExtensionMissing => {
+                RelativeResourcePathError::FileExtensionMissing(value)
+            }
+            ValidationFault::FileStemMissing => RelativeResourcePathError::FileStemMissing(value),
+        }),
     }
-
-    Ok(value)
 }
 
 #[cfg(test)]
@@ -302,7 +332,18 @@ mod tests {
     #[test]
     fn test_valid_path() {
         assert!(RelativeResourcePathBuf::new("img.jpg").is_ok());
-        assert!(RelativeResourcePathBuf::new("myfolder/img.jpg").is_ok());
+        assert!(RelativeResourcePathBuf::new("myfolder1/img.jpg").is_ok());
+        assert!(RelativeResourcePathBuf::new("my_folder/img.jpg").is_ok());
+        assert!(RelativeResourcePathBuf::new("my-folder/img.jpg").is_ok());
+    }
+
+    #[test]
+    fn test_missing_file_stem() {
+        for invalid_string in [".passwd", "folder/sub/.folder"] {
+            let as_path = Path::new(invalid_string);
+            let x = RelativeResourcePath::new(as_path);
+            assert_eq!(x, Err(RelativeResourcePathError::FileStemMissing(as_path)));
+        }
     }
 
     #[test]
@@ -329,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_missing_file_extension() {
-        for invalid_string in ["", "myfolder/img"] {
+        for invalid_string in ["", ".", "myfolder/img", "test/"] {
             assert_eq!(
                 Err(RelativeResourcePathError::FileExtensionMissing(
                     PathBuf::from(invalid_string)
@@ -342,6 +383,7 @@ mod tests {
     #[test]
     fn test_invalid_relative_path() {
         for invalid_string in [
+            "/",
             "/myfolder/img.jpg",
             #[cfg(target_os = "windows")]
             "C:/myfolder/img.jpg",
@@ -370,5 +412,20 @@ mod tests {
     fn new_borrowed_returns_valid_ref() {
         let borrowed = RelativeResourcePath::new("folder/img.jpg").unwrap();
         assert_eq!(borrowed.file_name(), "img.jpg");
+    }
+
+    #[test]
+    fn new_const_valid() {
+        const PATH: &RelativeResourcePath =
+            RelativeResourcePath::new_const("dir_name/img.jpg").unwrap();
+        assert_eq!(PATH.file_name(), "img.jpg");
+
+        const NESTED: &RelativeResourcePath =
+            RelativeResourcePath::new_const("folder/img.jpg").unwrap();
+        assert_eq!(NESTED.file_name(), "img.jpg");
+
+        const DEEP: &RelativeResourcePath =
+            RelativeResourcePath::new_const("a/b/c/img.jpg").unwrap();
+        assert_eq!(DEEP.file_name(), "img.jpg");
     }
 }
