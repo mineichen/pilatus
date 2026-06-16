@@ -195,7 +195,7 @@ impl RecipeServiceTrait for RecipeServiceFassade {
 pub(crate) mod unstable {
     use super::builder::RecipeServiceFassadeBuilder;
     use crate::recipe::{RecipeImporterImpl, RecipeServiceBuilder};
-    use pilatus::{DeviceConfig, FileService, RecipeImporter};
+    use pilatus::{DeviceConfig, FileService, RecipeImporter, RelativeResourcePath};
 
     use super::*;
     use std::{path::PathBuf, sync::Arc};
@@ -289,7 +289,7 @@ pub(crate) mod unstable {
         pub async fn create_device_file(&self, did: DeviceId, filename: &str, content: &[u8]) {
             let service = self.build_device_file_service(did);
             service
-                .add_file_unchecked(&filename.try_into().unwrap(), content)
+                .add_file_unchecked(&RelativeResourcePath::new(filename).unwrap(), content)
                 .await
                 .unwrap();
         }

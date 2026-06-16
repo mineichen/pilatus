@@ -75,6 +75,21 @@ where
 #[repr(transparent)]
 pub struct RelativeResourcePath(Path);
 
+impl<'a> TryFrom<&'a str> for &'a RelativeResourcePath {
+    type Error = RelativeResourcePathError<&'a std::path::Path>;
+
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        RelativeResourcePath::new(value)
+    }
+}
+impl<'a> TryFrom<&'a std::path::Path> for &'a RelativeResourcePath {
+    type Error = RelativeResourcePathError<&'a std::path::Path>;
+
+    fn try_from(value: &'a std::path::Path) -> Result<Self, Self::Error> {
+        RelativeResourcePath::new(value)
+    }
+}
+
 impl<'de> Deserialize<'de> for &'de RelativeResourcePath {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

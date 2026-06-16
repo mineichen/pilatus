@@ -564,7 +564,7 @@ mod tests {
     use serde::Deserialize;
     use serde_json::json;
 
-    use pilatus::{RecipeServiceTrait, RelativeFilePath, UpdateParamsMessageError};
+    use pilatus::{RecipeServiceTrait, RelativeResourcePath, UpdateParamsMessageError};
 
     use super::*;
 
@@ -673,7 +673,10 @@ mod tests {
             .await?;
         let file_service = rs.build_device_file_service(device_id);
         file_service
-            .add_file_unchecked(&"bar/test.txt".try_into()?, b"content")
+            .add_file_unchecked(
+                const { &RelativeResourcePath::new_const("bar/test.txt").unwrap() },
+                b"content",
+            )
             .await?;
 
         rs.delete_device(active_id.clone(), device_id).await?;
@@ -695,7 +698,7 @@ mod tests {
         ));
 
         rs.build_device_file_service(r2_d1)
-            .add_file_unchecked(&RelativeFilePath::new("test.txt").unwrap(), b"test")
+            .add_file_unchecked(&RelativeResourcePath::new("test.txt").unwrap(), b"test")
             .await?;
         let r2_id = rs.add_recipe(r2).await?;
         rs.activate_recipe(r2_id).await?;
@@ -712,7 +715,7 @@ mod tests {
             .add_device_to_active_recipe(DeviceConfig::mock(""))
             .await?;
         let fs = rs.build_device_file_service(did);
-        fs.add_file_unchecked(&RelativeFilePath::new("test.txt").unwrap(), b"test")
+        fs.add_file_unchecked(&RelativeResourcePath::new("test.txt").unwrap(), b"test")
             .await
             .unwrap();
         assert_eq!(
@@ -760,7 +763,7 @@ mod tests {
 
         rs.activate_recipe(r2_id).await?;
         let fs = rs.build_device_file_service(r2_d1);
-        fs.add_file_unchecked(&"test.txt".try_into()?, b"test")
+        fs.add_file_unchecked("test.txt".try_into()?, b"test")
             .await?;
 
         match rs.activate_recipe(r1_id.clone()).await {
@@ -784,10 +787,10 @@ mod tests {
         let r1_id = rs.get_active_id().await;
         let fs = rs.build_device_file_service(r2_d1);
         let initial_filename = "test.txt".try_into()?;
-        fs.add_file_unchecked(&initial_filename, content).await?;
+        fs.add_file_unchecked(initial_filename, content).await?;
         rs.activate_recipe(r2_id).await?;
-        fs.remove_file(&initial_filename).await?;
-        fs.add_file_unchecked(&"test2.txt".try_into()?, content)
+        fs.remove_file(initial_filename).await?;
+        fs.add_file_unchecked("test2.txt".try_into()?, content)
             .await?;
 
         match rs.activate_recipe(r1_id.clone()).await {

@@ -16,7 +16,10 @@ use futures_util::{
 };
 use tracing::trace;
 
-use crate::{device::DeviceId, RelativeDirectoryPath, RelativeDirectoryPathBuf, RelativeFilePath};
+use crate::{
+    device::DeviceId, RelativeDirectoryPath, RelativeDirectoryPathBuf, RelativeResourcePath,
+    RelativeResourcePathBuf,
+};
 
 mod device;
 
@@ -77,7 +80,7 @@ impl<T: 'static> TypedFileServiceBuilder<T> {
 pub trait Validator: Send + Sync {
     type State;
 
-    fn is_responsible(&self, path: &RelativeFilePath) -> bool;
+    fn is_responsible(&self, path: &RelativeResourcePath) -> bool;
     fn validate<'a>(
         &self,
         data: &'a [u8],
@@ -101,7 +104,7 @@ impl<T> Deref for FileService<T> {
 impl<T> FileService<T> {
     pub async fn read_file_bufferd(
         &self,
-        filename: &RelativeFilePath,
+        filename: &RelativeResourcePath,
     ) -> io::Result<BufReader<DynReader>> {
         Ok(BufReader::new(
             self.inner.read_file_unbuffered(filename).await?,
@@ -110,7 +113,7 @@ impl<T> FileService<T> {
 
     pub async fn write_file_buffered(
         &self,
-        filename: &RelativeFilePath,
+        filename: &RelativeResourcePath,
     ) -> io::Result<BufWriter<DynWriter>> {
         Ok(BufWriter::new(
             self.inner.write_file_unbuffered(filename).await?,
@@ -119,18 +122,16 @@ impl<T> FileService<T> {
 
     pub async fn update_file_buffered<TFut, F>(
         &self,
-        path: &RelativeFilePath,
+        path: &RelativeResourcePath,
         c: F,
     ) -> io::Result<()>
     where
         F: FnOnce(BufWriter<DynWriter>) -> TFut,
         TFut: std::future::Future<Output = io::Result<BufWriter<DynWriter>>>,
     {
-        let temp_relative = {
-            let temp_name = format!("{}_swp", path.file_name());
-            let temp_path = path.parent().unwrap_or(Path::new("")).join(temp_name);
-            RelativeFilePath::new(temp_path)?
-        };
+        let temp_name = format!("{}_swp", path.file_name());
+        let temp_path = path.parent().unwrap_or(Path::new("")).join(temp_name);
+        let temp_relative = RelativeResourcePath::new(&temp_path)?;
 
         let writer = self.write_file_buffered(&temp_relative).await?;
 
@@ -158,22 +159,33 @@ type DynWriter = Pin<Box<dyn futures_util::io::AsyncWrite + Send + Sync>>;
 
 #[async_trait::async_trait]
 pub trait FileServiceTrait {
-    async fn has_file(&self, filename: &RelativeFilePath) -> io::Result<bool>;
+    async fn has_file(&self, filename: &RelativeResourcePath) -> io::Result<bool>;
     async fn metadata_directory(
         &self,
         directory: &RelativeDirectoryPath,
     ) -> io::Result<std::fs::Metadata>;
     async fn list_recursive(&self, path: &RelativeDirectoryPath) -> io::Result<Vec<PathBuf>>;
     // If the parent doesn't exist, it will be created recursively
-    async fn add_file_unchecked(&self, file_path: &RelativeFilePath, data: &[u8])
-        -> io::Result<()>;
-    async fn remove_file(&self, filename: &RelativeFilePath) -> io::Result<()>;
+    async fn add_file_unchecked(
+        &self,
+        file_path: &RelativeResourcePath,
+        data: &[u8],
+    ) -> io::Result<()>;
+    async fn remove_file(&self, filename: &RelativeResourcePath) -> io::Result<()>;
     async fn remove_directory(&self, directory: &RelativeDirectoryPath) -> io::Result<()>;
-    async fn get_file(&self, filename: &RelativeFilePath) -> io::Result<Vec<u8>>;
-    async fn read_file_unbuffered(&self, filename: &RelativeFilePath) -> io::Result<DynReader>;
-    async fn write_file_unbuffered(&self, filename: &RelativeFilePath) -> io::Result<DynWriter>;
-    async fn rename_file(&self, from: &RelativeFilePath, to: &RelativeFilePath) -> io::Result<()>;
-    async fn list_files(&self, path: &RelativeDirectoryPath) -> io::Result<Vec<RelativeFilePath>>;
+    async fn get_file(&self, filename: &RelativeResourcePath) -> io::Result<Vec<u8>>;
+    async fn read_file_unbuffered(&self, filename: &RelativeResourcePath) -> io::Result<DynReader>;
+    async fn write_file_unbuffered(&self, filename: &RelativeResourcePath)
+        -> io::Result<DynWriter>;
+    async fn rename_file(
+        &self,
+        from: &RelativeResourcePath,
+        to: &RelativeResourcePath,
+    ) -> io::Result<()>;
+    async fn list_files(
+        &self,
+        path: &RelativeDirectoryPath,
+    ) -> io::Result<Vec<RelativeResourcePathBuf>>;
     async fn get_or_create_directory(
         &self,
         dir_path: &RelativeDirectoryPath,
@@ -181,31 +193,31 @@ pub trait FileServiceTrait {
     fn stream_files_recursive(
         &self,
         path: &RelativeDirectoryPath,
-    ) -> BoxStream<'static, io::Result<RelativeFilePath>>;
+    ) -> BoxStream<'static, io::Result<RelativeResourcePathBuf>>;
     fn stream_files(
         &self,
         path: &RelativeDirectoryPath,
-    ) -> BoxStream<'static, io::Result<RelativeFilePath>>;
+    ) -> BoxStream<'static, io::Result<RelativeResourcePathBuf>>;
     fn stream_directories(
         &self,
         path: &RelativeDirectoryPath,
     ) -> BoxStream<'static, io::Result<RelativeDirectoryPathBuf>>;
-    fn get_filepath(&self, file_path: &RelativeFilePath) -> PathBuf;
+    fn get_filepath(&self, file_path: &RelativeResourcePath) -> PathBuf;
     fn get_directory_path(&self, file_path: &RelativeDirectoryPath) -> PathBuf;
     fn get_root(&self) -> &Path;
 }
 
 pub trait FileServiceExt {
-    fn has_validator_for(&self, path: &RelativeFilePath) -> bool;
+    fn has_validator_for(&self, path: &RelativeResourcePath) -> bool;
     fn add_file_validated<'a>(
         &'a mut self,
-        file_path: &'a RelativeFilePath,
+        file_path: &'a RelativeResourcePath,
         data: &'a [u8],
     ) -> BoxFuture<'a, io::Result<()>>;
 }
 
 impl<T: AsMut<FileService<T>> + AsRef<FileService<T>> + Send + Sync> FileServiceExt for T {
-    fn has_validator_for(&self, path: &RelativeFilePath) -> bool {
+    fn has_validator_for(&self, path: &RelativeResourcePath) -> bool {
         self.as_ref()
             .validators
             .iter()
@@ -213,7 +225,7 @@ impl<T: AsMut<FileService<T>> + AsRef<FileService<T>> + Send + Sync> FileService
     }
     fn add_file_validated<'a>(
         &'a mut self,
-        file_path: &'a RelativeFilePath,
+        file_path: &'a RelativeResourcePath,
         data: &'a [u8],
     ) -> BoxFuture<'a, io::Result<()>> {
         trace!(filename = ?file_path, "Create file validated");

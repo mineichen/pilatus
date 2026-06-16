@@ -1,6 +1,6 @@
 use minfac::ServiceCollection;
 use pilatus::{
-    Name, RelativeFilePath,
+    Name, RelativeResourcePath,
     device::{ActorError, ActorMessage, ActorResult, ActorSystem, DynamicIdentifier},
 };
 use pilatus_axum::{
@@ -32,11 +32,9 @@ impl ActorMessage for AddImageMessage {
 
 impl DeviceState {
     pub(super) async fn add_image(&mut self, msg: AddImageMessage) -> ActorResult<AddImageMessage> {
-        let relative = RelativeFilePath::new(
-            std::path::Path::new(msg.collection_name.as_str())
-                .join(format!("{}.png", msg.image_name.as_str())),
-        )
-        .expect("Name is always a valid path");
+        let relative = &std::path::Path::new(msg.collection_name.as_str())
+            .join(format!("{}.png", msg.image_name.as_str()));
+        let relative = RelativeResourcePath::new(relative).expect("Name is always a valid path");
         let encoder = self.encoder.clone();
         let encoded_image =
             pilatus::execute_blocking(move || Ok(encoder.encode(msg.image)?)).await?;

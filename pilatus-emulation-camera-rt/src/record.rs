@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use futures::{StreamExt, TryStreamExt};
 use minfac::ServiceCollection;
 use pilatus::{
-    FileService, Name, RelativeFilePath,
+    FileService, Name, RelativeResourcePath,
     device::{ActorError, ActorErrorResultExtensions, ActorSystem, DeviceId, HandlerResult, Step2},
 };
 use pilatus_axum::{
@@ -112,16 +112,15 @@ pub async fn save_encoded(
         .join(chrono_time.format("%H-%M").to_string());
 
     for (key, encoded) in images {
-        let path = RelativeFilePath::new(relative_dir.join(format!(
+        let path = &relative_dir.join(format!(
             "{}_{}.png",
             chrono_time.format("%Y-%m-%d_%H-%M-%S-%3f"),
             match key.specific() {
                 Some(x) => x.as_str(),
                 None => "main",
             }
-        )))
-        .expect("String contains no invalid chars");
-
+        ));
+        let path = RelativeResourcePath::new(path).expect("String contains no invalid chars");
         file_service.add_file_unchecked(&path, &encoded).await?;
     }
     Ok(())

@@ -4,13 +4,12 @@ use bytes::Bytes;
 
 use crate::{
     device::{ActorDevice, ActorError, ActorMessage},
-    recipe::file::RelativeFilePath,
-    FileService, FileServiceExt, RelativeDirectoryPathBuf,
+    FileService, FileServiceExt, RelativeDirectoryPathBuf, RelativeResourcePathBuf,
 };
 
 #[derive(Debug, Clone)]
 pub struct GetFileMessage {
-    pub path: RelativeFilePath,
+    pub path: RelativeResourcePathBuf,
 }
 impl ActorMessage for GetFileMessage {
     type Output = Vec<u8>;
@@ -19,7 +18,7 @@ impl ActorMessage for GetFileMessage {
 
 #[derive(Debug, Clone)]
 pub struct DeleteFileMessage {
-    pub path: RelativeFilePath,
+    pub path: RelativeResourcePathBuf,
 }
 impl ActorMessage for DeleteFileMessage {
     type Output = ();
@@ -28,7 +27,7 @@ impl ActorMessage for DeleteFileMessage {
 
 #[derive(Debug, Clone)]
 pub struct AddFileMessage {
-    pub path: RelativeFilePath,
+    pub path: RelativeResourcePathBuf,
     pub data: Bytes,
 }
 impl ActorMessage for AddFileMessage {
@@ -41,7 +40,7 @@ pub struct ListFilesMessage {
     pub path: RelativeDirectoryPathBuf,
 }
 impl ActorMessage for ListFilesMessage {
-    type Output = Vec<RelativeFilePath>;
+    type Output = Vec<RelativeResourcePathBuf>;
     type Error = io::Error;
 }
 
@@ -99,7 +98,7 @@ where
         async fn list_files<T: AsMut<FileService<T>> + Send + 'static>(
             state: &mut T,
             ListFilesMessage { path }: ListFilesMessage,
-        ) -> Result<Vec<RelativeFilePath>, ActorError<io::Error>> {
+        ) -> Result<Vec<RelativeResourcePathBuf>, ActorError<io::Error>> {
             Ok(state.as_mut().list_files(&path).await?)
         }
 

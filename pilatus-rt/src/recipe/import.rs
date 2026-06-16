@@ -17,7 +17,7 @@ use pilatus::{
     EntryReader,
     ImportRecipeError::{self, InvalidFormat},
     ImportRecipesOptions, ImporterTrait, IntoMergeStrategy, IrreversibleError, Recipe, RecipeId,
-    RecipeImporterTrait, Recipes, RelativeFilePath, Variables,
+    RecipeImporterTrait, Recipes, RelativeResourcePathBuf, Variables,
 };
 use tempfile::TempDir;
 use tokio::{
@@ -230,7 +230,7 @@ impl RecipeServiceFassade {
                 Some(device_id) => {
                     Uuid::from_str(device_id).map_err(|e| InvalidFormat(e.into()))?;
                     let mut path = root.join(device_id);
-                    let relative = RelativeFilePath::new(filename_iter.collect::<PathBuf>())
+                    let relative = RelativeResourcePathBuf::new(filename_iter.collect::<PathBuf>())
                         .map_err(|e| InvalidFormat(e.into()))?;
                     path.push(&*relative);
 

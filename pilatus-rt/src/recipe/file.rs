@@ -13,7 +13,7 @@ use futures::{
 use minfac::{Registered, ServiceCollection};
 use pilatus::{
     FileServiceBuilder, FileServiceTrait, RelativeDirectoryPath, RelativeDirectoryPathBuf,
-    RelativeFilePath,
+    RelativeResourcePath, RelativeResourcePathBuf,
 };
 use tokio::{fs, io::AsyncReadExt};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -30,7 +30,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 
 #[async_trait::async_trait]
 impl FileServiceTrait for TokioFileService {
-    async fn has_file(&self, filename: &RelativeFilePath) -> io::Result<bool> {
+    async fn has_file(&self, filename: &RelativeResourcePath) -> io::Result<bool> {
         let s = self.get_filepath(filename);
         Ok(fs::metadata(s).await.is_ok())
     }
@@ -75,7 +75,7 @@ impl FileServiceTrait for TokioFileService {
     }
     async fn add_file_unchecked(
         &self,
-        file_path: &RelativeFilePath,
+        file_path: &RelativeResourcePath,
         data: &[u8],
     ) -> io::Result<()> {
         trace!(filename = ?file_path, "Create file unchecked");
@@ -91,7 +91,7 @@ impl FileServiceTrait for TokioFileService {
         Ok(p)
     }
 
-    async fn remove_file(&self, filename: &RelativeFilePath) -> io::Result<()> {
+    async fn remove_file(&self, filename: &RelativeResourcePath) -> io::Result<()> {
         let p = self.get_filepath(filename);
 
         //remove file from folder
@@ -115,7 +115,7 @@ impl FileServiceTrait for TokioFileService {
         fs::remove_dir_all(p).await
     }
 
-    async fn get_file(&self, filename: &RelativeFilePath) -> io::Result<Vec<u8>> {
+    async fn get_file(&self, filename: &RelativeResourcePath) -> io::Result<Vec<u8>> {
         let p = self.get_filepath(filename);
 
         let f = fs::File::open(p)
@@ -130,7 +130,7 @@ impl FileServiceTrait for TokioFileService {
 
     async fn read_file_unbuffered(
         &self,
-        filename: &RelativeFilePath,
+        filename: &RelativeResourcePath,
     ) -> io::Result<Pin<Box<dyn AsyncRead + Send + Sync>>> {
         let p = self.get_filepath(filename);
 
@@ -143,7 +143,7 @@ impl FileServiceTrait for TokioFileService {
 
     async fn write_file_unbuffered(
         &self,
-        filename: &RelativeFilePath,
+        filename: &RelativeResourcePath,
     ) -> io::Result<Pin<Box<dyn AsyncWrite + Send + Sync>>> {
         self.get_or_create_directory(filename.relative_dir())
             .await?;
@@ -156,7 +156,11 @@ impl FileServiceTrait for TokioFileService {
         Ok(Box::pin(f.compat_write()))
     }
 
-    async fn rename_file(&self, from: &RelativeFilePath, to: &RelativeFilePath) -> io::Result<()> {
+    async fn rename_file(
+        &self,
+        from: &RelativeResourcePath,
+        to: &RelativeResourcePath,
+    ) -> io::Result<()> {
         let from_path = self.get_filepath(from);
         let to_path = self.get_filepath(to);
         fs::rename(from_path, to_path).await
@@ -165,7 +169,7 @@ impl FileServiceTrait for TokioFileService {
     fn stream_files_recursive(
         &self,
         path: &RelativeDirectoryPath,
-    ) -> BoxStream<'static, io::Result<RelativeFilePath>> {
+    ) -> BoxStream<'static, io::Result<RelativeResourcePathBuf>> {
         let path = self.root.join(path);
         let root_clone = self.root.clone();
         pilatus::visit_directory_files(&path)
@@ -177,7 +181,7 @@ impl FileServiceTrait for TokioFileService {
                 })
             })
             .try_filter_map(move |relative_to_pilatus_entry| {
-                let r = RelativeFilePath::new(
+                let r = RelativeResourcePathBuf::new(
                     relative_to_pilatus_entry
                         .path()
                         .strip_prefix(&root_clone)
@@ -190,10 +194,10 @@ impl FileServiceTrait for TokioFileService {
     fn stream_files(
         &self,
         path: &RelativeDirectoryPath,
-    ) -> BoxStream<'static, io::Result<RelativeFilePath>> {
+    ) -> BoxStream<'static, io::Result<RelativeResourcePathBuf>> {
         self.stream_files_internal(path, |file_type, path| {
             if file_type.is_file() {
-                Ok(Some(RelativeFilePath::new(path)?))
+                Ok(Some(RelativeResourcePathBuf::new(path)?))
             } else {
                 Ok(None)
             }
@@ -215,21 +219,24 @@ impl FileServiceTrait for TokioFileService {
         .boxed()
     }
 
-    async fn list_files(&self, path: &RelativeDirectoryPath) -> io::Result<Vec<RelativeFilePath>> {
+    async fn list_files(
+        &self,
+        path: &RelativeDirectoryPath,
+    ) -> io::Result<Vec<RelativeResourcePathBuf>> {
         self.stream_files_internal(path, |file_type, path| {
             if file_type.is_file() {
-                Ok(Some(RelativeFilePath::new(path)?))
+                Ok(Some(RelativeResourcePathBuf::new(path)?))
             } else {
                 Ok(None)
             }
         })
-        .try_collect::<Vec<RelativeFilePath>>()
+        .try_collect::<Vec<_>>()
         .await
     }
 
-    // RelativeFilePath is expected to be relative to the device-folder
+    // RelativeResourcePath is expected to be relative to the device-folder
     // The returned PathBuf can be used to e.g. open a file with std::fs::File::open().
-    fn get_filepath(&self, file_path: &RelativeFilePath) -> PathBuf {
+    fn get_filepath(&self, file_path: &RelativeResourcePath) -> PathBuf {
         self.root.join(file_path.get_path())
     }
     fn get_directory_path(&self, dir_path: &RelativeDirectoryPath) -> PathBuf {
@@ -300,7 +307,7 @@ mod tests {
     use testresult::TestResult;
 
     use super::*;
-    use pilatus::{FileService, RelativeDirectoryPathBuf, RelativeFilePath};
+    use pilatus::{FileService, RelativeDirectoryPathBuf, RelativeResourcePath};
 
     #[tokio::test]
     async fn add_valid() -> anyhow::Result<()> {
@@ -336,7 +343,7 @@ mod tests {
 
         impl Validator for ContainsHello {
             type State = Ctx;
-            fn is_responsible(&self, _: &RelativeFilePath) -> bool {
+            fn is_responsible(&self, _: &RelativeResourcePath) -> bool {
                 true
             }
 
@@ -365,7 +372,7 @@ mod tests {
                 .build(device_id),
         };
         ctx.add_file_validated(
-            &RelativeFilePath::new("test.jpg").unwrap(),
+            &RelativeResourcePath::new("test.jpg").unwrap(),
             file_content.as_bytes(),
         )
         .await?;
@@ -381,11 +388,11 @@ mod tests {
         let png_path = base.join("bar.png");
         let jpg_path = base.join("bar.jpg");
 
-        svc.add_file_unchecked(&RelativeFilePath::new("foo/bar/baz.jpg")?, &[0u8])
+        svc.add_file_unchecked(&RelativeResourcePath::new("foo/bar/baz.jpg")?, &[0u8])
             .await?;
-        svc.add_file_unchecked(&RelativeFilePath::new(&png_path)?, &[0u8])
+        svc.add_file_unchecked(&RelativeResourcePathBuf::new(&png_path)?, &[0u8])
             .await?;
-        svc.add_file_unchecked(&RelativeFilePath::new(&jpg_path)?, &[0u8])
+        svc.add_file_unchecked(&RelativeResourcePathBuf::new(&jpg_path)?, &[0u8])
             .await?;
 
         let mut baz = svc
@@ -418,7 +425,7 @@ mod tests {
         // tokio::fs::create_dir_all(&device_dir).await?;
         //tokio::fs::write(device_dir.join("test.txt"), CONTENT).await?;
         let svc = TokioFileService::builder(tmp.path()).build(device_id);
-        let path = RelativeFilePath::new("test.txt")?;
+        let path = RelativeResourcePath::new("test.txt")?;
         let mut write = svc.write_file_buffered(&path).await?;
         write.write_all(CONTENT.as_bytes()).await?;
         write.flush().await?;
@@ -438,7 +445,7 @@ mod tests {
         let tmp = TempDir::new()?;
         let device_id = DeviceId::new_v4();
         let svc = TokioFileService::builder(tmp.path()).build(device_id);
-        let path = RelativeFilePath::new("test.txt")?;
+        let path = RelativeResourcePath::new("test.txt")?;
         let original = b"original";
         svc.add_file_unchecked(&path, original).await?;
 
@@ -452,7 +459,7 @@ mod tests {
         let result = svc.get_file(&path).await?;
         assert_eq!(updated.as_slice(), result.as_slice());
         assert!(
-            !svc.has_file(&RelativeFilePath::new("test.txt_swp")?)
+            !svc.has_file(&RelativeResourcePath::new("test.txt_swp")?)
                 .await?
         );
 
@@ -464,7 +471,7 @@ mod tests {
         let tmp = TempDir::new()?;
         let device_id = DeviceId::new_v4();
         let svc = TokioFileService::builder(tmp.path()).build(device_id);
-        let path = RelativeFilePath::new("sub/file.txt")?;
+        let path = RelativeResourcePath::new("sub/file.txt")?;
 
         assert!(!svc.has_file(&path).await?);
 
@@ -478,7 +485,7 @@ mod tests {
         let result = svc.get_file(&path).await?;
         assert_eq!(content.as_slice(), result.as_slice());
         assert!(
-            !svc.has_file(&RelativeFilePath::new("sub/file.txt_swp")?)
+            !svc.has_file(&RelativeResourcePath::new("sub/file.txt_swp")?)
                 .await?
         );
 
@@ -490,7 +497,7 @@ mod tests {
         let tmp = TempDir::new()?;
         let device_id = DeviceId::new_v4();
         let svc = TokioFileService::builder(tmp.path()).build(device_id);
-        let path = RelativeFilePath::new("test.txt")?;
+        let path = RelativeResourcePath::new("test.txt")?;
         let original = b"original";
         svc.add_file_unchecked(&path, original).await?;
 
@@ -508,7 +515,7 @@ mod tests {
         let result = svc.get_file(&path).await?;
         assert_eq!(original.as_slice(), result.as_slice());
         assert!(
-            !svc.has_file(&RelativeFilePath::new("test.txt_swp")?)
+            !svc.has_file(&RelativeResourcePath::new("test.txt_swp")?)
                 .await?
         );
 
@@ -524,11 +531,11 @@ mod tests {
         for (dir, file) in [
             (
                 RelativeDirectoryPathBuf::new("sub")?,
-                RelativeFilePath::new("sub/image.jpg")?,
+                RelativeResourcePath::new("sub/image.jpg")?,
             ),
             (
                 RelativeDirectoryPathBuf::root(),
-                RelativeFilePath::new("image.jpg")?,
+                RelativeResourcePath::new("image.jpg")?,
             ),
         ] {
             assert!(
@@ -536,7 +543,7 @@ mod tests {
                 "Works without a device-directory"
             );
             svc.add_file_unchecked(&file, b"Text").await?;
-            assert_eq!(vec![file], svc.list_files(&dir).await?);
+            assert_eq!(vec![file.to_owned()], svc.list_files(&dir).await?);
         }
         Ok(())
     }

@@ -3,7 +3,7 @@ use minfac::ServiceCollection;
 use pilatus::{
     device::{ActorSystem, DeviceId},
     AddFileMessage, DeleteFileMessage, GetFileMessage, ListFilesMessage, RelativeDirectoryPathBuf,
-    RelativeFilePath,
+    RelativeResourcePathBuf,
 };
 use pilatus_axum::{
     extract::{InjectRegistered, Json, Path},
@@ -26,14 +26,14 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 }
 
 async fn get_file(
-    Path((device_id, path)): Path<(DeviceId, RelativeFilePath)>,
+    Path((device_id, path)): Path<(DeviceId, RelativeResourcePathBuf)>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
 ) -> Result<impl IntoResponse, DeviceJsonError<io::Error>> {
     Ok(actor_system.ask(device_id, GetFileMessage { path }).await?)
 }
 
 async fn delete_file(
-    Path((device_id, path)): Path<(DeviceId, RelativeFilePath)>,
+    Path((device_id, path)): Path<(DeviceId, RelativeResourcePathBuf)>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
 ) -> Result<impl IntoResponse, DeviceJsonError<io::Error>> {
     let msg = DeleteFileMessage { path };
@@ -41,7 +41,7 @@ async fn delete_file(
 }
 
 async fn add_file(
-    Path((device_id, path)): Path<(DeviceId, RelativeFilePath)>,
+    Path((device_id, path)): Path<(DeviceId, RelativeResourcePathBuf)>,
     InjectRegistered(actor_system): InjectRegistered<ActorSystem>,
     data: Bytes,
 ) -> Result<impl IntoResponse, DeviceJsonError<io::Error>> {
