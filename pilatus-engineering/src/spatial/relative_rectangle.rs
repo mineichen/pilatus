@@ -20,10 +20,10 @@ impl RelativeRectangle {
         let x_dist = (dimensions.0.get() - 1) as f64;
         let y_dist = (dimensions.1.get() - 1) as f64;
 
-        let col1 = **self.column.from * x_dist + 0.5;
-        let row1 = **self.row.from * y_dist + 0.5;
-        let col2 = **self.column.to * x_dist + 0.5;
-        let row2 = **self.row.to * y_dist + 0.5;
+        let col1 = *self.column.from * x_dist + 0.5;
+        let row1 = *self.row.from * y_dist + 0.5;
+        let col2 = *self.column.to * x_dist + 0.5;
+        let row2 = *self.row.to * y_dist + 0.5;
 
         [col1 as u32, row1 as u32, col2 as u32, row2 as u32]
     }

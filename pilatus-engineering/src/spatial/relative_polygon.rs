@@ -16,8 +16,8 @@ impl RelativePolygon {
             .iter()
             .map(|(col_rel, row_rel)| {
                 (
-                    (col_rel.into_inner().value() * x_dist + 0.5) as u32,
-                    (row_rel.into_inner().value() * y_dist + 0.5) as u32,
+                    (col_rel.value() * x_dist + 0.5) as u32,
+                    (row_rel.value() * y_dist + 0.5) as u32,
                 )
             })
             .collect::<Vec<_>>()

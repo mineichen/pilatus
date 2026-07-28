@@ -5,42 +5,51 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, PartialOrd, Clone, Copy, Serialize, Deserialize, sealedstruct::Seal)]
-pub struct PercentageRaw(f64);
+#[derive(PartialEq, PartialOrd, Clone, Copy, Serialize, Deserialize)]
+#[serde(try_from = "f64")]
+pub struct Percentage(f64);
 
 #[cfg(feature = "impex")]
 impl impex::ImpexPrimitive for Percentage {}
 
-impl sealedstruct::Validator for PercentageRaw {
-    fn check(&self) -> sealedstruct::Result<()> {
-        if **self < 0. {
-            return sealedstruct::ValidationError::new(format!("{} is too small", self.0)).into();
-        }
+#[derive(Debug, thiserror::Error)]
+#[error("Invalid percentage {0}")]
+pub struct InvalidPercentage(f64);
 
-        if **self > 1. {
-            return sealedstruct::ValidationError::new(format!("{} is too big", self.0)).into();
+impl TryFrom<f64> for Percentage {
+    type Error = InvalidPercentage;
+
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        if ((0.)..=1.).contains(&value) {
+            Ok(Percentage(value))
+        } else {
+            Err(InvalidPercentage(value))
         }
-        Ok(())
     }
 }
 
 impl Percentage {
-    pub fn new(i: f64) -> sealedstruct::Result<Self> {
-        PercentageRaw(i).seal()
+    pub const fn new(value: f64) -> Option<Self> {
+        if value >= 0. && value <= 1. {
+            Some(Percentage(value))
+        } else {
+            None
+        }
     }
-    pub fn max() -> Self {
-        Percentage::new_unchecked(PercentageRaw(1.0))
+
+    pub const fn max() -> Self {
+        Percentage(1.0)
     }
-    pub fn min() -> Self {
-        Percentage::new_unchecked(PercentageRaw(0.0))
+    pub const fn min() -> Self {
+        Percentage(0.0)
     }
 
     pub fn fifty() -> Self {
-        Percentage::new_unchecked(PercentageRaw(0.5))
+        Percentage(0.5)
     }
 }
 
-impl approx::AbsDiffEq for PercentageRaw {
+impl approx::AbsDiffEq for Percentage {
     type Epsilon = f64;
 
     fn default_epsilon() -> Self::Epsilon {
@@ -48,21 +57,17 @@ impl approx::AbsDiffEq for PercentageRaw {
     }
 
     fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
-        self.0.abs_diff_eq(other, epsilon)
+        self.0.abs_diff_eq(&other.0, epsilon)
     }
 }
 
-impl PercentageRaw {
-    pub fn new(i: f64) -> Self {
-        Self(i)
-    }
-
+impl Percentage {
     pub fn value(&self) -> f64 {
         self.0
     }
 }
 
-impl Display for PercentageRaw {
+impl Display for Percentage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("{}%", self.0 * 100.))
     }
@@ -74,42 +79,22 @@ impl Debug for Percentage {
     }
 }
 
-impl std::ops::Sub for PercentageRaw {
-    type Output = PercentageRaw;
+impl std::ops::Mul<f64> for Percentage {
+    type Output = f64;
 
-    fn sub(self, rhs: Self) -> Self::Output {
-        PercentageRaw(self.0 - rhs.0)
+    fn mul(self, rhs: f64) -> Self::Output {
+        self.0 * rhs
     }
 }
-
-impl std::ops::Add for PercentageRaw {
-    type Output = PercentageRaw;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        PercentageRaw(self.0 + rhs.0)
-    }
-}
-
-impl std::ops::Mul for PercentageRaw {
-    type Output = PercentageRaw;
+impl std::ops::Mul for Percentage {
+    type Output = Percentage;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        PercentageRaw(self.0 * rhs.0)
+        Percentage(self.0 * rhs.0)
     }
 }
 
-impl From<f64> for Percentage {
-    fn from(i: f64) -> Self {
-        Self(i.into())
-    }
-}
-impl From<f64> for PercentageRaw {
-    fn from(i: f64) -> Self {
-        Self(i)
-    }
-}
-
-impl Deref for PercentageRaw {
+impl Deref for Percentage {
     type Target = f64;
 
     fn deref(&self) -> &Self::Target {
@@ -123,7 +108,7 @@ mod tests {
 
     #[test]
     fn invalid_percentage() {
-        assert!(PercentageRaw::new(-1.).seal().is_err());
-        assert!(PercentageRaw::new(1.1).seal().is_err());
+        assert!(Percentage::new(-1.).is_none());
+        assert!(Percentage::new(1.1).is_none());
     }
 }

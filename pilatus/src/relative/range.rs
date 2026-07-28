@@ -1,3 +1,5 @@
+use std::{fmt::Display};
+
 use serde::{Deserialize, Serialize};
 
 use super::Percentage;
@@ -53,11 +55,13 @@ impl RelativeRange {
     ) -> (Option<RelativeRange>, RelativeRange, Option<RelativeRange>) {
         let width_percentage = *self.to - *self.from;
         let from_split_position = (*self.from + width_percentage * *range.from)
-            .seal()
+            .try_into()
             .unwrap();
-        let to_split_position = (*self.from + width_percentage * *range.to).seal().unwrap();
+        let to_split_position = (*self.from + width_percentage * *range.to)
+            .try_into()
+            .unwrap();
 
-        let left = (**range.from > 0.).then(|| {
+        let left = (*range.from > 0.).then(|| {
             RelativeRangeRaw {
                 from: self.from,
                 to: from_split_position,
@@ -73,7 +77,7 @@ impl RelativeRange {
         .seal()
         .unwrap();
 
-        let right = (**range.to < 1.).then(|| {
+        let right = (*range.to < 1.).then(|| {
             RelativeRangeRaw {
                 from: to_split_position,
                 to: self.to,
@@ -88,12 +92,16 @@ impl RelativeRange {
 
 impl RelativeRange {
     pub fn new(
-        from: impl Into<Percentage>,
-        to: impl Into<Percentage>,
+        from: impl TryInto<Percentage, Error: Display>,
+        to: impl TryInto<Percentage, Error: Display>,
     ) -> sealedstruct::Result<Self> {
         RelativeRangeRaw {
-            from: from.into(),
-            to: to.into(),
+            from: from
+                .try_into()
+                .map_err(|x| sealedstruct::ValidationError::new(format!("Invalid from {x}")))?,
+            to: to
+                .try_into()
+                .map_err(|x| sealedstruct::ValidationError::new(format!("Invalid to {x}")))?,
         }
         .seal()
     }
