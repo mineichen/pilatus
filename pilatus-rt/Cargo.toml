@@ -11,6 +11,7 @@ categories.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-tempfile = "0.8"
 async-trait = "0.1"
 chrono = { workspace = true, features = ["serde"] }
 futures.workspace = true
@@ -26,6 +27,7 @@ tokio = { workspace = true, features = [
     "rt-multi-thread",
     "time",
     "fs",
+    "io-util",
     "sync",
     "signal",
 ] }

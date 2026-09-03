@@ -2,6 +2,7 @@
 
 mod delete_collection;
 mod device;
+mod file_handlers;
 mod get_image;
 mod list_collections;
 mod pause;
@@ -10,6 +11,7 @@ mod publish_frame;
 mod record;
 mod subscribe;
 mod upload_image;
+mod validation;
 
 pub use device::*;
 use minfac::ServiceCollection;

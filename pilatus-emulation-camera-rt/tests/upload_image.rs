@@ -1,6 +1,8 @@
-#[cfg(feature = "integration")]
+#![cfg(feature = "integration")]
+use testresult::TestResult;
+
 #[test]
-fn upload_image_to_collection() -> anyhow::Result<()> {
+fn upload_image_to_collection() -> TestResult<()> {
     use image::{GenericImageView, ImageBuffer, Rgb};
     use minfac::Registered;
     use pilatus::{DeviceConfig, Recipe};
@@ -54,7 +56,7 @@ fn upload_image_to_collection() -> anyhow::Result<()> {
                 )
                 .unwrap();
 
-            // Upload the image via the HTTP endpoint
+            // Upload the image via the legacy (backwards-compatible) device endpoint
             let client = reqwest::Client::new();
             let upload_url = format!(
                 "{}/pilatus-emulation-camera/collection/test_collection/uploaded?device_id={}",

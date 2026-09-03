@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use async_tempfile::TempFile;
 use futures::{
     stream::{self, BoxStream},
     AsyncRead, AsyncWrite, Stream, StreamExt, TryStreamExt,
@@ -15,7 +16,7 @@ use pilatus::{
     FileServiceBuilder, FileServiceTrait, RelativeDirectoryPath, RelativeDirectoryPathBuf,
     RelativeResourcePath, RelativeResourcePathBuf,
 };
-use tokio::{fs, io::AsyncReadExt};
+use tokio::{fs, io::AsyncReadExt, io::AsyncWriteExt};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tracing::trace;
 
@@ -81,7 +82,20 @@ impl FileServiceTrait for TokioFileService {
         trace!(filename = ?file_path, "Create file unchecked");
         self.get_or_create_directory(file_path.relative_dir())
             .await?;
-        fs::write(self.get_filepath(file_path), data).await?;
+
+        // Write the content to a temporary file inside the target directory and
+        // persist (rename) it afterwards, so the file is either fully written or
+        // a previously existing file is left untouched.
+        let target = self.get_filepath(file_path);
+        let parent = target
+            .parent()
+            .filter(|x| !x.as_os_str().is_empty())
+            .ok_or_else(|| io::Error::other("File has no parent directory"))?;
+
+        let mut temp = TempFile::new_in(parent).await.map_err(io::Error::other)?;
+        temp.write_all(data).await?;
+        temp.flush().await?;
+        temp.persist(target).await.map_err(io::Error::other)?;
         Ok(())
     }
 

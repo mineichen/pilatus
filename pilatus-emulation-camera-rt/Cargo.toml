@@ -37,6 +37,7 @@ reqwest = { version = "0.13", optional = true }
 [dev-dependencies]
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 tokio = { workspace = true, features = ["sync", "macros"]}
+testresult.workspace = true
 
 [features]
 integration = [

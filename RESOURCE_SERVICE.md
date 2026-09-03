@@ -1,0 +1,15 @@
+Shortcomings of FileService
+ - Weird Generic Type, which is not always needed 
+ - AsREf+AsMut requirement for State
+ - DeviceId in UrlPath -> No other addressing possible (e.g. via name)
+ - No Streaming for content possible (upload and download)
+ - Doesn't allow specifying mime-type for Downloads
+ - FileService doesn't implement Clone
+ - There should be a FileService and a DeviceFileService
+   - DeviceFileService which hides Path entirely (uses RelativePath exclusively) (Within pilatus/pilatus-rt)
+     - avoid exposing Path/PathBuf (Allows Load/Storing from somewhere else, e.g. zipfile)
+   - FileService is for working with other Files (standalone project)
+ - Both should 
+   - Work with AsyncRead/AsyncWrite as the interface
+   - Avoid Partial-Writes/Reads
+   - Provide Transactions -> Return a handle, which has to be committed for the operation to survive a restart

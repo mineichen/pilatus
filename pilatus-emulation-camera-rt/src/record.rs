@@ -121,7 +121,7 @@ pub async fn save_encoded(
             }
         ));
         let path = RelativeResourcePath::new(path).expect("String contains no invalid chars");
-        file_service.add_file_unchecked(&path, &encoded).await?;
+        file_service.add_file_unchecked(path, &encoded).await?;
     }
     Ok(())
 }

@@ -56,11 +56,14 @@ async fn device(
         .add_handler(DeviceState::publish_frame)
         .add_handler(DeviceState::update_params)
         .add_handler(DeviceState::list_collections)
-        .add_handler(DeviceState::add_image)
         .add_handler(DeviceState::handle_get_image)
         .add_handler(DeviceState::delete_collection)
         .add_handler(DeviceState::toggle_pause)
-        .add_handler(DeviceState::subscribe_luma);
+        .add_handler(DeviceState::subscribe_luma)
+        .add_handler(DeviceState::get_file)
+        .add_handler(DeviceState::add_file)
+        .add_handler(DeviceState::delete_file)
+        .add_handler(DeviceState::list_files);
     let (recording_sender, permanent_recording_task) =
         crate::permanent_recording::setup_permanent_recording(
             actor_system.get_weak_untyped_sender(id)?,
