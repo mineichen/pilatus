@@ -42,6 +42,33 @@ impl ActorSystemIdentifier for DeviceId {
         Ok(UntypedActorMessageSender::new(self, mpsc_sender))
     }
 }
+#[derive(Debug, Default, PartialEq, Eq)]
+pub enum DynamicIdentifier {
+    DeviceId(DeviceId),
+    #[default]
+    None,
+}
+
+impl ActorSystemIdentifier for &DynamicIdentifier {
+    fn get_untyped_sender(
+        self,
+        actor_system: SealedActorSystemState,
+    ) -> Result<UntypedActorMessageSender, ActorErrorUnknownDevice> {
+        match self {
+            DynamicIdentifier::DeviceId(device_id) => device_id.get_untyped_sender(actor_system),
+            DynamicIdentifier::None => DynamicIdentifier::None.get_untyped_sender(actor_system),
+        }
+    }
+    fn get_typed_sender<TMsg: ActorMessage>(
+        self,
+        actor_system: SealedActorSystemState,
+    ) -> Result<ActorMessageSender<TMsg>, ActorErrorUnknownDevice> {
+        match self {
+            DynamicIdentifier::DeviceId(device_id) => device_id.get_typed_sender(actor_system),
+            DynamicIdentifier::None => DynamicIdentifier::None.get_typed_sender(actor_system),
+        }
+    }
+}
 
 impl ActorSystemIdentifier for DynamicIdentifier {
     fn get_untyped_sender(
@@ -50,7 +77,10 @@ impl ActorSystemIdentifier for DynamicIdentifier {
     ) -> Result<UntypedActorMessageSender, ActorErrorUnknownDevice> {
         match self {
             DynamicIdentifier::DeviceId(device_id) => device_id.get_untyped_sender(actor_system),
-            DynamicIdentifier::None => todo!(),
+            DynamicIdentifier::None => Err(ActorErrorUnknownDevice::AmbiguousHandler {
+                msg_type: "<undefined>",
+                possibilities: Default::default(),
+            }),
         }
     }
     fn get_typed_sender<TMsg: ActorMessage>(
@@ -80,13 +110,6 @@ impl ActorSystemIdentifier for DynamicIdentifier {
             }
         }
     }
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-pub enum DynamicIdentifier {
-    DeviceId(DeviceId),
-    #[default]
-    None,
 }
 
 impl<'de> Deserialize<'de> for DynamicIdentifier {
