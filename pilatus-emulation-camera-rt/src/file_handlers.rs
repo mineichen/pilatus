@@ -5,7 +5,7 @@ use pilatus::{
     device::ActorError,
 };
 
-use super::validation::{is_responsible, validate_image};
+use super::validation::{is_responsible, normalize_to_png};
 
 impl super::DeviceState {
     /// Standard file handlers, so this device supports the common `/api/recipe/file` endpoints.
@@ -24,7 +24,7 @@ impl super::DeviceState {
         AddFileMessage { path, data }: AddFileMessage,
     ) -> Result<(), ActorError<io::Error>> {
         ensure_responsible(&path)?;
-        validate_image(&data).map_err(|e| {
+        let data = normalize_to_png(&data).map_err(|e| {
             ActorError::custom(io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
         })?;
         self.file_service.add_file_unchecked(&path, &data).await?;
