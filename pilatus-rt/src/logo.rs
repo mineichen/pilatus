@@ -46,15 +46,48 @@ impl LogoServiceImpl {
     }
 }
 
+/// Light (default) logo: black contours, for bright backgrounds.
+const LIGHT: &[u8] = include_bytes!("pilatus_logo.svg");
+const LIGHT_SVG_LEN: usize = LIGHT.len();
+/// Dark logo: white contours, derived from [`LIGHT_SVG`] at compile time.
+const DARK_SVG_BYTES: [u8; LIGHT_SVG_LEN] = recolor_black_to_white();
+const DARK: &[u8] = &DARK_SVG_BYTES;
+
+/// Replaces every `#000000` with `#ffffff` (same length, so in-place).
+const fn recolor_black_to_white() -> [u8; LIGHT_SVG_LEN] {
+    let src = LIGHT;
+    let mut out = [0u8; LIGHT_SVG_LEN];
+    let mut i = 0;
+    while i < LIGHT_SVG_LEN {
+        out[i] = src[i];
+        i += 1;
+    }
+    let mut j = 0;
+    while j + 7 <= LIGHT_SVG_LEN {
+        if out[j] == b'#'
+            && out[j + 1] == b'0'
+            && out[j + 2] == b'0'
+            && out[j + 3] == b'0'
+            && out[j + 4] == b'0'
+            && out[j + 5] == b'0'
+            && out[j + 6] == b'0'
+        {
+            out[j + 1] = b'f';
+            out[j + 2] = b'f';
+            out[j + 3] = b'f';
+            out[j + 4] = b'f';
+            out[j + 5] = b'f';
+            out[j + 6] = b'f';
+            j += 7;
+        } else {
+            j += 1;
+        }
+    }
+    out
+}
+
 fn create_fallback_logo() -> FallbackLogo {
-    const BRIGHT: &[u8] = include_bytes!("logo/pilatus_bright.svg");
-    FallbackLogo::with_themes(
-        BRIGHT,
-        &[
-            ("dark", include_bytes!("logo/pilatus_dark.svg")),
-            ("bright", BRIGHT),
-        ],
-    )
+    FallbackLogo::with_themes(LIGHT, &[("dark", DARK), ("light", LIGHT)])
 }
 
 #[cfg(feature = "unstable")]

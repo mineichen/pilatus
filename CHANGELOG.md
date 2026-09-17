@@ -3,3 +3,5 @@
 - `RelativeDirPathError` and `RelativeFilePathError` changed from containing `String` to the constructor input type
 - Remove `sealedstruct::Seal` from Percentage, thus remove PercentageRaw
 - Emulation-Camera reencodes every image to PNG and strips all metadata
+- Fix default logo coloring: light has black contours, dark has white contours 
+- Rename logo theme `bright` to `light`
