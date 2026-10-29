@@ -5,7 +5,7 @@ use futures_util::{
     StreamExt,
 };
 use serde::{Deserialize, Serialize};
-use stream_broadcast::StreamBroadcast;
+use stream_broadcast::StreamBroadcastLossy;
 use tracing::{error, trace};
 
 use crate::device::{
@@ -170,10 +170,10 @@ impl<TOutput: Send + 'static, EOutput: Send + Debug + 'static>
             .buffered(8)
             .filter_map(std::future::ready);
 
-        let stream = StreamBroadcast::new(inner.fuse(), 10);
+        let stream = StreamBroadcastLossy::new(inner.fuse(), 10);
         let downgraded = stream.downgrade();
         this.pipeline = Box::new(move || {
-            downgraded.re_subscribe().upgrade().map(|x| {
+            downgraded.re_subscribe().create_lossy().map(|x| {
                 Box::pin(x.flat_map(|(missed, data)| {
                     stream::iter((missed > 0).then(|| {
                         Err(MissedItemsError::new(std::num::Saturating(

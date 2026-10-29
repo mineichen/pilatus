@@ -10,7 +10,6 @@ members = [
     "pilatus-engineering",
     "pilatus-engineering-rt",
     "pilatus-rt",
-    "examples/stream",
     "examples/tick",
     "examples/tick-app",
     "examples/tick-rt",
