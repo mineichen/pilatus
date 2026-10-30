@@ -221,7 +221,7 @@ fn extract_channel(input: &[u8]) -> anyhow::Result<(DynamicImageChannel, &[u8])>
 
     Ok(match kind {
         DataType::U8 => (
-            DynamicImageChannel::from_vec_flat(pixels.to_vec(), width, height, pixel_elements)?,
+            DynamicImageChannel::new_vec_flat(pixels.to_vec(), width, height, pixel_elements)?,
             &input[pixel_start + channel_flat_len..],
         ),
         DataType::U16 => todo!(),
