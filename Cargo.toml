@@ -32,7 +32,8 @@ futures = "0.3"
 futures-channel = "0.3"
 futures-util = { version = "0.3", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
-imbuf = "0.3.3"
+imbuf = "0.4"
+imbuf-image = "0.1"
 impex = "0.1.0"
 minfac = "0.1"
 pilatus = { version = "0.1.0", path = "pilatus" }
@@ -56,6 +57,7 @@ tokio = "1"
 tracing = "0.1"
 uuid = "1"
 
-# [patch.crates-io]
-# imbuf = { path = "../imbuf" }
+[patch.crates-io]
+imbuf = { path = "../imbuf/imbuf" }
+imbuf-image = { path = "../imbuf/imbuf-image" }
 # sealedstruct = { path = "../sealedstruct/sealedstruct" }

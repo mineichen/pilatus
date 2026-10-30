@@ -49,7 +49,10 @@ impl DeviceState {
                     let encoded = encode_all(x?, encoder.clone()).await?;
                     anyhow::Ok((time, encoded))
                 })
-                .buffer_unordered(8);
+                .buffer_unordered(8)
+                // The closure takes `DynamicImage`, whose `'static` lifetime is erased when checking
+                // whether this async block is `Send`. Boxing keeps the closure out of the async block.
+                .boxed();
             let abortable_stream = futures::stream::Abortable::new(encoded_stream, reg);
 
             let mut size_budget = msg.max_size_mb.get() as u64 * 1_000_000;

@@ -203,12 +203,18 @@ impl ActorSystem {
             .collect::<FuturesUnordered<_>>()
     }
 
-    pub async fn ask<TMsg: ActorMessage>(
+    /// The device is looked up immediately, the message is sent when the future is polled.
+    ///
+    /// The future is `Send + 'static` independent of `TMsg`. As an `async fn`, the compiler had to prove `Send` by
+    /// looking into the future, which fails inside of other futures if `TMsg` contains a `'static` lifetime
+    /// (e.g. `SubscribeMessage<_, DynamicImage, _>`): "implementation of `Send` is not general enough"
+    pub fn ask<TMsg: ActorMessage>(
         &self,
         device_id: impl ActorSystemIdentifier,
         msg: TMsg,
-    ) -> ActorResult<TMsg> {
-        self.get_sender(device_id)?.ask(msg).await
+    ) -> impl std::future::Future<Output = ActorResult<TMsg>> + Send + 'static {
+        let sender = self.get_sender(device_id);
+        async move { sender?.ask(msg).await }
     }
 }
 

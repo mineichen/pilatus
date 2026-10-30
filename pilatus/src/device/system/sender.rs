@@ -1,4 +1,4 @@
-use std::{any::TypeId, borrow::Cow, fmt::Debug, marker::PhantomData, sync::Weak};
+use std::{any::TypeId, borrow::Cow, fmt::Debug, future::Future, marker::PhantomData, sync::Weak};
 
 use futures_channel::oneshot;
 
@@ -29,8 +29,9 @@ impl<TMsg: ActorMessage> ActorMessageSender<TMsg> {
     pub fn tell(&mut self, msg: TMsg) -> Result<(), ActorErrorBusy> {
         self.actor_message_sender.tell(msg)
     }
-    pub async fn ask(&mut self, msg: TMsg) -> ActorResult<TMsg> {
-        self.actor_message_sender.ask(msg).await
+    /// See [`UntypedActorMessageSender::ask`]
+    pub fn ask(&mut self, msg: TMsg) -> impl Future<Output = ActorResult<TMsg>> + Send + 'static {
+        self.actor_message_sender.ask(msg)
     }
 }
 
@@ -48,10 +49,19 @@ impl UntypedActorMessageSender {
         Ok(())
     }
 
-    pub async fn ask<TMsg: ActorMessage>(&mut self, msg: TMsg) -> ActorResult<TMsg> {
-        match self.get_channel(msg)?.await {
-            Ok(x) => x,
-            Err(_) => Err(ActorError::UnknownMessageType(std::any::type_name::<TMsg>())),
+    /// The message is sent immediately (like [`UntypedActorMessageSender::tell`]), the future only waits for the response.
+    /// This allows the future to be `Send + 'static` independent of `TMsg` without cloning the sender
+    /// (see [`crate::device::ActorSystem::ask`])
+    pub fn ask<TMsg: ActorMessage>(
+        &mut self,
+        msg: TMsg,
+    ) -> impl Future<Output = ActorResult<TMsg>> + Send + 'static {
+        let channel = self.get_channel(msg);
+        async move {
+            match channel?.await {
+                Ok(x) => x,
+                Err(_) => Err(ActorError::UnknownMessageType(std::any::type_name::<TMsg>())),
+            }
         }
     }
 
@@ -107,8 +117,14 @@ impl WeakUntypedActorMessageSender {
         }
     }
 
-    pub async fn ask<TMsg: ActorMessage>(&mut self, msg: TMsg) -> ActorResult<TMsg> {
-        self.build_strong::<TMsg>()?.ask(msg).await
+    /// The device is looked up immediately, the message is sent when the future is polled
+    /// (see [`crate::device::ActorSystem::ask`])
+    pub fn ask<TMsg: ActorMessage>(
+        &mut self,
+        msg: TMsg,
+    ) -> impl Future<Output = ActorResult<TMsg>> + Send + 'static {
+        let sender = self.build_strong::<TMsg>();
+        async move { sender?.ask(msg).await }
     }
 
     fn build_strong<TMsg: ActorMessage>(

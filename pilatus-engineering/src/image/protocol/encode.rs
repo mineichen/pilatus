@@ -13,7 +13,7 @@ use std::{
 
 use anyhow::{anyhow, Context};
 use bytes::BufMut;
-use imbuf::{DynamicImage, DynamicSize, ImageChannel, PixelTypePrimitive};
+use imbuf::{DynamicImage, DynamicImageChannel};
 use pilatus::MissedItemsError;
 use serde::Serialize;
 use tracing::{debug, trace};
@@ -143,8 +143,8 @@ fn encode_dynamic_image<T: Serialize>(
     meta: T,
     write_extensions: &MetaEncodeExtensions,
 ) -> anyhow::Result<Vec<u8>> {
-    fn encode_typed<TPixel: PixelTypePrimitive>(
-        x: &ImageChannel<DynamicSize<TPixel>>,
+    fn encode_typed(
+        x: &DynamicImageChannel,
         buf: Vec<u8>,
         pixel_kind: DataType,
     ) -> anyhow::Result<Vec<u8>> {
@@ -168,9 +168,9 @@ fn encode_dynamic_image<T: Serialize>(
         NonZeroU16::try_from(image.len_nonzero()).context("Number of Channels is too big")?;
     buf.put_slice(&channels.get().to_le_bytes());
     for channel in image.iter() {
-        buf = match channel {
-            imbuf::DynamicImageChannel::U8(x) => encode_typed(x, buf, DataType::U8),
-            imbuf::DynamicImageChannel::U16(x) => encode_typed(x, buf, DataType::U16),
+        buf = match channel.bytes_per_primitive().get() {
+            1 => encode_typed(channel, buf, DataType::U8),
+            2 => encode_typed(channel, buf, DataType::U16),
             _ => Err(anyhow!("Unsupported image format: {:?}", image)),
         }?;
     }

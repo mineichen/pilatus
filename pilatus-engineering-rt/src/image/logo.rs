@@ -102,6 +102,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 iwidth,
                 iheight,
             )
+            .expect("The resized image contains width * height pixels")
         } else if let Ok(svg) = resvg::usvg::Tree::from_data(&logo.0, &Default::default()) {
             let x = svg;
             let size = x.size();
@@ -154,6 +155,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 out_width,
                 out_height,
             )
+            .expect("The pixmap contains width * height pixels")
         } else {
             let width = query.width.get();
             let height = query.height.get();
@@ -164,6 +166,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 NonZeroU32::from(*query.width),
                 NonZeroU32::from(*query.height),
             )
+            .expect("The buffer is created with width * height pixels")
         };
 
         lock.insert(query, (next_age, image.clone()));

@@ -16,7 +16,8 @@ bytes.workspace = true
 chrono = { workspace = true, features = ["serde"], optional = true }
 futures.workspace = true
 image.workspace = true # Must remain an internal dependency
-imbuf = { workspace = true, features = ["image_0_25"] }
+imbuf.workspace = true
+imbuf-image.workspace = true
 minfac.workspace = true
 pilatus = { workspace = true, features = ["minfac"] }
 pilatus-axum = { workspace = true, optional = true }
@@ -34,3 +35,6 @@ tokio = { workspace = true, optional = true }
 axum = ["dep:axum", "dep:pilatus-axum", "dep:tokio", "dep:chrono", "dep:serde", "pilatus-engineering/axum"]
 unstable = []
 integration = ["dep:pilatus-rt"]
+
+[dev-dependencies]
+testresult.workspace = true
