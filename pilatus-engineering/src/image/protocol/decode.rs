@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Context};
-use imbuf::{DynamicImage, DynamicImageChannel, ImageChannel};
+use imbuf::{DynamicImage, DynamicImageChannel};
 use pilatus::MissedItemsError;
 use serde::de::DeserializeOwned;
 use tracing::warn;
@@ -221,7 +221,7 @@ fn extract_channel(input: &[u8]) -> anyhow::Result<(DynamicImageChannel, &[u8])>
 
     Ok(match kind {
         DataType::U8 => (
-            ImageChannel::new_vec_dynamic(pixels.into(), width, height, pixel_elements).into(),
+            DynamicImageChannel::from_vec_flat(pixels.to_vec(), width, height, pixel_elements)?,
             &input[pixel_start + channel_flat_len..],
         ),
         DataType::U16 => todo!(),

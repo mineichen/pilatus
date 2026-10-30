@@ -1,12 +1,13 @@
-use std::{convert::Infallible, fmt::Debug, sync::Arc};
+use std::{convert::Infallible, fmt::Debug, marker::PhantomData, sync::Arc};
 
 use futures::stream::BoxStream;
+use imbuf::PixelType;
 use pilatus::{
     device::{ActorError, ActorMessage, CustomActorError, DeviceId},
-    MissedItemsError, SubscribeMessage,
+    MissedItemsError,
 };
 
-use super::{DynamicImage, DynamicPointProjector, ImageWithMeta, LumaImage, StableHash};
+use super::{DynamicImage, DynamicPointProjector, Image, ImageWithMeta, LumaImage, StableHash};
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -85,11 +86,65 @@ pub struct SubscribeImageQuery {}
 #[non_exhaustive]
 pub struct SubscribeImageMessage {}
 
-pub type SubscribeDynamicImageMessage = SubscribeMessage<
-    SubscribeImageQuery,
-    Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>,
-    Infallible,
->;
+/// Subscribe to images of any pixel type and number of channels.
+/// Use [`SubscribeImageWithMetaMessage`] if the type is known upfront.
+///
+/// Prefer messages, which are generic over the [`PixelType`] and the number of channels, over messages, which are
+/// generic over image types like [`DynamicImage`] (e.g. `SubscribeMessage<Q, DynamicImage, E>`): The `'static`
+/// lifetime of images is erased, when the compiler checks whether an `async` block is `Send`. Awaiting a generic
+/// `async fn` whose generic arguments contain an image type is therefore `!Send` ("implementation of `Send` is not
+/// general enough"). `ActorSystem::ask` returns `impl Future + Send + 'static` to support them anyway.
+#[derive(Default)]
+#[non_exhaustive]
+pub struct SubscribeDynamicImageMessage {
+    pub query: SubscribeImageQuery,
+}
+
+impl From<SubscribeImageQuery> for SubscribeDynamicImageMessage {
+    fn from(query: SubscribeImageQuery) -> Self {
+        Self { query }
+    }
+}
+
+impl ActorMessage for SubscribeDynamicImageMessage {
+    type Output =
+        BoxStream<'static, Result<ImageWithMeta<DynamicImage>, StreamImageError<DynamicImage>>>;
+    type Error = Infallible;
+}
+
+/// Typed version of [`SubscribeDynamicImageMessage`]
+#[non_exhaustive]
+pub struct SubscribeImageWithMetaMessage<T, const CHANNELS: usize> {
+    pub query: SubscribeImageQuery,
+    phantom: PhantomData<T>,
+}
+
+impl<T, const CHANNELS: usize> Default for SubscribeImageWithMetaMessage<T, CHANNELS> {
+    fn default() -> Self {
+        SubscribeImageQuery::default().into()
+    }
+}
+
+impl<T, const CHANNELS: usize> From<SubscribeImageQuery>
+    for SubscribeImageWithMetaMessage<T, CHANNELS>
+{
+    fn from(query: SubscribeImageQuery) -> Self {
+        Self {
+            query,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<T: PixelType, const CHANNELS: usize> ActorMessage
+    for SubscribeImageWithMetaMessage<T, CHANNELS>
+{
+    type Output = BoxStream<
+        'static,
+        Result<ImageWithMeta<Image<T, CHANNELS>>, StreamImageError<Image<T, CHANNELS>>>,
+    >;
+    type Error = Infallible;
+}
 
 impl ActorMessage for SubscribeImageMessage {
     type Output = SubscribeImageOk;
@@ -240,5 +295,49 @@ impl From<(BoxStream<'static, LocalizableBroadcastImage>, DeviceId)>
 impl From<SubscribeLocalizableImageMessage> for SubscribeImageMessage {
     fn from(_: SubscribeLocalizableImageMessage) -> Self {
         Self {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pilatus::{
+        device::{ActorSystem, DynamicIdentifier},
+        SubscribeMessage,
+    };
+
+    use super::*;
+
+    fn assert_send<T: Send>(_: T) {}
+    fn assert_send_static<T: Send + 'static>(_: T) {}
+
+    /// Compile-time check: The `'static` lifetime of images is erased, when checking whether an async block is
+    /// `Send`. Unless `ActorSystem::ask` declares `Send`, asking with messages, which are generic over an image
+    /// type, fails with "implementation of `Send` is not general enough"
+    #[test]
+    fn asking_for_images_is_send() {
+        let system = ActorSystem::new();
+        let id = DynamicIdentifier::None;
+        assert_send_static(system.ask(&id, SubscribeDynamicImageMessage::default()));
+
+        assert_send(async move {
+            let _ = system
+                .ask(
+                    DynamicIdentifier::None,
+                    SubscribeDynamicImageMessage::default(),
+                )
+                .await;
+            let _ = system
+                .ask(
+                    DynamicIdentifier::None,
+                    SubscribeImageWithMetaMessage::<u8, 1>::default(),
+                )
+                .await;
+            let _ = system
+                .ask(
+                    DynamicIdentifier::None,
+                    SubscribeMessage::<SubscribeImageQuery, DynamicImage, Infallible>::default(),
+                )
+                .await;
+        });
     }
 }

@@ -119,21 +119,19 @@ impl ImageWithMeta<super::DynamicImage> {
     ) -> Result<T, ExtractWithFormatError<'b>>
     where
         T: Debug,
-        T: TryFrom<
-            &'a super::DynamicImage,
-            Error = IncompatibleImageError<&'a imbuf::DynamicImage>,
-        >,
+        T: TryFrom<&'a super::DynamicImage, Error = IncompatibleImageError>,
     {
         let x = self.by_key(search_key)?;
-        x.try_into().map_err(ExtractWithFormatError::Unsupported)
+        x.try_into()
+            .map_err(|e| ExtractWithFormatError::Unsupported(x, e))
     }
 }
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractWithFormatError<'a> {
     #[error("{0:?}")]
     UnknownKey(UnknownKeyError<'a, super::DynamicImage>),
-    #[error("{0:?}")]
-    Unsupported(IncompatibleImageError<&'a imbuf::DynamicImage>),
+    #[error("{1:?}")]
+    Unsupported(&'a imbuf::DynamicImage, IncompatibleImageError),
 }
 
 impl<'a> From<UnknownKeyError<'a, super::DynamicImage>> for ExtractWithFormatError<'a> {
@@ -147,11 +145,11 @@ impl<'a> From<ExtractWithFormatError<'a>> for (super::DynamicImage, anyhow::Erro
     fn from(val: ExtractWithFormatError<'a>) -> Self {
         match val {
             ExtractWithFormatError::UnknownKey(x) => x.into(),
-            ExtractWithFormatError::Unsupported(x) => {
+            ExtractWithFormatError::Unsupported(image, x) => {
                 let err = format!("{:?}", x);
 
                 let unsup = UnsupportedImageError((), err.into());
-                (x.image.clone(), anyhow::Error::from(unsup))
+                (image.clone(), anyhow::Error::from(unsup))
             }
         }
     }
@@ -208,15 +206,16 @@ pub struct ImageMeta {
 mod tests {
     use std::num::NonZeroU32;
 
-    use imbuf::{Image, ImageRef};
+    use imbuf::{Image, ImageView};
+    use testresult::TestResult;
 
     use crate::image::DynamicImage;
 
     use super::*;
 
     #[test]
-    fn insert_and_extract_image_luma16() {
-        let image = Image::<u16, 1>::new_vec(vec![1], NonZeroU32::MIN, NonZeroU32::MIN);
+    fn insert_and_extract_image_luma16() -> TestResult {
+        let image = Image::<u16, 1>::new_vec(vec![1], NonZeroU32::MIN, NonZeroU32::MIN)?;
         let dynamic: DynamicImage = image.into();
         let meta = ImageWithMeta::with_meta(
             dynamic,
@@ -225,7 +224,8 @@ mod tests {
                 ..Default::default()
             },
         );
-        let back: ImageRef<u16, 1> = meta.with_format_by_key(&ImageKey::unspecified()).unwrap();
+        let back: ImageView<u16, 1> = meta.with_format_by_key(&ImageKey::unspecified())?;
         assert_eq!((NonZeroU32::MIN, NonZeroU32::MIN), back.dimensions());
+        Ok(())
     }
 }

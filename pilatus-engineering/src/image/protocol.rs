@@ -101,17 +101,17 @@ mod tests {
         encode_decode_raw::<u8, 1>(vec![64, 128])
     }
 
-    fn encode_decode_raw<
-        T: PixelType + Send + Sync + core::fmt::Debug + Eq,
-        const CHANNELS: usize,
-    >(
-        input: Vec<T::Primitive>,
-    ) -> TestResult {
+    fn encode_decode_raw<T, const CHANNELS: usize>(input: Vec<T::Primitive>) -> TestResult
+    where
+        T: PixelType + core::fmt::Debug + Eq,
+        Image<T, CHANNELS>: Into<imbuf::DynamicImage>
+            + TryFrom<imbuf::DynamicImage, Error = imbuf::IncompatibleImageError>,
+    {
         let image = Image::<T, CHANNELS>::new_vec_flat(
             input,
             const { NonZeroU32::new(1).unwrap() },
             const { NonZeroU32::new(2).unwrap() },
-        );
+        )?;
         let hash = StableHash::from_hashable(42);
         let encodable_image = ImageWithMeta::with_hash(image.clone().into(), Some(hash));
 

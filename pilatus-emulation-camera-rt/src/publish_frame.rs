@@ -7,6 +7,7 @@ use std::{
 };
 
 use futures::{StreamExt, TryStreamExt};
+use imbuf_image::ImageIntoImbuf;
 use pilatus::{
     FileService, RelativeDirectoryPath,
     device::{ActorMessage, HandlerResult, Step2, WeakUntypedActorMessageSender},
@@ -188,7 +189,7 @@ impl PublisherState {
         let img =
             tokio::task::spawn_blocking(move || image::load_from_memory(&image_data)).await??;
 
-        let pilatus_image = ImbufDynamicImage::try_from(img)?;
+        let pilatus_image = img.into_imbuf_dynamic()?;
         Ok(Some((pilatus_image, path)))
     }
 

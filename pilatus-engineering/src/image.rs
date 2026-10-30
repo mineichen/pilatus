@@ -20,7 +20,7 @@
 use std::{borrow::Cow, fmt::Debug, num::NonZeroU32, sync::Arc};
 
 use crate::{InvertibleTransform, InvertibleTransform3d};
-use imbuf::IncompatibleImageError;
+use imbuf::IncompatibleImage;
 pub use imbuf::{DynamicImage, Image};
 
 #[cfg(feature = "tokio")]
@@ -65,10 +65,7 @@ pub enum Rgb8Image {
 impl Rgb8Image {
     pub fn into_planar(self) -> Image<u8, 3> {
         match self {
-            Rgb8Image::Interleaved(image) => {
-                let dims = image.dimensions();
-                Image::<u8, 3>::from_flat_interleaved(image.buffer_flat(), dims)
-            }
+            Rgb8Image::Interleaved(image) => Image::<u8, 3>::from_interleaved(&image),
             Rgb8Image::Planar(image) => image,
         }
     }
@@ -76,10 +73,7 @@ impl Rgb8Image {
     pub fn into_interleaved(self) -> Image<[u8; 3], 1> {
         match self {
             Rgb8Image::Interleaved(image) => image,
-            Rgb8Image::Planar(image) => {
-                let (width, height) = image.dimensions();
-                Image::<[u8; 3], 1>::from_planar(image.buffers(), width, height)
-            }
+            Rgb8Image::Planar(image) => Image::<[u8; 3], 1>::from_planar_image(&image),
         }
     }
 
@@ -113,12 +107,12 @@ impl From<Rgb8Image> for DynamicImage {
 }
 
 impl TryFrom<DynamicImage> for Rgb8Image {
-    type Error = IncompatibleImageError<DynamicImage>;
+    type Error = IncompatibleImage<DynamicImage>;
 
     fn try_from(value: DynamicImage) -> Result<Self, Self::Error> {
-        Image::<[u8; 3], 1>::try_from(value)
+        Result::<Image<[u8; 3], 1>, _>::from(value)
             .map(Rgb8Image::Interleaved)
-            .or_else(|d| Image::<u8, 3>::try_from(d.image).map(Rgb8Image::Planar))
+            .or_else(|d| Result::<Image<u8, 3>, _>::from(d.image).map(Rgb8Image::Planar))
     }
 }
 
@@ -154,16 +148,20 @@ impl<TIn> CustomActorError for UnsupportedImageError<TIn> {}
 
 #[cfg(test)]
 mod tests {
+    use testresult::TestResult;
+
     use super::*;
 
     #[test]
-    fn test_into_packed() {
-        let size = 2.try_into().unwrap();
-        let image = Image::<u8, 3>::new_vec(vec![1u8, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3], size, size);
+    fn test_into_packed() -> TestResult {
+        let size = 2.try_into()?;
+        let image =
+            Image::<u8, 3>::new_vec(vec![1u8, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3], size, size)?;
         let packed = Rgb8Image::Planar(image).into_interleaved();
         assert_eq!(
             packed.buffer_flat(),
             vec!(1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3)
         );
+        Ok(())
     }
 }

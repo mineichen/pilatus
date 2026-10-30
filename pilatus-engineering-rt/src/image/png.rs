@@ -1,7 +1,7 @@
 use std::{io::Cursor, sync::Arc};
 
 use image::ImageFormat;
-use imbuf::{DynamicImageChannel, Image};
+use imbuf::Image;
 use minfac::ServiceCollection;
 use pilatus_engineering::image::{DynamicImage, EncodeError, ImageEncoder, ImageEncoderTrait};
 
@@ -16,12 +16,18 @@ impl ImageEncoderTrait for PngBackend {
         const APPROXIMATE_COMPRESSION: usize = 3;
         let first = input.first();
         let (width, height) = first.dimensions();
-        match (first, &input.len(), first.pixel_elements().get()) {
-            (DynamicImageChannel::U8(typed), 1, 1) => {
+        let to_processing_error =
+            |e: imbuf::IncompatibleChannelError| EncodeError::Processing(e.into());
+        match (
+            first.bytes_per_primitive().get(),
+            input.len(),
+            first.pixel_elements().get(),
+        ) {
+            (1, 1, 1) => {
                 let img = image::ImageBuffer::<image::Luma<_>, _>::from_raw(
                     width.get(),
                     height.get(),
-                    typed.buffer_flat(),
+                    first.buffer_flat::<u8>().map_err(to_processing_error)?,
                 )
                 .expect("u8 Buffer always matches");
                 let mut buf = Vec::with_capacity(
@@ -31,11 +37,11 @@ impl ImageEncoderTrait for PngBackend {
                     .map_err(|e| EncodeError::Processing(e.into()))?;
                 return Ok(buf.into());
             }
-            (DynamicImageChannel::U16(typed), 1, 1) => {
+            (2, 1, 1) => {
                 let img = image::ImageBuffer::<image::Luma<_>, _>::from_raw(
                     width.get(),
                     height.get(),
-                    typed.buffer_flat(),
+                    first.buffer_flat::<u16>().map_err(to_processing_error)?,
                 )
                 .expect("u16 Buffer always matches");
                 let mut buf = Vec::with_capacity(
@@ -45,9 +51,9 @@ impl ImageEncoderTrait for PngBackend {
                     .map_err(|e| EncodeError::Processing(e.into()))?;
                 return Ok(buf.into());
             }
-            (DynamicImageChannel::U8(_typed), 3, 1) => {
+            (1, 3, 1) => {
                 let image = Image::<u8, 3>::try_from(input)
-                    .map_err(|input| EncodeError::Unknown(format!("{input:?}")))?;
+                    .map_err(|e| EncodeError::Unknown(format!("{e:?}")))?;
                 let interleaved = Image::<[u8; 3], 1>::from_planar_image(&image);
                 let img = image::ImageBuffer::<image::Rgb<_>, _>::from_raw(
                     width.get(),
@@ -62,11 +68,11 @@ impl ImageEncoderTrait for PngBackend {
                     .map_err(|e| EncodeError::Processing(e.into()))?;
                 return Ok(buf.into());
             }
-            (DynamicImageChannel::U8(typed), 1, 3) => {
+            (1, 1, 3) => {
                 let img = image::ImageBuffer::<image::Rgb<_>, _>::from_raw(
                     width.get(),
                     height.get(),
-                    typed.buffer_flat(),
+                    first.buffer_flat::<u8>().map_err(to_processing_error)?,
                 )
                 .expect("u8 Color Buffer always matches");
                 let mut buf = Vec::with_capacity(
@@ -88,19 +94,20 @@ mod tests {
 
     use image::GenericImageView;
     use pilatus_engineering::image::{DynamicImage, Image, Rgb8Image};
+    use testresult::TestResult;
 
     use super::*;
 
     #[test]
-    fn encode_color_image() {
+    fn encode_color_image() -> TestResult {
         let raw = vec![0, 0, 0, 0, 128, 128, 128, 128, 255, 255, 255, 255];
-        let non_zero_two = NonZeroU32::try_from(2).unwrap();
-        let rgb = Image::<u8, 3>::new_vec(raw.clone(), non_zero_two, non_zero_two);
+        let non_zero_two = NonZeroU32::try_from(2)?;
+        let rgb = Image::<u8, 3>::new_vec(raw.clone(), non_zero_two, non_zero_two)?;
         //crate::image::DynamicImage::Rgb8Planar(rgb.clone());
         let backend = PngBackend {};
-        let encoded = backend.encode(DynamicImage::from(rgb.clone())).unwrap();
-        let d_image = Rgb8Image::try_from(rgb.clone()).unwrap();
-        let decoded = image::load_from_memory(&encoded).unwrap();
+        let encoded = backend.encode(DynamicImage::from(rgb.clone()))?;
+        let d_image = Rgb8Image::from(rgb.clone());
+        let decoded = image::load_from_memory(&encoded)?;
         let pixels = decoded.pixels().map(|(_x, _y, i)| i).collect::<Vec<_>>();
         assert_eq!(
             (0..4)
@@ -108,7 +115,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             pixels
         );
-        let rgb_back = Rgb8Image::try_from(d_image).unwrap().into_planar();
+        let rgb_back = d_image.into_planar();
 
         assert_eq!(
             rgb_back,
@@ -117,27 +124,27 @@ mod tests {
             rgb_back.buffers(),
             rgb.buffers()
         );
+        Ok(())
     }
 
     #[test]
-    fn encode_and_decode_planar_rgb_image() {
+    fn encode_and_decode_planar_rgb_image() -> TestResult {
         let image = image::ImageBuffer::<image::Rgb<u8>, _>::from_vec(
             2,
             2,
             vec![0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
         )
-        .unwrap();
+        .ok_or("Buffer doesn't match the dimensions")?;
         let vec_u8 = image.clone().into_vec();
         let vec_rgb: Vec<[u8; 3]> = vec_u8
             .chunks_exact(3)
             .map(|chunk| [chunk[0], chunk[1], chunk[2]])
             .collect();
-        let pilatus =
-            Image::<[u8; 3], 1>::new_vec(vec_rgb, 2.try_into().unwrap(), 2.try_into().unwrap());
+        let pilatus = Image::<[u8; 3], 1>::new_vec(vec_rgb, 2.try_into()?, 2.try_into()?)?;
         let dynamic: DynamicImage = pilatus.clone().into();
         let dynamic2: DynamicImage = pilatus.into();
 
-        let rgb: Rgb8Image = dynamic.try_into().expect("Buffer contains no rgb-image");
+        let rgb: Rgb8Image = dynamic.try_into()?;
         let inter = rgb.into_planar();
         let [r, g, b] = inter.buffers();
         assert_eq!([0, 3, 6, 9], r);
@@ -145,11 +152,11 @@ mod tests {
         assert_eq!([2, 5, 8, 11], b);
 
         let backend = PngBackend {};
-        let png = backend.encode(dynamic2).unwrap();
-        let image::DynamicImage::ImageRgb8(reloaded) = image::load_from_memory(&png).unwrap()
-        else {
+        let png = backend.encode(dynamic2)?;
+        let image::DynamicImage::ImageRgb8(reloaded) = image::load_from_memory(&png)? else {
             panic!("Buffer contains rgb-image");
         };
         assert_eq!(reloaded, image);
+        Ok(())
     }
 }

@@ -5,3 +5,8 @@
 - Emulation-Camera reencodes every image to PNG and strips all metadata
 - Fix default logo coloring: light has black contours, dark has white contours 
 - Rename logo theme `bright` to `light`
+- Update `imbuf` to 0.4: Images have a lifetime (`Image<T, N>` = `ImageView<'static, T, N>`, `DynamicImage` = `DynamicImageView<'static>`). Conversions from the `image` crate moved to `imbuf-image`
+- `SubscribeDynamicImageMessage` is a struct instead of an alias of `SubscribeMessage`. Add `SubscribeImageWithMetaMessage<T, CHANNELS>` for typed images
+- `ActorSystem::ask` and `ask` of all senders return `impl Future + Send + 'static` instead of being `async fn`, so they are `Send` for messages with lifetimes (e.g. `SubscribeMessage<_, DynamicImage, _>`). `ActorMessageSender::ask` and `UntypedActorMessageSender::ask` send immediately instead of on the first poll
+- `ExtractWithFormatError::Unsupported` contains the image and `imbuf::IncompatibleImageError`. `Rgb8Image::try_from(DynamicImage)` fails with `imbuf::IncompatibleImage<DynamicImage>`
+- Require `stream-broadcast` 0.3.1, which contains `StreamBroadcastLossy`
