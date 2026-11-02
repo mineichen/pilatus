@@ -14,7 +14,12 @@
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
 
-      perSystem = { pkgs, system, ... }: let
+      perSystem = { system, ... }: let
+        pkgs = import inputs.nixpkgs {
+          inherit system;
+          config.allowUnfreePredicate = pkg: builtins.elem (inputs.nixpkgs.lib.getName pkg) [ "claude-code" ];
+        };
+
         # Stable toolchain for regular tests
         stableToolchain = with inputs.fenix.packages.${system}; combine [
           stable.toolchain
@@ -36,6 +41,39 @@
           pkgs.gcc
           pkgs.busybox
         ];
+
+        policy = pkgs.writeText "policy.json" ''{"default":[{"type":"insecureAcceptAnything"}]}'';
+        containername = "pilatus-isolated-dev";
+        podmanRuntimePath = pkgs.lib.makeBinPath [
+          pkgs.passt
+        ];
+        podmanRun = ''
+          workspace="$(realpath "''${1:-.}")"
+          exec ${pkgs.podman}/bin/podman run --rm -it \
+            --network=pasta \
+            --tmpfs /tmp \
+            -v "$workspace:/workspace/pilatus:z" \
+            -v "../imbuf:/workspace/imbuf:z" \
+            -w "/workspace/pilatus" \
+            -e HOME=/root \
+            ${containername}:latest /bin/entrypoint.sh
+        '';
+
+        # Mirrors rust-analyzer-lsp@claude-plugins-official, which only declares the server.
+        # Built into the image, because /root/.claude isn't persisted between runs.
+        rustAnalyzerLspPlugin = pkgs.writeTextDir "rust-analyzer-lsp/.claude-plugin/plugin.json"
+          (builtins.toJSON {
+            name = "rust-analyzer-lsp";
+            description = "Rust language server for code intelligence and analysis";
+            version = "1.0.0";
+            lspServers.rust-analyzer = {
+              command = "${stableToolchain}/bin/rust-analyzer";
+              extensionToLanguage.".rs" = "rust";
+            };
+          });
+        claudeCodeWithLsp = pkgs.writeShellScriptBin "claude" ''
+          exec ${pkgs.claude-code}/bin/claude --plugin-dir ${rustAnalyzerLspPlugin}/rust-analyzer-lsp "$@"
+        '';
 
         # Helper function to create shell scripts with error handling
         # Sets up common build environment (gcc, binutils, mold, pkg-config, openssl)
@@ -142,6 +180,43 @@
         # Pure package for miri-test (built in sandbox)
         packages.miri-test-pure = miriTestPure;
 
+        packages.isolated-build = pkgs.dockerTools.buildImage {
+          name = containername;
+          tag = "latest";
+          copyToRoot = pkgs.buildEnv {
+            name = containername;
+            paths = commonBuildInputs ++ [
+              stableToolchain
+              pkgs.ripgrep
+              pkgs.git
+              pkgs.curl
+              pkgs.opencode
+              claudeCodeWithLsp
+              pkgs.mdbook
+              (pkgs.writeScriptBin "entrypoint.sh" ''
+                #!${pkgs.bashInteractive}/bin/bash
+                echo "===================================="
+                echo " Welcome to the deterministic dev shell! "
+                echo "===================================="
+                rustc --version
+                cargo --version
+                exec ${pkgs.bashInteractive}/bin/bash
+              '')
+            ];
+            pathsToLink = [ "/bin" "/lib" "/include" "/share" ];
+          };
+          config = {
+            Env = [
+              "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+              "HOME=/root"
+              "LD_LIBRARY_PATH=${pkgs.openssl.out}/lib"
+              "PKG_CONFIG_PATH=${pkgs.openssl.dev}/lib/pkgconfig"
+            ];
+            Cmd = [ "/bin/entrypoint.sh" ];
+            WorkingDir = "/workspace/pilatus";
+          };
+        };
+
         # App that uses the pure package (built in sandbox when run)
         # When you run `nix run .#miri-test`, it will build the pure package first
         apps.miri-test = {
@@ -156,6 +231,28 @@
             cd book
             mdbook build
           '';
+        };
+
+        apps.isolated-build = {
+          type = "app";
+          program = toString (pkgs.writeShellScript containername ''
+            set -euo pipefail
+            export PATH="${podmanRuntimePath}:$PATH"
+            ${pkgs.podman}/bin/podman rmi ${containername} || true
+            ${pkgs.podman}/bin/podman load \
+              --signature-policy ${policy} \
+              --input ${inputs.self.packages.${system}.isolated-build}
+            ${podmanRun}
+          '');
+        };
+
+        apps.isolated-nobuild = {
+          type = "app";
+          program = toString (pkgs.writeShellScript "run-isolated" ''
+            set -euo pipefail
+            export PATH="${podmanRuntimePath}:$PATH"
+            ${podmanRun}
+          '');
         };
       };
     };

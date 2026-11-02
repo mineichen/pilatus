@@ -65,7 +65,7 @@ pub enum Rgb8Image {
 impl Rgb8Image {
     pub fn into_planar(self) -> Image<u8, 3> {
         match self {
-            Rgb8Image::Interleaved(image) => Image::<u8, 3>::from_interleaved(&image),
+            Rgb8Image::Interleaved(image) => image.transpose(),
             Rgb8Image::Planar(image) => image,
         }
     }
@@ -73,7 +73,7 @@ impl Rgb8Image {
     pub fn into_interleaved(self) -> Image<[u8; 3], 1> {
         match self {
             Rgb8Image::Interleaved(image) => image,
-            Rgb8Image::Planar(image) => Image::<[u8; 3], 1>::from_planar_image(&image),
+            Rgb8Image::Planar(image) => image.transpose(),
         }
     }
 

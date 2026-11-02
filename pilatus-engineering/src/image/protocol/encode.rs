@@ -168,7 +168,7 @@ fn encode_dynamic_image<T: Serialize>(
         NonZeroU16::try_from(image.len_nonzero()).context("Number of Channels is too big")?;
     buf.put_slice(&channels.get().to_le_bytes());
     for channel in image.iter() {
-        buf = match channel.bytes_per_primitive().get() {
+        buf = match channel.primitive_size().get() {
             1 => encode_typed(channel, buf, DataType::U8),
             2 => encode_typed(channel, buf, DataType::U16),
             _ => Err(anyhow!("Unsupported image format: {:?}", image)),
