@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use anyhow::Context;
 use minfac::{Registered, ServiceCollection};
 use pilatus::{LogoQuery, LogoService};
 use pilatus_engineering::image::{Image, ImageLogoService, ImageLogoServiceTrait};
@@ -36,14 +37,36 @@ const CACHE_CAPACITY: usize = 10;
 
 impl ImageLogoServiceTrait for ImageLogoServiceImpl {
     fn get_logo(&self, query: LogoQuery) -> Image<[u8; 4], 1> {
-        let lock = self.cache.read().unwrap();
-        if let Some((_, cached)) = lock.get(&query) {
-            return cached.clone();
+        let width = query.width;
+        let height = query.height;
+
+        if let Ok(l) = self.try_get_logo(query) {
+            l
+        } else {
+            warn!("The logo is not loadable. Therefore a red surface of the size {width}x{height} was returned");
+            Image::<[u8; 4], 1>::new_arc(
+                (0..(width.get() * height.get()))
+                    .map(|_| [255, 0, 0, 255])
+                    .collect(),
+                NonZeroU32::from(*width),
+                NonZeroU32::from(*height),
+            )
+            .expect("Buffer created here, must match")
         }
-        drop(lock);
+    }
+}
+impl ImageLogoServiceImpl {
+    fn try_get_logo(&self, query: LogoQuery) -> anyhow::Result<Image<[u8; 4], 1>> {
+        {
+            let lock = self.cache.read().unwrap();
+            if let Some((_, cached)) = lock.get(&query) {
+                return Ok(cached.clone());
+            }
+        }
+
         let mut lock = self.cache.write().unwrap();
         if let Some((_, cached)) = lock.get(&query) {
-            return cached.clone();
+            return Ok(cached.clone());
         }
 
         let (next_age, to_delete) = {
@@ -76,7 +99,8 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
 
         if let (Some(to_delete), true) = (to_delete, lock.len() >= CACHE_CAPACITY) {
             let clone = to_delete.clone();
-            lock.remove(&clone).expect("Must exist");
+            lock.remove(&clone)
+                .ok_or_else(|| anyhow::anyhow!("Must exist"))?;
         }
 
         let logo = self.logo_service.get(&query);
@@ -90,8 +114,8 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
             let rgba = resized.to_rgba8();
             let isize = rgba.dimensions();
             let (iwidth, iheight) = (
-                isize.0.try_into().expect("Input image has width=0"),
-                isize.1.try_into().expect("Input image has height=0"),
+                isize.0.try_into().context("iwidth")?,
+                isize.1.try_into().context("iheight")?,
             );
 
             Image::<[u8; 4], 1>::new_arc(
@@ -101,8 +125,7 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                     .collect(),
                 iwidth,
                 iheight,
-            )
-            .expect("The resized image contains width * height pixels")
+            )?
         } else if let Ok(svg) = resvg::usvg::Tree::from_data(&logo.0, &Default::default()) {
             let x = svg;
             let size = x.size();
@@ -137,14 +160,8 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                 &mut pixmap.as_mut(),
             );
 
-            let out_width = pixmap
-                .width()
-                .try_into()
-                .expect("Generated Image has width=0");
-            let out_height = pixmap
-                .height()
-                .try_into()
-                .expect("Generated Image has height=0");
+            let out_width = pixmap.width().try_into().context("out_width")?;
+            let out_height = pixmap.height().try_into().context("out_height")?;
 
             Image::<[u8; 4], 1>::new_arc(
                 pixmap
@@ -154,23 +171,13 @@ impl ImageLogoServiceTrait for ImageLogoServiceImpl {
                     .collect(),
                 out_width,
                 out_height,
-            )
-            .expect("The pixmap contains width * height pixels")
+            )?
         } else {
-            let width = query.width.get();
-            let height = query.height.get();
-
-            warn!("The logo is not loadable. Therefore a red surface of the size {width}x{height} was returned");
-            Image::<[u8; 4], 1>::new_arc(
-                (0..(width * height)).map(|_| [255, 0, 0, 255]).collect(),
-                NonZeroU32::from(*query.width),
-                NonZeroU32::from(*query.height),
-            )
-            .expect("The buffer is created with width * height pixels")
+            anyhow::bail!("");
         };
 
         lock.insert(query, (next_age, image.clone()));
-        image
+        Ok(image)
     }
 }
 
