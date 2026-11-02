@@ -19,7 +19,7 @@ impl ImageEncoderTrait for PngBackend {
         let to_processing_error =
             |e: imbuf::IncompatibleChannelError| EncodeError::Processing(e.into());
         match (
-            first.bytes_per_primitive().get(),
+            first.primitive_size().get(),
             input.len(),
             first.pixel_elements().get(),
         ) {
@@ -54,7 +54,7 @@ impl ImageEncoderTrait for PngBackend {
             (1, 3, 1) => {
                 let image = Image::<u8, 3>::try_from(input)
                     .map_err(|e| EncodeError::Unknown(format!("{e:?}")))?;
-                let interleaved = Image::<[u8; 3], 1>::from_planar_image(&image);
+                let interleaved = image.transpose();
                 let img = image::ImageBuffer::<image::Rgb<_>, _>::from_raw(
                     width.get(),
                     height.get(),
