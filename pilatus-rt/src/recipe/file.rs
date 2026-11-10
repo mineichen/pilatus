@@ -394,6 +394,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn remove_file_if_exists_tells_if_it_was_there() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let svc = TokioFileService::builder(dir.path()).build(DeviceId::new_v4());
+        let path = RelativeResourcePath::new("foo/bar.txt")?;
+
+        // Neither the file nor its folder exist
+        assert!(!svc.remove_file_if_exists(path).await?);
+
+        svc.add_file_unchecked(path, b"content").await?;
+        assert!(svc.remove_file_if_exists(path).await?);
+        assert!(!svc.has_file(path).await?);
+
+        assert!(!svc.remove_file_if_exists(path).await?);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn remove_file_if_exists_fails_for_other_errors() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let device_id = DeviceId::new_v4();
+        let device_dir = dir.path().join(device_id.to_string());
+        let svc = TokioFileService::builder(dir.path()).build(device_id);
+
+        // The service never creates this, but a directory where a file is expected
+        // is a different problem than "doesn't exist" and must not be swallowed
+        std::fs::create_dir_all(device_dir.join("trap.txt"))?;
+        svc.remove_file_if_exists(RelativeResourcePath::new("trap.txt")?)
+            .await
+            .expect_err("Removing a directory as file must fail");
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn stream_files_recursive_works() -> anyhow::Result<()> {
         let dir = tempfile::tempdir()?;
         let device_id = DeviceId::new_v4();
