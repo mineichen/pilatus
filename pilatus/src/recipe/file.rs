@@ -102,6 +102,17 @@ impl<T> Deref for FileService<T> {
 }
 
 impl<T> FileService<T> {
+    /// Removes the file, a missing file is not an error.
+    ///
+    /// Returns `true` if the file was removed and `false` if it didn't exist
+    pub async fn remove_file_if_exists(&self, filename: &RelativeResourcePath) -> io::Result<bool> {
+        match self.inner.remove_file(filename).await {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
     pub async fn read_file_bufferd(
         &self,
         filename: &RelativeResourcePath,

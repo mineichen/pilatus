@@ -10,3 +10,4 @@
 - `ActorSystem::ask` and `ask` of all senders return `impl Future + Send + 'static` instead of being `async fn`, so they are `Send` for messages with lifetimes (e.g. `SubscribeMessage<_, DynamicImage, _>`). `ActorMessageSender::ask` and `UntypedActorMessageSender::ask` send immediately instead of on the first poll
 - `ExtractWithFormatError::Unsupported` contains the image and `imbuf::IncompatibleImageError`. `Rgb8Image::try_from(DynamicImage)` fails with `imbuf::IncompatibleImage<DynamicImage>`
 - Require `stream-broadcast` 0.3.1, which contains `StreamBroadcastLossy`
+- Add `FileService::remove_file_if_exists`: A missing file is not an error. Returns `true` if the file was removed and `false` if it didn't exist
