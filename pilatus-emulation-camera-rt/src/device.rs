@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use futures::FutureExt;
 use futures::channel::mpsc;
 use minfac::{Registered, ServiceCollection};
-use pilatus::device::{HandlerResult, Step2, WithAbort};
+use pilatus::device::{ActorResult, WithAbort};
 use pilatus::{FileService, FileServiceBuilder};
 use pilatus::{
     UpdateParamsMessage, UpdateParamsMessageError,
@@ -106,7 +105,7 @@ impl DeviceState {
     async fn update_params(
         &mut self,
         UpdateParamsMessage { params }: UpdateParamsMessage<Params>,
-    ) -> impl HandlerResult<UpdateParamsMessage<Params>> {
+    ) -> ActorResult<UpdateParamsMessage<Params>> {
         match params.mode {
             EmulationMode::File => {
                 if self.publisher.params.permanent_recording != params.permanent_recording
@@ -124,7 +123,8 @@ impl DeviceState {
                     _ => {
                         self.publisher = Arc::new(self.publisher.with_params(params));
                         let weak = Arc::downgrade(&self.publisher);
-                        return Step2(PublisherState::send_delayed(weak).map(|_| Ok(())).boxed());
+                        PublisherState::schedule_next(weak);
+                        return Ok(());
                     }
                 }
             }
@@ -134,7 +134,7 @@ impl DeviceState {
                 );
             }
         };
-        Step2(std::future::ready(Ok(())).boxed())
+        Ok(())
     }
 }
 

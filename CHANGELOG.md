@@ -11,3 +11,5 @@
 - `ExtractWithFormatError::Unsupported` contains the image and `imbuf::IncompatibleImageError`. `Rgb8Image::try_from(DynamicImage)` fails with `imbuf::IncompatibleImage<DynamicImage>`
 - Require `stream-broadcast` 0.3.1, which contains `StreamBroadcastLossy`
 - Add `FileService::remove_file_if_exists`: A missing file is not an error. Returns `true` if the file was removed and `false` if it didn't exist
+- Add `SystemShutdown::run_or_shutdown`, which drives a future to completion unless the system shuts down first (returns `ShutdownError`)
+- Emulation-Camera stops immediately when the device is stopped (shutdown, recipe switch) instead of waiting for the next frame interval to elapse

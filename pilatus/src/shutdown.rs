@@ -8,7 +8,11 @@ use std::{
     task::{self, Poll},
 };
 
-use futures_util::{future::Shared, stream::AbortHandle, FutureExt};
+use futures_util::{
+    future::{select, Either, Shared},
+    stream::AbortHandle,
+    FutureExt,
+};
 
 type InnerPrivateState =
     Shared<Pin<std::boxed::Box<dyn Future<Output = ()> + 'static + Send + Sync>>>;
@@ -39,5 +43,25 @@ impl SystemTerminator {
     }
     pub fn shutdown(&self) {
         self.0.abort();
+    }
+}
+
+/// Returned by [`SystemShutdown::run_or_shutdown`] if the system shut down before the future completed
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("System is shutting down")]
+pub struct ShutdownError;
+
+impl SystemShutdown {
+    /// Drives `other` to completion, unless the system shuts down first.
+    ///
+    /// If both are ready at the same time, the result of `other` is preferred.
+    pub async fn run_or_shutdown<F: Future>(
+        &mut self,
+        other: F,
+    ) -> Result<F::Output, ShutdownError> {
+        match select(std::pin::pin!(other), self).await {
+            Either::Left((output, _)) => Ok(output),
+            Either::Right(_) => Err(ShutdownError),
+        }
     }
 }
