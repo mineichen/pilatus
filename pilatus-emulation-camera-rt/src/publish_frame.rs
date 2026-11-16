@@ -10,7 +10,7 @@ use futures::{StreamExt, TryStreamExt};
 use imbuf_image::ImageIntoImbuf;
 use pilatus::{
     FileService, RelativeDirectoryPath,
-    device::{ActorMessage, HandlerResult, Step2, WeakUntypedActorMessageSender},
+    device::{ActorMessage, ActorResult, WeakUntypedActorMessageSender},
 };
 use pilatus_engineering::image::{DynamicImage as ImbufDynamicImage, ImageWithMeta};
 use tokio::io;
@@ -36,7 +36,7 @@ impl DeviceState {
     pub(super) async fn publish_frame(
         &mut self,
         msg: PublishImageMessage,
-    ) -> impl HandlerResult<PublishImageMessage> {
+    ) -> ActorResult<PublishImageMessage> {
         let move_to_next = !self.paused;
         let re_schedule = match PublisherState::next_image_if_upgradeable(
             &msg.0,
@@ -71,12 +71,10 @@ impl DeviceState {
             }
         };
 
-        Step2(async move {
-            if let Some(weak) = re_schedule {
-                PublisherState::send_delayed(weak).await;
-            }
-            Ok(())
-        })
+        if let Some(weak) = re_schedule {
+            PublisherState::schedule_next(weak);
+        }
+        Ok(())
     }
 }
 
@@ -118,15 +116,21 @@ impl PublisherState {
         Ok(())
     }
 
-    pub async fn send_delayed(weak: Weak<Self>) {
-        if let Some(state) = weak.upgrade() {
-            tokio::time::sleep(Duration::from_millis(state.params.file.interval)).await;
-            state
-                .self_sender
-                .clone()
-                .tell(PublishImageMessage(weak))
-                .ok();
-        }
+    /// Sends the next [`PublishImageMessage`] after the configured interval.
+    ///
+    /// Runs detached and holds only weak references, so it never delays the shutdown of the device
+    /// (pending actor tasks are awaited when a device is stopped).
+    pub fn schedule_next(weak: Weak<Self>) {
+        let Some(state) = weak.upgrade() else {
+            return;
+        };
+        let interval = Duration::from_millis(state.params.file.interval);
+        let mut sender = state.self_sender.clone();
+        drop(state);
+        tokio::spawn(async move {
+            tokio::time::sleep(interval).await;
+            sender.tell(PublishImageMessage(weak)).ok();
+        });
     }
 
     pub async fn get_collection_directory(&self, state: &FileService) -> io::Result<PathBuf> {
