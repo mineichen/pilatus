@@ -9,12 +9,12 @@ use futures::{io::Cursor, pin_mut, StreamExt};
 use pilatus::{EntryWriter, RecipeExporterTrait, RecipeId};
 use tokio::fs;
 
-use super::RecipeServiceFassade;
+use super::RecipeServiceImpl;
 
 use super::RecipesExt;
 
 #[async_trait]
-impl RecipeExporterTrait for RecipeServiceFassade {
+impl RecipeExporterTrait for RecipeServiceImpl {
     async fn export<'a>(
         &self,
         recipe_id: RecipeId,

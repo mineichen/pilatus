@@ -1,6 +1,6 @@
 use futures::io::Cursor;
 use pilatus::{DeviceConfig, ImportRecipeError, ImportRecipesOptions, IntoMergeStrategy, RecipeId};
-use pilatus_rt::RecipeServiceFassade;
+use pilatus_rt::RecipeServiceImpl;
 
 use crate::recipe::import::ZipReaderWrapper;
 
@@ -24,7 +24,7 @@ async fn conflicting_device_after_import_unspecified() {
 async fn import_recipe_with_different_id_but_including_existing_deviceid(
     merge_strategy: IntoMergeStrategy,
 ) {
-    let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
+    let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
     let rs = rsb.build();
     let active_recipe_id = rs.get_active_id().await;
     let device_id = rs

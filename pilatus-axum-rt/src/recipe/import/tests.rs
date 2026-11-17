@@ -1,7 +1,7 @@
 use futures::{future::join, Future};
-use pilatus_rt::RecipeServiceFassade;
+use pilatus_rt::RecipeServiceImpl;
 
-use pilatus::{device::DeviceId, DeviceConfig, RecipeExporterTrait, RecipeId, RecipeServiceTrait};
+use pilatus::{device::DeviceId, DeviceConfig, RecipeExporterTrait, RecipeId, RecipeServiceFacade};
 use tokio::io::DuplexStream;
 use tokio_util::compat::Compat;
 
@@ -20,7 +20,7 @@ async fn build_zip(
     device_config: DeviceConfig,
     files: &[(&'static str, &'static str)],
 ) -> Vec<u8> {
-    let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
+    let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
     let rs = rsb.build();
     let active_recipe_id = {
         let active_recipe_id = rs.get_active_id().await;
@@ -30,8 +30,12 @@ async fn build_zip(
             rs.add_recipe_with_id(recipe_id.clone(), Default::default())
                 .await
                 .unwrap();
-            rs.activate_recipe(recipe_id.clone()).await.unwrap();
-            rs.delete_recipe(active_recipe_id).await.unwrap();
+            rs.start_recipe(recipe_id.clone(), Default::default())
+                .await
+                .unwrap();
+            rs.delete_recipe(active_recipe_id, Default::default())
+                .await
+                .unwrap();
             recipe_id
         }
     };

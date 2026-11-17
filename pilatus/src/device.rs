@@ -41,19 +41,30 @@ pub struct IgnoreNotSendableOneShotChannel<T> {
     one_shot: oneshot::Sender<T>,
 }
 
+#[deprecated(
+    note = "Use `RecipeService::start_recipe_with` (implemented by `RecipeServiceImpl` in pilatus-rt), which also allows to resolve pending changes"
+)]
+#[allow(deprecated)]
 #[derive(Clone)]
 pub struct RecipeRunner(Arc<dyn RecipeRunnerTrait>);
 
+#[allow(deprecated)]
 impl RecipeRunner {
     pub fn new(inner: Arc<dyn RecipeRunnerTrait>) -> Self {
         Self(inner)
     }
 
+    #[deprecated(
+        note = "Use `RecipeService::start_recipe_with` (implemented by `RecipeServiceImpl` in pilatus-rt), which also allows to resolve pending changes"
+    )]
     pub fn select_recipe(&self, recipe_id: RecipeId) -> BoxFuture<'_, anyhow::Result<()>> {
         self.0.select_recipe(recipe_id)
     }
 }
 
+#[deprecated(
+    note = "Use `RecipeService::start_recipe_with` (implemented by `RecipeServiceImpl` in pilatus-rt), which also allows to resolve pending changes"
+)]
 #[async_trait]
 pub trait RecipeRunnerTrait: Send + Sync {
     async fn select_recipe(&self, recipe_id: RecipeId) -> anyhow::Result<()>;

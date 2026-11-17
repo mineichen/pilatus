@@ -5,15 +5,19 @@ use async_trait::async_trait;
 use futures::stream::BoxStream;
 use minfac::{Registered, ServiceCollection};
 use pilatus::device::ActiveState;
+#[allow(deprecated)]
+use pilatus::device::RecipeRunnerTrait;
 use pilatus::{
-    device::DeviceId, Name, ParameterUpdate, Recipe, RecipeId, RecipeMetadata, RecipeService,
-    RecipeServiceTrait, TransactionError, TransactionOptions,
+    device::DeviceId, Name, ParameterUpdate, PendingChangesStrategy, Recipe, RecipeId,
+    RecipeMetadata, RecipeService, RecipeServiceFacade, StartRecipeOptions, TransactionError,
+    TransactionOptions, UnknownRecipeError,
 };
 use pilatus::{FileServiceBuilder, RecipeExporter, RecipeImporter};
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 use uuid::Uuid;
 
 use super::{RecipeDataService, RecipeImporterImpl, RecipeServiceAccessor};
+use crate::device::RecipeRunnerState;
 use crate::TokioFileService;
 
 mod builder;
@@ -22,22 +26,76 @@ mod builder;
 pub use builder::*;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
-    c.with::<Registered<Arc<RecipeServiceAccessor>>>()
-        .register(|recipe_service| Arc::new(RecipeServiceFassade { recipe_service }))
-        .alias(|x| x as RecipeService);
-    c.with::<Registered<Arc<RecipeServiceFassade>>>()
+    c.with::<(
+        Registered<Arc<RecipeServiceAccessor>>,
+        Registered<Arc<RecipeRunnerState>>,
+    )>()
+    .register(|(recipe_service, runner)| {
+        Arc::new(RecipeServiceImpl {
+            runner: Some(runner),
+            recipe_service,
+        })
+    })
+    .alias(|x| RecipeService::new(x));
+    c.with::<Registered<Arc<RecipeServiceImpl>>>()
         .register(|x| x as RecipeExporter);
 
-    c.with::<Registered<Arc<RecipeServiceFassade>>>()
+    c.with::<Registered<Arc<RecipeServiceImpl>>>()
         .register(|x| Box::new(RecipeImporterImpl(x)) as RecipeImporter);
 }
 
+#[deprecated(note = "Renamed to `RecipeServiceImpl`")]
+pub type RecipeServiceFassade = RecipeServiceImpl;
+
 #[derive(Clone, Debug)]
-pub struct RecipeServiceFassade {
+pub struct RecipeServiceImpl {
     recipe_service: Arc<RecipeServiceAccessor>,
+    // Missing, if the service was built without a running system (e.g. with `RecipeServiceImplBuilder`): There are no devices to stop
+    runner: Option<Arc<RecipeRunnerState>>,
 }
 
-impl RecipeServiceFassade {
+#[allow(deprecated)]
+#[async_trait]
+impl RecipeRunnerTrait for RecipeServiceImpl {
+    async fn select_recipe(&self, recipe_id: RecipeId) -> anyhow::Result<()> {
+        self.start_recipe_anyhow(recipe_id, PendingChangesStrategy::Deny.into())
+            .await
+    }
+}
+
+impl RecipeServiceImpl {
+    /// Errors of the recipe change are `TransactionError`s within anyhow, errors of the runner itself
+    /// (e.g. not ready) are plain anyhow errors, which is the error format of the legacy `RecipeRunnerTrait`
+    async fn start_recipe_anyhow(
+        &self,
+        id: RecipeId,
+        options: StartRecipeOptions,
+    ) -> anyhow::Result<()> {
+        let Some(runner) = &self.runner else {
+            return Ok(self.start_recipe_while_stopped(id, options).await?);
+        };
+        // Known without touching files, so the devices keep running. Everything else
+        // (e.g. file changes) can only be detected while the devices are stopped
+        let is_known = self.recipe_service_read().await.recipes.has_recipe(&id);
+        if !is_known {
+            return Err(TransactionError::from(UnknownRecipeError(id)).into());
+        }
+        runner.start_recipe(id, options).await
+    }
+
+    /// Files are compared and replaced, so this must only be called while no device is running:
+    /// By the runner after it stopped all devices, or if there is no runner.
+    pub(crate) async fn start_recipe_while_stopped(
+        &self,
+        id: RecipeId,
+        options: StartRecipeOptions,
+    ) -> Result<(), TransactionError> {
+        let mut s = self.recipe_service_write().await;
+        s.activate_recipe(id, options.strategy).await?;
+        s.commit(options.transaction.key).await?;
+        Ok(())
+    }
+
     pub(super) fn recipe_service(&self) -> &RecipeServiceAccessor {
         &self.recipe_service
     }
@@ -61,8 +119,8 @@ impl RecipeServiceFassade {
 }
 
 #[async_trait]
-impl RecipeServiceTrait for RecipeServiceFassade {
-    async fn add_new_default_recipe_with(
+impl RecipeServiceFacade for RecipeServiceImpl {
+    async fn add_new_default_recipe(
         &self,
         options: TransactionOptions,
     ) -> Result<(RecipeId, Recipe), TransactionError> {
@@ -72,7 +130,7 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         Ok(r)
     }
 
-    async fn update_recipe_metadata_with(
+    async fn update_recipe_metadata(
         &self,
         id: RecipeId,
         data: RecipeMetadata,
@@ -84,7 +142,7 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         Ok(())
     }
 
-    async fn delete_recipe_with(
+    async fn delete_recipe(
         &self,
         recipe_id: RecipeId,
         options: TransactionOptions,
@@ -95,7 +153,7 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         Ok(())
     }
 
-    async fn duplicate_recipe_with(
+    async fn duplicate_recipe(
         &self,
         recipe_id: RecipeId,
         options: TransactionOptions,
@@ -110,18 +168,21 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         self.recipe_service_read().await.state().await
     }
 
-    async fn activate_recipe_with(
+    async fn start_recipe(
         &self,
         id: RecipeId,
-        options: TransactionOptions,
+        options: StartRecipeOptions,
     ) -> Result<(), TransactionError> {
-        let mut s = self.recipe_service_write().await;
-        s.activate_recipe(id).await?;
-        s.commit(options.key).await?;
-        Ok(())
+        self.start_recipe_anyhow(id, options)
+            .await
+            // Errors of the recipe change are `TransactionError`s already: Don't wrap them in `Other` again
+            .map_err(|e| {
+                e.downcast::<TransactionError>()
+                    .unwrap_or_else(TransactionError::Other)
+            })
     }
 
-    async fn update_device_params_with(
+    async fn update_device_params(
         &self,
         recipe_id: RecipeId,
         device_id: DeviceId,
@@ -135,21 +196,14 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         Ok(())
     }
 
-    async fn restore_active_with(&self, transaction_key: Uuid) -> Result<(), TransactionError> {
-        let mut s = self.recipe_service_write().await;
-        s.restore_active().await?;
-        s.commit(transaction_key).await?;
-        Ok(())
-    }
-
-    async fn commit_active_with(&self, transaction_key: Uuid) -> Result<(), TransactionError> {
+    async fn commit_active(&self, transaction_key: Uuid) -> Result<(), TransactionError> {
         let mut s = self.recipe_service_write().await;
         s.commit_active().await?;
         s.commit(transaction_key).await?;
         Ok(())
     }
 
-    async fn delete_device_with(
+    async fn delete_device(
         &self,
         recipe_id: RecipeId,
         device_id: DeviceId,
@@ -173,7 +227,7 @@ impl RecipeServiceTrait for RecipeServiceFassade {
         Ok(())
     }
 
-    async fn update_device_name_with(
+    async fn update_device_name(
         &self,
         recipe_id: RecipeId,
         device_id: DeviceId,
@@ -193,16 +247,16 @@ impl RecipeServiceTrait for RecipeServiceFassade {
 
 #[cfg(any(test, feature = "unstable"))]
 pub(crate) mod unstable {
-    use super::builder::RecipeServiceFassadeBuilder;
+    use super::builder::RecipeServiceImplBuilder;
     use crate::recipe::{RecipeImporterImpl, RecipeServiceBuilder};
     use pilatus::{DeviceConfig, FileService, RecipeImporter, RelativeResourcePath};
 
     use super::*;
     use std::{path::PathBuf, sync::Arc};
-    impl RecipeServiceFassade {
-        pub fn create_temp_builder() -> (tempfile::TempDir, RecipeServiceFassadeBuilder) {
+    impl RecipeServiceImpl {
+        pub fn create_temp_builder() -> (tempfile::TempDir, RecipeServiceImplBuilder) {
             let dir = tempfile::tempdir().unwrap();
-            let rs = RecipeServiceFassadeBuilder {
+            let rs = RecipeServiceImplBuilder {
                 recipe_builder: RecipeServiceBuilder::new(
                     dir.path(),
                     Arc::new(super::super::parameters::LambdaRecipePermissioner::always_ok()),

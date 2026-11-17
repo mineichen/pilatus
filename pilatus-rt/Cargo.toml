@@ -43,6 +43,8 @@ tracing-appender = { version = "0.2", optional = true }
 
 [dev-dependencies]
 pilatus = { workspace = true, features = ["unstable"] }
+# Integration tests (tests/) use the helpers of RecipeServiceImpl, which are only available with "unstable"
+pilatus-rt = { workspace = true, features = ["unstable"] }
 testresult.workspace = true
 
 [features]

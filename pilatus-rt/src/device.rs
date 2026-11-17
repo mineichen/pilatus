@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use anyhow::anyhow;
-use async_trait::async_trait;
 use futures::future::BoxFuture;
 use futures::{
     channel::oneshot::{self, Sender},
@@ -13,32 +12,35 @@ use futures::{
 use minfac::{AllRegistered, Registered, ServiceCollection, WeakServiceProvider};
 use pilatus::device::DeviceContext;
 use pilatus::device::InfallibleParamApplier;
+#[allow(deprecated)]
+use pilatus::device::RecipeRunner;
 use pilatus::device::RecipeServiceParamApplier;
 use pilatus::device::WithInfallibleParamUpdate;
 use pilatus::Variables;
 use pilatus::{
-    device::{ActorSystem, DeviceId, FinalizeRecipeExecution, RecipeRunner, RecipeRunnerTrait},
+    device::{ActorSystem, DeviceId, FinalizeRecipeExecution},
     prelude::*,
-    DeviceConfig, RecipeId, RecipeServiceTrait, SystemShutdown,
+    DeviceConfig, RecipeId, RecipeServiceFacade, StartRecipeOptions, SystemShutdown,
 };
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
 use crate::metadata_future::MetadataFuture;
 use crate::recipe::DeviceSpawnerService;
-use crate::recipe::RecipeServiceFassade;
+use crate::recipe::RecipeServiceImpl;
 use crate::recipe::StartDeviceError;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<(
         Registered<RecipeRunnerImpl>,
-        Registered<Arc<RecipeServiceFassade>>,
+        Registered<Arc<RecipeServiceImpl>>,
         Registered<ActorSystem>,
         Registered<SystemShutdown>,
     )>()
     .register_hosted_service("Device Runner", run_devices_from_service);
 
-    c.register_shared(|| Arc::new(RecipeRunnerState::default()));
+    c.with::<Registered<ActorSystem>>()
+        .register_shared(|actor_system| Arc::new(RecipeRunnerState::new(actor_system)));
 
     c.with::<(
         WeakServiceProvider,
@@ -49,21 +51,17 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
     .register(|(provider, state, spawner, finalizer)| {
         RecipeRunnerImpl::new(provider, state, spawner, finalizer.collect())
     });
-    c.with::<(Registered<RecipeRunnerImpl>, Registered<ActorSystem>)>()
-        .register(|(recipe_runner, actor_system)| {
-            RecipeRunner::new(Arc::new(RecipeRunnerService {
-                recipe_runner,
-                actor_system,
-            }))
-        });
+    #[allow(deprecated)]
+    c.with::<Registered<Arc<RecipeServiceImpl>>>()
+        .register(|recipe_service| RecipeRunner::new(recipe_service));
 }
 
-type RunJob = Sender<(RecipeId, Sender<anyhow::Result<()>>)>;
+type RunJob = Sender<(RecipeId, StartRecipeOptions, Sender<anyhow::Result<()>>)>;
 
 async fn run_devices_from_service(
     (runner, recipe_service, actor_system, shutdown): (
         RecipeRunnerImpl,
-        Arc<RecipeServiceFassade>,
+        Arc<RecipeServiceImpl>,
         ActorSystem,
         SystemShutdown,
     ),
@@ -86,20 +84,6 @@ pub struct RecipeRunnerImpl {
     finalizer: Vec<Arc<dyn FinalizeRecipeExecution>>,
 }
 
-struct RecipeRunnerService {
-    recipe_runner: RecipeRunnerImpl,
-    actor_system: ActorSystem,
-}
-
-#[async_trait]
-impl RecipeRunnerTrait for RecipeRunnerService {
-    async fn select_recipe(&self, recipe_id: RecipeId) -> anyhow::Result<()> {
-        let result = self.recipe_runner.select_recipe(recipe_id)?;
-        self.actor_system.forget_senders();
-        result.await
-    }
-}
-
 type ChangeApplier<'a> = &'a mut (dyn FnMut(
     DeviceId,
     WithInfallibleParamUpdate<JoinHandle<Result<(), anyhow::Error>>>,
@@ -107,29 +91,6 @@ type ChangeApplier<'a> = &'a mut (dyn FnMut(
              + Send);
 
 impl RecipeRunnerImpl {
-    fn select_recipe(
-        &self,
-        recipe_id: RecipeId,
-    ) -> anyhow::Result<impl Future<Output = anyhow::Result<()>>> {
-        let sender = {
-            self.state
-                .next_recipe_id
-                .lock()
-                .expect("Not poisoned")
-                .take()
-        }
-        .ok_or_else(|| anyhow::anyhow!("Not ready to select new RecipeId"))?;
-
-        let (tx, rx) = oneshot::channel();
-        sender
-            .send((recipe_id, tx))
-            .map_err(|_| anyhow::anyhow!("Couldn't send RecipeId to channel"))?;
-        Ok(rx
-            .map_err(Into::into)
-            .and_then(|x| async move { x })
-            .boxed())
-    }
-
     fn new(
         provider: WeakServiceProvider,
         state: Arc<RecipeRunnerState>,
@@ -154,7 +115,7 @@ impl RecipeRunnerImpl {
         Ok(())
     }
 
-    async fn run_active_recipe(&self, rs: Arc<RecipeServiceFassade>) -> Result<(), anyhow::Error> {
+    async fn run_active_recipe(&self, rs: Arc<RecipeServiceImpl>) -> Result<(), anyhow::Error> {
         loop {
             let (recipe_id, active_devices, variables) = rs
                 .recipe_service_read()
@@ -162,7 +123,7 @@ impl RecipeRunnerImpl {
                 .get_owned_devices_from_active()
                 .await;
             let (tx, rx) = oneshot::channel();
-            // Allow new recipe via self.select_recipe()
+            // Allow new recipe via RecipeRunnerState::start_recipe()
             *self.state.next_recipe_id.lock().expect("Not poisoned") = Some(tx);
             self.run_devices(
                 active_devices,
@@ -171,7 +132,7 @@ impl RecipeRunnerImpl {
                     RecipeServiceParamApplier {
                         device_id,
                         recipe_id: recipe_id.clone(),
-                        service: rs.as_ref() as &(dyn RecipeServiceTrait + Send + Sync),
+                        service: rs.as_ref() as &(dyn RecipeServiceFacade + Send + Sync),
                     }
                     .apply(update)
                 },
@@ -184,9 +145,13 @@ impl RecipeRunnerImpl {
                 .await;
 
             match rx.await {
-                Ok((next_id, select_recipe_response)) => {
-                    let _ignore_absent_receiver = select_recipe_response
-                        .send(rs.activate_recipe(next_id).await.map_err(Into::into));
+                Ok((next_id, options, start_recipe_response)) => {
+                    // All devices have finished at this point, so files can be compared and replaced safely
+                    let _ignore_absent_receiver = start_recipe_response.send(
+                        rs.start_recipe_while_stopped(next_id, options)
+                            .await
+                            .map_err(Into::into),
+                    );
                 }
                 Err(_) => break,
             }
@@ -259,9 +224,57 @@ impl RecipeRunnerImpl {
     }
 }
 
-#[derive(Default)]
-struct RecipeRunnerState {
+/// Hands recipe changes over to the runner loop (`RecipeRunnerImpl::run_active_recipe`).
+/// Doesn't know `RecipeServiceImpl`, as it is owned by it. Is only shared with the runner loop.
+#[derive(Debug)]
+pub(crate) struct RecipeRunnerState {
     next_recipe_id: Mutex<Option<RunJob>>,
+    actor_system: ActorSystem,
+}
+
+impl RecipeRunnerState {
+    pub(crate) fn new(actor_system: ActorSystem) -> Self {
+        Self {
+            next_recipe_id: Default::default(),
+            actor_system,
+        }
+    }
+
+    /// Stops all devices, resolves pending changes with `options.strategy` and starts the devices of `recipe_id`.
+    /// The devices are restarted in any case, also if `recipe_id` is active already or the change is denied.
+    /// See `RecipeServiceFacade::start_recipe`
+    pub(crate) async fn start_recipe(
+        &self,
+        recipe_id: RecipeId,
+        options: StartRecipeOptions,
+    ) -> anyhow::Result<()> {
+        let result = self.send_job(recipe_id, options)?;
+        // Files are only compared/moved by the runner loop, after all devices have finished
+        self.actor_system.forget_senders();
+        result.await
+    }
+
+    fn send_job(
+        &self,
+        recipe_id: RecipeId,
+        options: StartRecipeOptions,
+    ) -> anyhow::Result<impl Future<Output = anyhow::Result<()>>> {
+        let sender = self
+            .next_recipe_id
+            .lock()
+            .expect("Not poisoned")
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Not ready to select new RecipeId"))?;
+
+        let (tx, rx) = oneshot::channel();
+        sender
+            .send((recipe_id, options, tx))
+            .map_err(|_| anyhow::anyhow!("Couldn't send RecipeId to channel"))?;
+        Ok(rx
+            .map_err(Into::into)
+            .and_then(|x| async move { x })
+            .boxed())
+    }
 }
 
 #[cfg(test)]
@@ -304,11 +317,11 @@ mod tests {
         let errors_ref = &mut errors;
         let provider = collection.build().unwrap();
         let weak_provider: WeakServiceProvider = (&provider).into();
-        let state = RecipeRunnerState::default();
+        let actor_system = ActorSystem::new();
         let runner = RecipeRunnerImpl::new(
             weak_provider,
-            Arc::new(state),
-            DeviceSpawnerService::new(provider.get_all(), ActorSystem::new()),
+            Arc::new(RecipeRunnerState::new(actor_system.clone())),
+            DeviceSpawnerService::new(provider.get_all(), actor_system),
             Vec::new(),
         );
         runner

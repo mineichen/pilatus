@@ -28,14 +28,14 @@ use tracing::{trace, warn};
 use uuid::Uuid;
 
 use self::merge_strategy::{MergeStrategy, MergeStrategyContext};
-use super::RecipeServiceFassade;
+use super::RecipeServiceImpl;
 
 mod merge_strategy;
 
 #[must_use]
 #[derive(Debug)]
 pub struct Importer {
-    service: Arc<RecipeServiceFassade>,
+    service: Arc<RecipeServiceImpl>,
     recipes: HashMap<RecipeId, Recipe>,
     variables: Variables,
     tmp: TempDir,
@@ -131,7 +131,7 @@ impl Importer {
 type ImportResult = Result<ImporterData, ImportRecipeError>;
 type ImporterData = (HashMap<RecipeId, Recipe>, Variables);
 
-pub struct RecipeImporterImpl(pub Arc<RecipeServiceFassade>);
+pub struct RecipeImporterImpl(pub Arc<RecipeServiceImpl>);
 
 #[async_trait]
 impl RecipeImporterTrait for RecipeImporterImpl {
@@ -166,7 +166,7 @@ impl RecipeImporterTrait for RecipeImporterImpl {
         }
     }
 }
-impl RecipeServiceFassade {
+impl RecipeServiceImpl {
     async fn import_into_path(&self, r: &mut dyn EntryReader, root: PathBuf) -> ImportResult {
         let mut data = Vec::new();
         let mut recipes = HashMap::new();
