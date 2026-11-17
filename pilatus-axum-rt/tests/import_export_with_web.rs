@@ -11,7 +11,7 @@ use pilatus::{
     prelude::*,
     DeviceConfig, RecipeId, UpdateParamsMessageError,
 };
-use pilatus_rt::{RecipeServiceFassade, TempRuntime};
+use pilatus_rt::{RecipeServiceImpl, TempRuntime};
 use reqwest::StatusCode;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
@@ -65,7 +65,7 @@ fn upload_zip() -> anyhow::Result<()> {
         .run_until(
             |(Registered(web_stats), Registered(recipe_service)): (
                 Registered<pilatus_axum::Stats>,
-                Registered<Arc<RecipeServiceFassade>>,
+                Registered<Arc<RecipeServiceImpl>>,
             )| async move {
                 let port = web_stats.socket_addr().await.port();
                 assert_ne!(port, 80);
@@ -111,7 +111,7 @@ fn upload_zip() -> anyhow::Result<()> {
 async fn generate_zip(
     base: &str,
     client: &reqwest::Client,
-    s: &RecipeServiceFassade,
+    s: &RecipeServiceImpl,
 ) -> anyhow::Result<(RecipeId, Vec<u8>)> {
     let (active_id, _) = get_current(base, client).await?;
     let clone_response = client

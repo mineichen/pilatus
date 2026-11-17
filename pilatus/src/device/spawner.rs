@@ -11,7 +11,7 @@ use super::{
     DeviceValidationContext, WithInfallibleParamUpdate,
 };
 use crate::{
-    DeviceConfig, NotAppliedError, ParameterUpdate, RecipeId, RecipeServiceTrait,
+    DeviceConfig, NotAppliedError, ParameterUpdate, RecipeId, RecipeServiceFacade,
     UnknownDeviceError, UntypedDeviceParamsWithVariables, UpdateParamsMessageError,
 };
 
@@ -155,7 +155,7 @@ pub trait InfallibleParamApplier<T: Send> {
 pub struct RecipeServiceParamApplier<'a> {
     pub recipe_id: RecipeId,
     pub device_id: DeviceId,
-    pub service: &'a (dyn RecipeServiceTrait + Send + Sync),
+    pub service: &'a (dyn RecipeServiceFacade + Send + Sync),
 }
 #[async_trait]
 impl<'a, T: Send + 'a> InfallibleParamApplier<T> for &'a mut DeviceConfig {
@@ -187,6 +187,7 @@ impl<'a, T: Send + 'a> InfallibleParamApplier<T> for RecipeServiceParamApplier<'
                         parameters,
                         variables: Default::default(),
                     },
+                    Default::default(),
                 )
                 .await
             {

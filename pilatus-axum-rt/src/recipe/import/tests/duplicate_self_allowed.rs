@@ -3,19 +3,22 @@ use std::sync::Arc;
 use futures::{io::Cursor, StreamExt};
 use pilatus::{
     visit_directory_files, DeviceConfig, ImportRecipeError, ImportRecipesOptions,
-    IntoMergeStrategy, RecipeExporterTrait, RecipeServiceTrait,
+    IntoMergeStrategy, RecipeExporterTrait, RecipeServiceFacade,
 };
-use pilatus_rt::RecipeServiceFassade;
+use pilatus_rt::RecipeServiceImpl;
 
 use crate::recipe::import::ZipReaderWrapper;
 
 #[tokio::test]
 async fn duplicate_self_allowed() {
-    let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
+    let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
     let rs = Arc::new(rsb.build());
     let active_recipe_id = rs.get_active_id().await;
 
-    let (export_recipe_id, _) = rs.duplicate_recipe(active_recipe_id).await.unwrap();
+    let (export_recipe_id, _) = rs
+        .duplicate_recipe(active_recipe_id, Default::default())
+        .await
+        .unwrap();
 
     let id = rs
         .add_device_to_recipe(export_recipe_id.clone(), DeviceConfig::mock(1i32))

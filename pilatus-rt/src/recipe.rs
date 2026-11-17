@@ -6,18 +6,19 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
 use minfac::{AllRegistered, Registered, ServiceCollection};
 use pilatus::device::{ActiveState, DeviceContext};
 use pilatus::{
     clone_directory_deep, device::DeviceId, visit_directory_files, DeviceConfig, GenericConfig,
-    InitRecipeListener, Name, ParameterUpdate, Recipe, RecipeId, RecipeMetadata, Recipes,
-    TransactionError, TransactionOptions, UntypedDeviceParamsWithVariables, VariableError,
-    Variables, VariablesPatch,
+    InitRecipeListener, Name, ParameterUpdate, PendingChangesStrategy, Recipe, RecipeId,
+    RecipeMetadata, Recipes, TransactionError, TransactionOptions,
+    UntypedDeviceParamsWithVariables, VariableError, Variables, VariablesPatch,
 };
-use pilatus::{RelativeDirectoryPath, UncommittedChangesError, UnknownDeviceError};
+use pilatus::{
+    RelativeDirectoryPath, UncommittedChangesError, UnknownDeviceError, UnknownRecipeError,
+};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
@@ -34,20 +35,20 @@ use self::recipes::RecipesExt;
 
 mod actions;
 mod export;
-mod fassade;
 mod file;
 mod has_same_content;
 mod import;
 mod parameters;
 mod recipes;
 mod service_builder;
+mod service_impl;
 
 pub use actions::*;
-pub use fassade::*;
 pub use file::TokioFileService;
 pub use import::*;
 pub use parameters::*;
 pub use service_builder::RecipeServiceBuilder;
+pub use service_impl::*;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
     c.with::<(
@@ -66,7 +67,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
         },
     );
 
-    fassade::register_services(c);
+    service_impl::register_services(c);
     parameters::register_services(c);
     file::register_services(c);
 }
@@ -360,13 +361,77 @@ impl<T: DerefMut<Target = Recipes>> RecipeDataService<'_, T> {
         Ok(())
     }
 
-    async fn restore_active(&mut self) -> Result<(), TransactionError> {
-        Err(TransactionError::Other(anyhow!("Not yet implemented")))
+    /// Discards all uncommitted changes (params, added/removed devices, files) of the active recipe. Tags are kept.
+    ///
+    /// Only to be used while activating another recipe (see `activate_recipe`): All devices must be stopped,
+    /// as files are replaced. Because they will be started from the restored state, no parameters have to be applied.
+    async fn discard_active(&mut self) -> Result<(), TransactionError> {
+        let backup = self.recipes.active_backup().clone();
+
+        // Remove running state of all devices and restore files from backup.
+        // Devices removed since the last commit exist in backup only, but their files must be restored too.
+        // Every step is idempotent and the in-memory recipes are only changed at the very end,
+        // so a failure can be recovered by trying again.
+        let backup_root = self.recipe_dir_path().join("backup");
+        let device_ids = self
+            .recipes
+            .active()
+            .1
+            .iter()
+            .chain(backup.iter())
+            .map(|(id, _)| id)
+            .collect::<std::collections::BTreeSet<_>>();
+        for device_id in device_ids {
+            let running_dir = self.device_dir(&device_id);
+            if let Err(e) = tokio::fs::remove_dir_all(&running_dir).await {
+                if e.kind() != ErrorKind::NotFound {
+                    return Err(e.into());
+                }
+            }
+            if backup.has_device(&device_id) {
+                let backup_dir = backup_root.join(device_id.to_string());
+                if let Ok(meta) = fs::metadata(&backup_dir).await {
+                    if meta.is_dir() {
+                        clone_directory_deep(&backup_dir, &running_dir)
+                            .await
+                            .map_err(with_file_context(&backup_dir))?;
+                    }
+                }
+            }
+        }
+
+        self.recipes.restore_active();
+        Ok(())
     }
 
-    pub(super) async fn activate_recipe(&mut self, id: RecipeId) -> Result<(), TransactionError> {
-        self.check_active_files().await?;
+    /// Activates a recipe and resolves uncommitted changes of the currently active recipe according to `strategy`.
+    ///
+    /// Files are compared and moved, so no device is allowed to run: Callers must stop all devices first.
+    pub(super) async fn activate_recipe(
+        &mut self,
+        id: RecipeId,
+        strategy: PendingChangesStrategy,
+    ) -> Result<(), TransactionError> {
+        if !self.recipes.has_recipe(&id) {
+            return Err(UnknownRecipeError(id).into());
+        }
 
+        let files = self.check_active_files().await;
+        if files.is_err() || self.recipes.has_active_changes() {
+            match strategy {
+                PendingChangesStrategy::Deny => {
+                    return Err(match files {
+                        Err(e) => e,
+                        Ok(()) => UncommittedChangesError.into(),
+                    })
+                }
+                // Running files are the committed state from now on. The backup is replaced below anyway
+                PendingChangesStrategy::Commit => self.recipes.commit_active(),
+                PendingChangesStrategy::Discard => self.discard_active().await?,
+            }
+        }
+
+        // Devices are stopped, so nobody writes while the backup is built
         let active_devices = self.recipes.set_active(&id)?;
         Ok(self.copy_backup_files(active_devices).await?)
     }
@@ -564,13 +629,13 @@ mod tests {
     use serde::Deserialize;
     use serde_json::json;
 
-    use pilatus::{RecipeServiceTrait, RelativeResourcePath, UpdateParamsMessageError};
+    use pilatus::{RecipeServiceFacade, RelativeResourcePath, UpdateParamsMessageError};
 
     use super::*;
 
     #[tokio::test]
     async fn change_to_new_variable() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
+        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb
             .replace_permissioner(Arc::new(
                 super::parameters::LambdaRecipePermissioner::with_validator(|| {
@@ -601,6 +666,7 @@ mod tests {
                 ))
                 .collect(),
             },
+            Default::default(),
         )
         .await?;
 
@@ -618,7 +684,9 @@ mod tests {
             Foo { test: 42 }
         );
 
-        let (clone_id, _) = rs.duplicate_recipe(active_id.clone()).await?;
+        let (clone_id, _) = rs
+            .duplicate_recipe(active_id.clone(), Default::default())
+            .await?;
         let second_update = rs
             .update_device_params(
                 active_id,
@@ -631,6 +699,7 @@ mod tests {
                     ))
                     .collect(),
                 },
+                Default::default(),
             )
             .await;
 
@@ -652,7 +721,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_path_property_assignment() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
+        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();
 
         assert_eq!(dir.path().join("recipes"), rs.recipe_dir_path());
@@ -662,7 +731,7 @@ mod tests {
 
     #[tokio::test]
     async fn delete_device() -> anyhow::Result<()> {
-        let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
+        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();
         let active_id = rs.get_active_id().await;
         let device_id = rs
@@ -679,16 +748,18 @@ mod tests {
             )
             .await?;
 
-        rs.delete_device(active_id.clone(), device_id).await?;
-        rs.delete_device(active_id, device_id_with_file).await?;
+        rs.delete_device(active_id.clone(), device_id, Default::default())
+            .await?;
+        rs.delete_device(active_id, device_id_with_file, Default::default())
+            .await?;
         assert!(!file_service.get_root().exists());
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn set_active_without_changes() -> anyhow::Result<()> {
-        let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
+    async fn start_recipe_without_changes() -> anyhow::Result<()> {
+        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();
         let r1_id = rs.get_active_id().await;
         let mut r2 = Recipe::default();
@@ -701,15 +772,21 @@ mod tests {
             .add_file_unchecked(&RelativeResourcePath::new("test.txt").unwrap(), b"test")
             .await?;
         let r2_id = rs.add_recipe(r2).await?;
-        rs.activate_recipe(r2_id).await?;
-        rs.activate_recipe(r1_id).await?;
+        rs.start_recipe(r2_id, Default::default()).await?;
+        rs.start_recipe(r1_id, Default::default()).await?;
         Ok(())
     }
 
+    /// Discarding is only possible as part of starting a recipe. Starting the active recipe is the simplest form
+    async fn discard_active(rs: &RecipeServiceImpl) -> Result<(), TransactionError> {
+        let id = rs.get_active_id().await;
+        rs.start_recipe(id, PendingChangesStrategy::Discard.into())
+            .await
+    }
+
     #[tokio::test]
-    #[ignore = "Not yet implemented"]
     async fn discard_active_with_new_device_with_files_removes_folder() -> anyhow::Result<()> {
-        let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
+        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();
         let did = rs
             .add_device_to_active_recipe(DeviceConfig::mock(""))
@@ -724,7 +801,7 @@ mod tests {
                 .await?
                 .len()
         );
-        rs.restore_active().await?;
+        discard_active(&rs).await?;
         assert_eq!(
             0,
             fs.list_recursive(RelativeDirectoryPath::root())
@@ -736,50 +813,52 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_active_forbidden_with_new_device() -> anyhow::Result<()> {
-        let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
+    async fn start_recipe_forbidden_with_new_device() -> anyhow::Result<()> {
+        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();
         let r2_id = rs.add_recipe(Recipe::default()).await?;
         rs.add_device_to_active_recipe(DeviceConfig::mock("params"))
             .await?;
 
-        let Err(TransactionError::Other(_)) = rs.activate_recipe(r2_id.clone()).await else {
+        let Err(TransactionError::Other(_)) =
+            rs.start_recipe(r2_id.clone(), Default::default()).await
+        else {
             panic!("Expected Other error")
         };
 
-        rs.commit_active().await?;
-        rs.activate_recipe(r2_id).await.unwrap();
+        rs.commit_active(Uuid::new_v4()).await?;
+        rs.start_recipe(r2_id, Default::default()).await.unwrap();
         Ok(())
     }
 
     #[tokio::test]
-    async fn set_active_with_fs_change() -> anyhow::Result<()> {
-        let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
+    async fn start_recipe_with_fs_change() -> anyhow::Result<()> {
+        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();
         let mut r2 = Recipe::default();
         let r2_d1 = r2.add_device(DeviceConfig::mock("params"));
         let r2_id = rs.add_recipe(r2).await?;
         let r1_id = rs.get_active_id().await;
 
-        rs.activate_recipe(r2_id).await?;
+        rs.start_recipe(r2_id, Default::default()).await?;
         let fs = rs.build_device_file_service(r2_d1);
         fs.add_file_unchecked("test.txt".try_into()?, b"test")
             .await?;
 
-        match rs.activate_recipe(r1_id.clone()).await {
+        match rs.start_recipe(r1_id.clone(), Default::default()).await {
             Err(TransactionError::Other(_)) => {}
             e => panic!("Unexpected: {e:?}"),
         }
-        rs.commit_active().await?;
-        rs.activate_recipe(r1_id).await.unwrap();
+        rs.commit_active(Uuid::new_v4()).await?;
+        rs.start_recipe(r1_id, Default::default()).await.unwrap();
 
         Ok(())
     }
 
     #[tokio::test]
-    async fn set_active_with_renamed_file() -> anyhow::Result<()> {
+    async fn start_recipe_with_renamed_file() -> anyhow::Result<()> {
         let content = b"test";
-        let (_dir, rsb) = RecipeServiceFassade::create_temp_builder();
+        let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();
         let mut r2 = Recipe::default();
         let r2_d1 = r2.add_device(DeviceConfig::mock("params"));
@@ -788,17 +867,17 @@ mod tests {
         let fs = rs.build_device_file_service(r2_d1);
         let initial_filename = "test.txt".try_into()?;
         fs.add_file_unchecked(initial_filename, content).await?;
-        rs.activate_recipe(r2_id).await?;
+        rs.start_recipe(r2_id, Default::default()).await?;
         fs.remove_file(initial_filename).await?;
         fs.add_file_unchecked("test2.txt".try_into()?, content)
             .await?;
 
-        match rs.activate_recipe(r1_id.clone()).await {
+        match rs.start_recipe(r1_id.clone(), Default::default()).await {
             Err(TransactionError::Other(_)) => {}
             e => panic!("Unexpected: {e:?}"),
         }
-        rs.commit_active().await?;
-        rs.activate_recipe(r1_id).await.unwrap();
+        rs.commit_active(Uuid::new_v4()).await?;
+        rs.start_recipe(r1_id, Default::default()).await.unwrap();
 
         Ok(())
     }
@@ -806,7 +885,7 @@ mod tests {
     #[tokio::test]
     #[rustfmt::skip]
     async fn test_add_device_and_recipe() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
+        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();
 
         #[derive(Debug,  serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -823,7 +902,7 @@ mod tests {
 
         //try to read data from from file
 
-        let rs = RecipeServiceFassadeBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok()))
+        let rs = RecipeServiceImplBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok()))
         .build();
         let dev = rs.device_config(recipe_id.clone(), device_in_other_recipe_id).await?;
         assert_eq!(dev.device_type, "testdevice2".to_string());
@@ -844,7 +923,7 @@ mod tests {
     #[tokio::test]
     #[rustfmt::skip]
     async fn test_clone_and_delete() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
+        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();
 
         #[derive(Debug,  serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -859,7 +938,7 @@ mod tests {
 
         rs.create_device_file(device_in_active_recipe_id, "my_file.txt", b"test").await;
 
-        let (new_recipe_id, new_device_config) = rs.duplicate_recipe(rs.get_active_id().await).await.unwrap();
+        let (new_recipe_id, new_device_config) = rs.duplicate_recipe(rs.get_active_id().await, Default::default()).await.unwrap();
         assert!(!new_device_config.has_device(&device_in_other_recipe_id), "Clone contains device with the same id as in the original");
 
         let new_device_path_with_file = 'outer: {
@@ -872,7 +951,7 @@ mod tests {
             panic!("Files were not cloned for new Device");
         };
 
-        rs.delete_recipe(new_recipe_id).await.expect("Can delete freshly cloned");
+        rs.delete_recipe(new_recipe_id, Default::default()).await.expect("Can delete freshly cloned");
         assert!(tokio::fs::metadata(&new_device_path_with_file).await.is_err());
 
         dir.close()?;
@@ -882,7 +961,7 @@ mod tests {
     #[tokio::test]
     #[rustfmt::skip]
     async fn test_update_device() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
+        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();
         let recipe_id = rs.get_active_id().await;
 
@@ -899,11 +978,11 @@ mod tests {
         rs.update_device_params(recipe_id.clone(), device_id, ParameterUpdate {
             parameters: device.params.clone(),
             variables: Default::default(),
-        }).await.unwrap();
+        }, Default::default()).await.unwrap();
         drop(rs); //all data should be saved to file at this point
 
 
-        let rs = RecipeServiceFassadeBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok())).build();
+        let rs = RecipeServiceImplBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok())).build();
         let s = rs.device_config(recipe_id, device_id).await.unwrap();
         assert_eq!(device.params, s.params);
         dir.close()?;
@@ -913,7 +992,7 @@ mod tests {
     #[tokio::test]
     #[rustfmt::skip]
     async fn test_update_device_params() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
+        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb.build();
 
         let recipe_id = rs.get_active_id().await;
@@ -932,10 +1011,10 @@ mod tests {
         rs.update_device_params(recipe_id.clone(), dev_uuid, ParameterUpdate {
             parameters: UntypedDeviceParamsWithVariables::from_serializable(&params)?,
             variables: Default::default(),
-        }).await?;
+        }, Default::default()).await?;
         drop(rs); //all data should be saved to file at this point
 
-       let rs = RecipeServiceFassadeBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok())).build();
+       let rs = RecipeServiceImplBuilder::new(dir.path(), Arc::new(parameters::LambdaRecipePermissioner::always_ok())).build();
        let s = rs.device_config(recipe_id, dev_uuid).await.unwrap();
 
        assert_eq!(234, serde_json::from_value::<SampleParams>(serde_json::Value::clone(&s.params))?.foo);

@@ -22,10 +22,10 @@ use tracing::trace;
 
 use crate::with_file_context;
 
-use super::RecipeServiceFassade;
+use super::RecipeServiceImpl;
 
 pub(super) fn register_services(c: &mut ServiceCollection) {
-    c.with::<Registered<Arc<RecipeServiceFassade>>>()
+    c.with::<Registered<Arc<RecipeServiceImpl>>>()
         .register(|r| r.build_file_service());
 }
 

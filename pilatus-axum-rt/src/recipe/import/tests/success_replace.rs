@@ -1,19 +1,22 @@
 use futures::{io::Cursor, StreamExt};
 use pilatus::{
     visit_directory_files, DeviceConfig, ImportRecipeError, ImportRecipesOptions,
-    IntoMergeStrategy, RecipeServiceTrait,
+    IntoMergeStrategy, RecipeServiceFacade,
 };
-use pilatus_rt::RecipeServiceFassade;
+use pilatus_rt::RecipeServiceImpl;
 
 use crate::recipe::import::{tests::build_zip, ZipReaderWrapper};
 
 #[tokio::test]
 async fn same_device_replaces_with_all_files() {
-    let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
+    let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
     let rs = rsb.build();
     let active_recipe_id = rs.get_active_id().await;
 
-    let (export_recipe_id, _) = rs.duplicate_recipe(active_recipe_id).await.unwrap();
+    let (export_recipe_id, _) = rs
+        .duplicate_recipe(active_recipe_id, Default::default())
+        .await
+        .unwrap();
 
     let device_id = rs
         .add_device_to_recipe(export_recipe_id.clone(), DeviceConfig::mock(1i32))

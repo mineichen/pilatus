@@ -238,13 +238,13 @@ use super::actions::{DeviceActions, StartDeviceError};
 mod tests {
     use pilatus::DeviceConfig;
 
-    use crate::recipe::RecipeServiceFassade;
+    use crate::recipe::RecipeServiceImpl;
 
     use super::*;
 
     #[tokio::test]
     async fn change_device_params_on_active_recipe() -> anyhow::Result<()> {
-        let (dir, rsb) = RecipeServiceFassade::create_temp_builder();
+        let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
         let rs = rsb
             .with_change_strategy(ChangeParamsStrategy::new(
                 "testdevice",

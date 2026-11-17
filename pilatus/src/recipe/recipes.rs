@@ -105,6 +105,22 @@ impl Recipes {
         self.active_backup = self.active().1.clone();
     }
 
+    /// Discards all uncommitted changes by replacing the running recipe with the backup.
+    /// Tags are no uncommitted changes, so the current tags are kept.
+    pub fn restore_active(&mut self) {
+        let running = self
+            .all
+            .get_mut(&self.active_id)
+            .expect("Active must always exist");
+        let tags = std::mem::take(&mut running.tags);
+        *running = self.active_backup.clone();
+        running.tags = tags;
+    }
+
+    pub fn active_backup(&self) -> &Recipe {
+        &self.active_backup
+    }
+
     pub fn iter_running_join_backup(
         &self,
     ) -> impl Iterator<Item = Result<ListActiveRecipesItem<'_>, UncommittedChangesError>> {
@@ -177,6 +193,7 @@ impl Recipes {
         &self.active_id == id && self.has_active_changes()
     }
 
+    /// Tags are no uncommitted changes. The id of the active recipe can't change at all
     pub fn has_active_changes(&self) -> bool {
         let running = self.all.get(&self.active_id).expect("Must always exist");
         if running.count_devices() != self.active_backup.count_devices() {
@@ -230,19 +247,19 @@ impl Recipes {
         old_id: &RecipeId,
         new_id: RecipeId,
     ) -> Result<(), TransactionError> {
+        if &self.active_id == old_id {
+            return Err(TransactionError::Other(anyhow::anyhow!(
+                "The id of the active recipe '{old_id}' cannot be changed"
+            )));
+        }
         if self.has_recipe(&new_id) {
             return Err(RecipeAlreadyExistsError(new_id).into());
         }
 
-        let was_active_id = &self.active_id == old_id;
         let recipe = self
             .all
             .shift_remove(old_id)
             .ok_or_else(|| UnknownRecipeError(old_id.clone()))?;
-
-        if was_active_id {
-            self.active_id = new_id.clone();
-        }
         self.all.insert(new_id, recipe);
         Ok(())
     }
@@ -330,8 +347,9 @@ impl Recipes {
 pub struct UncommittedChangesError;
 
 impl From<UncommittedChangesError> for TransactionError {
-    fn from(_: UncommittedChangesError) -> Self {
-        TransactionError::Other(anyhow::anyhow!("Uncommitted changes on active recipe"))
+    /// Keeps the type, so it can be detected with `anyhow::Error::is::<UncommittedChangesError>()`
+    fn from(e: UncommittedChangesError) -> Self {
+        TransactionError::Other(e.into())
     }
 }
 
@@ -379,11 +397,14 @@ mod tests {
     #[test]
     fn test_update_recipe_id() {
         let mut recipes = Recipes::new();
-        let (old_id, _) = recipes.get_active();
-        let new_id = RecipeId::default().suggest_unique().next().unwrap();
+        let old_id = recipes.add_new(Recipe::default());
+        let new_id = old_id
+            .suggest_unique()
+            .find(|id| !recipes.has_recipe(id))
+            .unwrap();
         recipes.update_recipe_id(&old_id, new_id.clone()).unwrap();
-        let (current_id, _) = recipes.get_active();
-        assert_eq!(current_id, new_id);
+        assert!(recipes.has_recipe(&new_id));
+        assert!(!recipes.has_recipe(&old_id));
     }
 
     #[test]
@@ -396,20 +417,48 @@ mod tests {
     }
 
     #[test]
-    fn change_recipe_id_doesnt_reset_active_backup() {
+    fn id_of_active_recipe_cannot_change() {
         let mut recipes = Recipes::new();
-        let (old_id, r) = recipes.get_active();
+        let (active_id, _) = recipes.get_active();
+        let new_id = active_id.suggest_unique().next().unwrap();
+        let error = recipes
+            .update_recipe_id(&active_id, new_id.clone())
+            .unwrap_err();
+        assert!(format!("{error}").contains("cannot be changed"), "{error}");
+        assert_eq!(active_id, recipes.active().0);
+        assert!(!recipes.has_recipe(&new_id));
+    }
+
+    #[test]
+    fn tags_are_no_uncommitted_changes_and_kept_on_restore() {
+        let mut recipes = Recipes::new();
+        let tags = vec![Name::new("foo").unwrap()];
+        let (_, r) = recipes.get_active();
+        r.tags = tags.clone();
+        assert!(!recipes.has_active_changes());
+
+        let (_, r) = recipes.get_active();
         r.add_device(DeviceConfig::mock("param"));
-        assert!(recipes.has_uncommitted_changes(&old_id));
-        let new_id = old_id.suggest_unique().next().unwrap();
-        recipes.update_recipe_id(&old_id, new_id.clone()).unwrap();
-        assert!(recipes.has_uncommitted_changes(&new_id));
+        assert!(recipes.has_active_changes());
+
+        recipes.restore_active();
+        assert!(!recipes.has_active_changes());
+        assert_eq!(0, recipes.active().1.count_devices());
+        assert_eq!(tags, recipes.active().1.tags);
+    }
+
+    #[test]
+    fn uncommitted_changes_error_is_detectable() {
+        let TransactionError::Other(e) = TransactionError::from(UncommittedChangesError) else {
+            panic!("Expected Other");
+        };
+        assert!(e.is::<UncommittedChangesError>());
     }
 
     #[test]
     fn test_update_recipe_id_with_existing_id() {
         let mut recipes = Recipes::new();
-        let (old_id, _) = recipes.get_active();
+        let old_id = recipes.add_new(Recipe::default());
         let new_id = RecipeId::default();
         let error = recipes
             .update_recipe_id(&old_id, new_id.clone())

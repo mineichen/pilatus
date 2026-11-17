@@ -30,7 +30,6 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
         .http("/new_default", |m| m.put(add_default_recipe))
         .http("/stream",|m| m.get(stream_recipe_update_handler))
         .http("/commit", |m| m.put(commit_active))
-        .http("/restore", |m| m.put(restore_active))
         .http("/{id}/meta", |m| m.put(update_recipe_metadata))
         .http("/{id}/clone", |m| m.put(clone_recipe))
         .http("/{id}", |m| m.delete(delete_recipe))
@@ -207,16 +206,6 @@ async fn commit_active(
 ) -> Result<(), (StatusCode, String)> {
     service
         .commit_active_with(options.key.unwrap_or_else(Uuid::new_v4))
-        .await
-        .map_err(transaction_error_to_http_resonse)
-}
-
-async fn restore_active(
-    InjectRegistered(service): InjectRegistered<RecipeService>,
-    Query(options): Query<TransactionIdWrapper>,
-) -> Result<(), (StatusCode, String)> {
-    service
-        .restore_active_with(options.key.unwrap_or_else(Uuid::new_v4))
         .await
         .map_err(transaction_error_to_http_resonse)
 }
