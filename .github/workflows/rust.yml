@@ -46,29 +46,47 @@ jobs:
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build book
+        run: nix run .#build-book
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: target/book
+
+  # Deploy in a separate job: the artifact lookup of deploy-pages can miss an artifact which was
+  # uploaded moments before (https://github.com/actions/deploy-pages/issues/451). As a separate job,
+  # "Re-run failed jobs" only reruns the deployment, instead of uploading a duplicate artifact.
+  deploy-book:
+    needs: build-book
+    runs-on: ubuntu-latest
+    permissions:
       pages: write
       id-token: write
     steps:
-      - uses: actions/checkout@v5
-      
-      - uses: DeterminateSystems/nix-installer-action@main
-      
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      
-      - name: Build book
-        run: nix run .#build-book
-      
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-      
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: target/book
-      
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+
+      - name: Wait before retrying the deployment
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 60
+
+      - name: Deploy to GitHub Pages (retry)
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v5
 
   publish:
     needs: [test, test_miri]
