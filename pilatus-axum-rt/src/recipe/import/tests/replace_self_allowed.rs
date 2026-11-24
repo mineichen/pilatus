@@ -6,31 +6,30 @@ use pilatus::{
     RecipeExporterTrait, RecipeServiceFacade,
 };
 use pilatus_rt::RecipeServiceImpl;
+use testresult::TestResult;
 
 use crate::recipe::import::ZipReaderWrapper;
 
 #[tokio::test]
-async fn replace_self_allowed() {
+async fn replace_self_allowed() -> TestResult {
     let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
     let rs = Arc::new(rsb.build());
     let active_recipe_id = rs.get_active_id().await;
 
     let (export_recipe_id, _) = rs
         .duplicate_recipe(active_recipe_id, Default::default())
-        .await
-        .unwrap();
+        .await?;
 
     let id = rs
         .add_device_to_recipe(export_recipe_id.clone(), DeviceConfig::mock(1i32))
-        .await
-        .unwrap();
+        .await?;
     rs.create_device_file(id, "test.txt", b"content").await;
     let rs_clone = rs.clone();
     let data = super::writer_into_vec_unchecked(move |w| {
         let rs = rs_clone;
-        async move { rs.export(export_recipe_id, w).await }
+        async move { Ok(rs.export(export_recipe_id, w).await?) }
     })
-    .await;
+    .await?;
     rs.create_device_file(id, "test.txt", b"old_contents").await;
 
     let r = rs
@@ -64,4 +63,5 @@ async fn replace_self_allowed() {
             .await
     );
     assert_eq!(2, rs.state().await.recipes().iter_without_backup().count());
+    Ok(())
 }
