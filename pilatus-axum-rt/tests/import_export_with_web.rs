@@ -13,12 +13,13 @@ use pilatus::{
 };
 use pilatus_rt::{RecipeServiceImpl, TempRuntime};
 use reqwest::StatusCode;
+use testresult::TestResult;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
 #[test]
 //#[cfg(feature = "integration")]
-fn upload_zip() -> anyhow::Result<()> {
+fn upload_zip() -> TestResult {
     extern "C" fn register_test_services(c: &mut ServiceCollection) {
         async fn device(
             ctx: DeviceContext,
@@ -103,9 +104,9 @@ fn upload_zip() -> anyhow::Result<()> {
                 let (_, all) = get_current(&base, &client).await.unwrap();
                 assert!(all.contains(&clone_id));
                 //tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                Ok(())
             },
-        );
-    Ok(())
+        )
 }
 //#[cfg(feature = "integration")]
 async fn generate_zip(

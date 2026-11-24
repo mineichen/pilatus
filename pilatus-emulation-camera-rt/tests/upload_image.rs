@@ -91,7 +91,7 @@ fn upload_image_to_collection() -> TestResult<()> {
             assert_eq!(loaded.dimensions(), (3, 3), "Image dimensions should match");
 
             println!("Successfully uploaded and verified image!");
+            Ok(())
         },
-    );
-    Ok(())
+    )
 }

@@ -1,7 +1,9 @@
-#[cfg(feature = "integration")]
+#![cfg(feature = "integration")]
+use testresult::TestResult;
+
 #[tracing_test::traced_test]
 #[test]
-fn stops_streaming_when_all_subscribers_are_gone() -> anyhow::Result<()> {
+fn stops_streaming_when_all_subscribers_are_gone() -> TestResult {
     use std::time::Duration;
 
     use futures::StreamExt;

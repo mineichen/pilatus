@@ -1,6 +1,8 @@
-#[cfg(feature = "integration")]
+#![cfg(feature = "integration")]
+use testresult::TestResult;
+
 #[test]
-fn record_integration() -> anyhow::Result<()> {
+fn record_integration() -> TestResult {
     use futures::StreamExt;
     use image::Rgb;
     use pilatus::{DeviceConfig, Recipe, RelativeDirectoryPath};
@@ -74,10 +76,9 @@ fn record_integration() -> anyhow::Result<()> {
                     matches!(image, image::DynamicImage::ImageRgb8(_)),
                     "Not rgb image: {image:?}"
                 );
-                return;
+                return Ok(());
             }
         }
-        panic!("Never got more than 1 file");
-    });
-    Ok(())
+        Err("Never got more than 1 file".into())
+    })
 }

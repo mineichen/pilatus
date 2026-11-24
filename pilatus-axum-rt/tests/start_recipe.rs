@@ -5,6 +5,7 @@ use minfac::Registered;
 use pilatus::{DeviceConfig, Recipe, RecipeId, Recipes};
 use pilatus_rt::{RecipeServiceImpl, TempRuntime};
 use reqwest::{redirect::Policy, StatusCode};
+use testresult::TestResult;
 
 async fn get_all(base: &str, client: &reqwest::Client) -> anyhow::Result<serde_json::Value> {
     Ok(client
@@ -20,7 +21,7 @@ async fn active_id(base: &str, client: &reqwest::Client) -> anyhow::Result<Recip
     Ok(serde_json::from_value(state["active_id"].clone())?)
 }
 
-/// The runner needs a moment after startup or a recipe change, until it accepts the next request
+/// The runner needs a moment after a recipe change, until it accepts the next request
 async fn put_start(client: &reqwest::Client, url: &str) -> anyhow::Result<(StatusCode, String)> {
     for _ in 0..100 {
         let response = client.put(url).send().await?;
@@ -35,7 +36,7 @@ async fn put_start(client: &reqwest::Client, url: &str) -> anyhow::Result<(Statu
 }
 
 #[test]
-fn uncommitted_changes_are_a_conflict() -> anyhow::Result<()> {
+fn uncommitted_changes_are_a_conflict() -> TestResult {
     let mut recipes = Recipes::new_with_recipe(Recipe::default());
     let other_id = recipes.add_new(Recipe::default());
 
@@ -85,7 +86,7 @@ fn uncommitted_changes_are_a_conflict() -> anyhow::Result<()> {
 }
 
 #[test]
-fn start_recipe_is_only_possible_with_put() -> anyhow::Result<()> {
+fn start_recipe_is_only_possible_with_put() -> TestResult {
     let mut recipes = Recipes::new_with_recipe(Recipe::default());
     let other_id = recipes.add_new(Recipe::default());
 
@@ -112,16 +113,8 @@ fn start_recipe_is_only_possible_with_put() -> anyhow::Result<()> {
                 }
                 assert_eq!(initial_id, active_id(&base, &client).await?);
 
-                // The runner needs a moment after startup, until it accepts the first request
-                let mut attempts = 0;
-                let response = loop {
-                    let response = client.put(&start_url).send().await?;
-                    attempts += 1;
-                    if response.status().is_success() || attempts > 100 {
-                        break response;
-                    }
-                    tokio::time::sleep(Duration::from_millis(20)).await;
-                };
+                // run_until starts once the webserver and the runner are ready
+                let response = client.put(&start_url).send().await?;
                 assert_eq!(StatusCode::OK, response.status());
                 assert_eq!(other_id, active_id(&base, &client).await?);
                 Ok(())

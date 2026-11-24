@@ -12,6 +12,14 @@
 - Require `stream-broadcast` 0.3.1 (`StreamBroadcastLossy`)
 - Add `FileService::remove_file_if_exists` (returns whether the file existed)
 - Add `SystemShutdown::run_or_shutdown`: Runs a future unless the system shuts down first (`ShutdownError`)
+- HostedServices can signal readiness: `register_hosted_service` also accepts handlers with a `ReadySignal` as first parameter (`fn(ReadySignal, Deps)`, `fn(ReadySignal)` without dependencies). They keep running after `ReadySignal::signal()`. Handlers without `ReadySignal` are ready immediately
+- `register_hosted_service` takes a generic handler instead of a `fn` pointer (breaking): Closures, which call methods on parameters without type annotation, need annotations
+- `ServiceCollection::build()` fails if a dependency of a HostedService is missing. The error names the handler function. Before, the runtime panicked when it started the service
+- Extend `HostedService::call` with `ReadySignal` param (breaking). `HostedService::get_name` returns `&'static str`
+- `ConfiguredRuntime::run(_until_finished)` and `TempConfiguredRuntime::run(_until)` poll their future (call the closure of `run_until`) once all HostedServices are ready. Services, which stop before they are ready, aren't waited for. The runtime logs pending services every 5s
+- Failing HostedServices don't stop the runtime. Their errors are logged immediately and returned as `HostedServicesError` once all services stopped: `Runtime::run` returns `Result<(), HostedServicesError>` (breaking)
+- The futures (closure) of `ConfiguredRuntime::run(_until_finished)` and `TempConfiguredRuntime::run(_until)` return `Result<T, E>`, which these methods return too (breaking). The caller chooses `E` (e.g. `testresult::TestError` in tests, `anyhow::Error` or `Box<dyn Error>`). It has to implement `From<RunUntilError<E>>` (`Until`, `HostedService` or `HostedServiceAndUntil`)
+- "Main Webserver" is ready once its socket is bound, "Device Runner" once the devices of the active recipe are spawned and it accepts recipe changes
 
 ### Recipes
 - Rename `RecipeServiceTrait` to `RecipeServiceFacade` (deprecated subtrait kept). Its methods take options explicitly and are named like the former `*_with` methods (breaking for implementors)

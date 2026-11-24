@@ -21,6 +21,7 @@ use pilatus::{
     UntypedDeviceParamsWithVariables, UpdateParamsMessage, UpdateParamsMessageError,
 };
 use pilatus_rt::{RecipeServiceImpl, TempRuntime};
+use testresult::TestResult;
 
 /// Records the params of every start and the number of stops of devices of type "counter"
 #[derive(Default)]
@@ -172,9 +173,9 @@ impl App {
 }
 
 /// Runs `test` within a started app, whose root directory and active recipe are created from scratch
-fn run_app<Fut>(active_recipe: Recipe, test: impl FnOnce(App) -> Fut) -> anyhow::Result<()>
+fn run_app<Fut>(active_recipe: Recipe, test: impl FnOnce(App) -> Fut) -> TestResult
 where
-    Fut: Future<Output = anyhow::Result<()>>,
+    Fut: Future<Output = TestResult>,
 {
     let log = Arc::new(DeviceLog::default());
     let configured = TempRuntime::new()
@@ -204,7 +205,7 @@ where
 }
 
 #[test]
-fn starting_the_active_recipe_always_restarts_devices() -> anyhow::Result<()> {
+fn starting_the_active_recipe_always_restarts_devices() -> TestResult {
     let (recipe, device_id) = recipe_with_counter("a");
     run_app(recipe, |app| async move {
         let active_id = app.active_id().await;
@@ -272,7 +273,7 @@ fn starting_the_active_recipe_always_restarts_devices() -> anyhow::Result<()> {
 }
 
 #[test]
-fn pending_changes_are_denied_by_default() -> anyhow::Result<()> {
+fn pending_changes_are_denied_by_default() -> TestResult {
     let (recipe, did) = recipe_with_counter("a");
     run_app(recipe, |app| async move {
         let r2_id = app.rs.add_recipe(Recipe::default()).await?;
@@ -299,7 +300,7 @@ fn pending_changes_are_denied_by_default() -> anyhow::Result<()> {
 }
 
 #[test]
-fn commit_strategy_keeps_changes() -> anyhow::Result<()> {
+fn commit_strategy_keeps_changes() -> TestResult {
     let (recipe, did) = recipe_with_counter("a");
     run_app(recipe, |app| async move {
         let r1_id = app.active_id().await;
@@ -324,7 +325,7 @@ fn commit_strategy_keeps_changes() -> anyhow::Result<()> {
 }
 
 #[test]
-fn discard_strategy_restores_active_before_switching() -> anyhow::Result<()> {
+fn discard_strategy_restores_active_before_switching() -> TestResult {
     let (recipe, did) = recipe_with_counter("a");
     run_app(recipe, |app| async move {
         let r1_id = app.active_id().await;
@@ -365,7 +366,7 @@ fn discard_strategy_restores_active_before_switching() -> anyhow::Result<()> {
 }
 
 #[test]
-fn discard_recovers_deleted_device_with_files() -> anyhow::Result<()> {
+fn discard_recovers_deleted_device_with_files() -> TestResult {
     let (recipe, did) = recipe_with_counter("a");
     run_app(recipe, |app| async move {
         app.rs.create_device_file(did, "test.txt", b"test").await;
@@ -390,7 +391,7 @@ fn discard_recovers_deleted_device_with_files() -> anyhow::Result<()> {
 }
 
 #[test]
-fn discard_reverts_params_and_added_devices() -> anyhow::Result<()> {
+fn discard_reverts_params_and_added_devices() -> TestResult {
     let (recipe, did) = recipe_with_counter("a");
     run_app(recipe, |app| async move {
         assert!(!app.has_uncommitted_changes().await);
@@ -413,7 +414,7 @@ fn discard_reverts_params_and_added_devices() -> anyhow::Result<()> {
 }
 
 #[test]
-fn unknown_recipe_does_not_restart_devices() -> anyhow::Result<()> {
+fn unknown_recipe_does_not_restart_devices() -> TestResult {
     let (recipe, _) = recipe_with_counter("a");
     run_app(recipe, |app| async move {
         app.log.wait_for_starts(1).await;
@@ -436,7 +437,7 @@ fn unknown_recipe_does_not_restart_devices() -> anyhow::Result<()> {
 }
 
 #[test]
-fn denied_changes_are_not_wrapped_twice() -> anyhow::Result<()> {
+fn denied_changes_are_not_wrapped_twice() -> TestResult {
     let (recipe, did) = recipe_with_counter("a");
     run_app(recipe, |app| async move {
         let r2_id = app.rs.add_recipe(Recipe::default()).await?;
@@ -471,7 +472,7 @@ fn denied_changes_are_not_wrapped_twice() -> anyhow::Result<()> {
 }
 
 #[test]
-fn tags_are_kept_and_id_of_active_recipe_cannot_change() -> anyhow::Result<()> {
+fn tags_are_kept_and_id_of_active_recipe_cannot_change() -> TestResult {
     let (recipe, did) = recipe_with_counter("a");
     run_app(recipe, |app| async move {
         let active_id = app.active_id().await;

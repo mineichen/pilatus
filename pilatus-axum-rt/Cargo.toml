@@ -44,3 +44,6 @@ reqwest = { version = "0.13", features = ["json"], optional = true }
 [features]
 default = []
 integration = ["dep:reqwest", "dep:tempfile", "dep:tokio-tungstenite", "dep:pilatus-rt", "pilatus/unstable"]
+
+[dev-dependencies]
+testresult.workspace = true
