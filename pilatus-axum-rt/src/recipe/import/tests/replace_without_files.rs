@@ -7,26 +7,25 @@ use pilatus::{
     DeviceConfig, ImportRecipesOptions, IntoMergeStrategy, RecipeExporterTrait, RecipeServiceFacade,
 };
 use pilatus_rt::RecipeServiceImpl;
+use testresult::TestResult;
 
 #[tokio::test]
-async fn replace_without_files() {
+async fn replace_without_files() -> TestResult {
     let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
     let rs = Arc::new(rsb.build());
     let active_recipe_id = rs.get_active_id().await;
     let (export_recipe_id, _) = rs
         .duplicate_recipe(active_recipe_id, Default::default())
-        .await
-        .unwrap();
+        .await?;
 
     rs.add_device_to_recipe(export_recipe_id.clone(), DeviceConfig::mock(1i32))
-        .await
-        .unwrap();
+        .await?;
     let rs_clone = rs.clone();
     let data = super::writer_into_vec_unchecked(move |w| {
         let rs = rs_clone;
-        async move { rs.export(export_recipe_id, w).await }
+        async move { Ok(rs.export(export_recipe_id, w).await?) }
     })
-    .await;
+    .await?;
 
     rs.create_importer()
         .import(
@@ -36,8 +35,8 @@ async fn replace_without_files() {
                 is_dry_run: false,
             },
         )
-        .await
-        .expect("Merge should work with replace strategy");
+        .await?;
 
     assert_eq!(2, rs.state().await.recipes().iter_without_backup().count());
+    Ok(())
 }

@@ -9,6 +9,7 @@ use pilatus::{ParameterUpdate, UntypedDeviceParamsWithVariables, VariableConflic
 use pilatus_rt::RecipeServiceImpl;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use testresult::TestResult;
 
 use crate::recipe::import::ZipReaderWrapper;
 
@@ -19,15 +20,14 @@ struct State {
 }
 
 #[tokio::test]
-async fn with_variables() {
+async fn with_variables() -> TestResult {
     let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
     let rs = Arc::new(rsb.build());
     let active_recipe_id = rs.get_active_id().await;
 
     let (export_recipe_id, _) = rs
         .duplicate_recipe(active_recipe_id, Default::default())
-        .await
-        .unwrap();
+        .await?;
 
     let device_id = rs
         .add_device_to_recipe(
@@ -37,37 +37,34 @@ async fn with_variables() {
                 text: "initial".into(),
             }),
         )
-        .await
-        .unwrap();
+        .await?;
 
     let var_json: UntypedDeviceParamsWithVariables = serde_json::from_value(
         json!( { "number": {"__var": "number1"}, "text": {"__var": "text1"}}),
-    )
-    .unwrap();
+    )?;
     rs.update_device_params(
         export_recipe_id.clone(),
         device_id,
         ParameterUpdate {
             parameters: var_json.clone(),
             variables: [
-                (Name::new("number1").unwrap(), 1.into()),
-                (Name::new("text1").unwrap(), "initial_text".into()),
+                (Name::new("number1")?, 1.into()),
+                (Name::new("text1")?, "initial_text".into()),
             ]
             .into_iter()
             .collect(),
         },
         Default::default(),
     )
-    .await
-    .unwrap();
+    .await?;
 
     let rs_clone = rs.clone();
     let export_recipe_id_clone = export_recipe_id.clone();
     let data = super::writer_into_vec_unchecked(move |w| {
         let rs = rs_clone;
-        async move { rs.export(export_recipe_id, w).await }
+        async move { Ok(rs.export(export_recipe_id, w).await?) }
     })
-    .await;
+    .await?;
     //tokio::io::AsyncWriteExt::write_all(
     //    &mut tokio::fs::File::create("recipe.zip").await.unwrap(),
     //    &data,
@@ -80,18 +77,16 @@ async fn with_variables() {
         device_id,
         ParameterUpdate {
             parameters: var_json.clone(),
-            variables: [(Name::new("text1").unwrap(), "other_text".into())]
+            variables: [(Name::new("text1")?, "other_text".into())]
                 .into_iter()
                 .collect(),
         },
         Default::default(),
     )
-    .await
-    .unwrap();
+    .await?;
 
     rs.delete_recipe(export_recipe_id_clone, Default::default())
-        .await
-        .unwrap();
+        .await?;
 
     let r = rs
         .create_importer()
@@ -103,7 +98,7 @@ async fn with_variables() {
     let _importer = if let Err(ImportRecipeError::Conflicts(_, x, i)) = r {
         assert_eq!(
             vec![VariableConflict {
-                name: Name::new("text1").unwrap(),
+                name: Name::new("text1")?,
                 existing: "initial_text".into(),
                 imported: "other_text".into()
             }],
@@ -117,4 +112,5 @@ async fn with_variables() {
 
     assert_eq!(1, rs.state().await.recipes().iter_without_backup().count());
     //importer.apply(&rs, IntoMergeStrategy::Replace)
+    Ok(())
 }

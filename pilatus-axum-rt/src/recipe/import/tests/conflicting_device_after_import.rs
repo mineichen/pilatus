@@ -1,44 +1,47 @@
 use futures::io::Cursor;
 use pilatus::{DeviceConfig, ImportRecipeError, ImportRecipesOptions, IntoMergeStrategy, RecipeId};
 use pilatus_rt::RecipeServiceImpl;
+use testresult::TestResult;
 
 use crate::recipe::import::ZipReaderWrapper;
 
 #[tokio::test]
-async fn conflicting_device_after_import_replace() {
+async fn conflicting_device_after_import_replace() -> TestResult {
     import_recipe_with_different_id_but_including_existing_deviceid(IntoMergeStrategy::Replace)
-        .await;
+        .await
 }
 
 #[tokio::test]
-async fn conflicting_device_after_import_duplicate() {
+async fn conflicting_device_after_import_duplicate() -> TestResult {
     import_recipe_with_different_id_but_including_existing_deviceid(IntoMergeStrategy::Duplicate)
-        .await;
+        .await
 }
 #[tokio::test]
-async fn conflicting_device_after_import_unspecified() {
+async fn conflicting_device_after_import_unspecified() -> TestResult {
     import_recipe_with_different_id_but_including_existing_deviceid(IntoMergeStrategy::Unspecified)
-        .await;
+        .await
 }
 
 async fn import_recipe_with_different_id_but_including_existing_deviceid(
     merge_strategy: IntoMergeStrategy,
-) {
+) -> TestResult {
     let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
     let rs = rsb.build();
     let active_recipe_id = rs.get_active_id().await;
     let device_id = rs
         .add_device_to_active_recipe(DeviceConfig::mock(1i32))
-        .await
-        .unwrap();
-    let import_recipe_id = RecipeId::default().suggest_unique().next().unwrap();
+        .await?;
+    let import_recipe_id = RecipeId::default()
+        .suggest_unique()
+        .next()
+        .ok_or("Suggestion iter is infinite")?;
     let zip_data = super::build_zip(
         import_recipe_id.clone(),
         device_id,
         DeviceConfig::mock(2i32),
         &[],
     )
-    .await;
+    .await?;
     let import = rs
         .create_importer()
         .import(
@@ -63,4 +66,5 @@ async fn import_recipe_with_different_id_but_including_existing_deviceid(
             panic!("Unexpected response {x:?}");
         }
     }
+    Ok(())
 }

@@ -1,7 +1,8 @@
-use futures::{future::join, Future};
+use futures::{Future, TryFutureExt};
 use pilatus_rt::RecipeServiceImpl;
 
 use pilatus::{device::DeviceId, DeviceConfig, RecipeExporterTrait, RecipeId, RecipeServiceFacade};
+use testresult::TestResult;
 use tokio::io::DuplexStream;
 use tokio_util::compat::Compat;
 
@@ -19,7 +20,7 @@ async fn build_zip(
     device_id: DeviceId,
     device_config: DeviceConfig,
     files: &[(&'static str, &'static str)],
-) -> Vec<u8> {
+) -> TestResult<Vec<u8>> {
     let (_dir, rsb) = RecipeServiceImpl::create_temp_builder();
     let rs = rsb.build();
     let active_recipe_id = {
@@ -28,21 +29,17 @@ async fn build_zip(
             active_recipe_id
         } else {
             rs.add_recipe_with_id(recipe_id.clone(), Default::default())
-                .await
-                .unwrap();
+                .await?;
             rs.start_recipe(recipe_id.clone(), Default::default())
-                .await
-                .unwrap();
+                .await?;
             rs.delete_recipe(active_recipe_id, Default::default())
-                .await
-                .unwrap();
+                .await?;
             recipe_id
         }
     };
 
     rs.add_device_with_id(active_recipe_id.clone(), device_id, device_config)
-        .await
-        .unwrap();
+        .await?;
     for (path, content) in files {
         rs.create_device_file(device_id, path, content.as_bytes())
             .await;
@@ -50,26 +47,24 @@ async fn build_zip(
 
     writer_into_vec_unchecked(move |w| {
         let rs = rs;
-        async move { rs.export(active_recipe_id, w).await }
+        async move { Ok(rs.export(active_recipe_id, w).await?) }
     })
     .await
 }
 
-pub(super) async fn writer_into_vec_unchecked<TRes: Future<Output = anyhow::Result<()>>>(
+pub(super) async fn writer_into_vec_unchecked<TRes: Future<Output = TestResult<()>>>(
     x: impl FnOnce(Box<ZipWriterWrapper<Compat<DuplexStream>>>) -> TRes,
-) -> Vec<u8> {
+) -> TestResult<Vec<u8>> {
     let (mut r, w) = tokio::io::duplex(64);
     let boxed = ZipWriterWrapper::new_boxed(
         tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(w),
     );
     let mut data = Vec::new();
-    let (read, write) = join(
+    futures::future::try_join(
         (x)(boxed),
-        tokio::io::AsyncReadExt::read_to_end(&mut r, &mut data),
+        tokio::io::AsyncReadExt::read_to_end(&mut r, &mut data).map_err(Into::into),
     )
-    .await;
-    read.unwrap();
-    write.unwrap();
+    .await?;
 
-    data
+    Ok(data)
 }

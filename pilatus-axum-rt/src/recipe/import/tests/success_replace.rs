@@ -4,24 +4,23 @@ use pilatus::{
     IntoMergeStrategy, RecipeServiceFacade,
 };
 use pilatus_rt::RecipeServiceImpl;
+use testresult::TestResult;
 
 use crate::recipe::import::{tests::build_zip, ZipReaderWrapper};
 
 #[tokio::test]
-async fn same_device_replaces_with_all_files() {
+async fn same_device_replaces_with_all_files() -> TestResult {
     let (dir, rsb) = RecipeServiceImpl::create_temp_builder();
     let rs = rsb.build();
     let active_recipe_id = rs.get_active_id().await;
 
     let (export_recipe_id, _) = rs
         .duplicate_recipe(active_recipe_id, Default::default())
-        .await
-        .unwrap();
+        .await?;
 
     let device_id = rs
         .add_device_to_recipe(export_recipe_id.clone(), DeviceConfig::mock(1i32))
-        .await
-        .unwrap();
+        .await?;
     rs.create_device_file(device_id, "testdir/test.txt", b"foo")
         .await;
     rs.create_device_file(device_id, "foo.txt", b"bar").await;
@@ -36,7 +35,7 @@ async fn same_device_replaces_with_all_files() {
                     DeviceConfig::mock(2i32),
                     &[("testdir/test.txt", "bar"), ("bar.txt", "bar")],
                 )
-                .await,
+                .await?,
             )),
             ImportRecipesOptions {
                 merge_strategy: IntoMergeStrategy::Replace,
@@ -45,7 +44,7 @@ async fn same_device_replaces_with_all_files() {
         )
         .await;
     if let Err(ImportRecipeError::Conflicts(_, _, imp)) = conflicting_import_result {
-        imp.close_async().await.unwrap();
+        imp.close_async().await?;
     }
 
     assert_eq!(
@@ -71,4 +70,5 @@ async fn same_device_replaces_with_all_files() {
             .count()
             .await
     );
+    Ok(())
 }
