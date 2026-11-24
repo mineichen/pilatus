@@ -187,8 +187,14 @@
         apps.publish = {
           type = "app";
           program = writeShellScriptWithError "publish" ''
-            export PATH="${stableToolchain}/bin:$PATH"
-            version=$(cargo pkgid -p pilatus | sed 's/.*[#@]//')
+            set -o pipefail
+            export PATH="${stableToolchain}/bin:${pkgs.jq}/bin:$PATH"
+            # `cargo metadata --no-deps` works without Cargo.lock, which isn't committed
+            version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "pilatus") | .version')
+            if [ -z "$version" ]; then
+              echo "Could not determine the workspace version" >&2
+              exit 1
+            fi
             if [ -n "''${RELEASE_TAG:-}" ] && [ "$RELEASE_TAG" != "v$version" ]; then
               echo "Tag '$RELEASE_TAG' does not match workspace version '$version'" >&2
               exit 1
