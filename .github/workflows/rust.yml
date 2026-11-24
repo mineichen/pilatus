@@ -42,9 +42,10 @@ jobs:
       - name: Run Miri tests
         run: nix run .#miri-test
 
+  # The book is only built and deployed for releases, so it documents the published version
   build-book:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
       pages: read
@@ -72,10 +73,10 @@ jobs:
   deploy-book:
     needs: build-book
     runs-on: ubuntu-latest
-    # Its deployment rules must allow `main` and tags `v*`
+    # Its deployment rules must allow tags `v*`
     environment: github-pages
-    # Pushing `main` together with a tag would otherwise start two concurrent Pages deployments,
-    # which GitHub rejects. Wait for the running one instead of cancelling it.
+    # Pushing several tags at once would otherwise start concurrent Pages deployments, which
+    # GitHub rejects. Wait for the running one instead of cancelling it.
     concurrency:
       group: github-pages
       cancel-in-progress: false
