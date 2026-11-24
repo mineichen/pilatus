@@ -18,12 +18,8 @@ impl ImageEncoderTrait for PngBackend {
         let (width, height) = first.dimensions();
         let to_processing_error =
             |e: imbuf::IncompatibleChannelError| EncodeError::Processing(e.into());
-        match (
-            first.primitive_size().get(),
-            input.len(),
-            first.pixel_elements().get(),
-        ) {
-            (1, 1, 1) => {
+        match (first.type_hint(), input.len(), first.pixel_elements().get()) {
+            ("u8", 1, 1) => {
                 let img = image::ImageBuffer::<image::Luma<_>, _>::from_raw(
                     width.get(),
                     height.get(),
@@ -37,7 +33,7 @@ impl ImageEncoderTrait for PngBackend {
                     .map_err(|e| EncodeError::Processing(e.into()))?;
                 return Ok(buf.into());
             }
-            (2, 1, 1) => {
+            ("u16", 1, 1) => {
                 let img = image::ImageBuffer::<image::Luma<_>, _>::from_raw(
                     width.get(),
                     height.get(),
@@ -51,7 +47,7 @@ impl ImageEncoderTrait for PngBackend {
                     .map_err(|e| EncodeError::Processing(e.into()))?;
                 return Ok(buf.into());
             }
-            (1, 3, 1) => {
+            ("u8", 3, 1) => {
                 let image = Image::<u8, 3>::try_from(input)
                     .map_err(|e| EncodeError::Unknown(format!("{e:?}")))?;
                 let interleaved = image.transpose();
@@ -68,7 +64,7 @@ impl ImageEncoderTrait for PngBackend {
                     .map_err(|e| EncodeError::Processing(e.into()))?;
                 return Ok(buf.into());
             }
-            (1, 1, 3) => {
+            ("u8", 1, 3) => {
                 let img = image::ImageBuffer::<image::Rgb<_>, _>::from_raw(
                     width.get(),
                     height.get(),
