@@ -1,13 +1,13 @@
 use minfac::ServiceCollection;
 use pilatus::Name;
-use pilatus_rt::Runtime;
+use pilatus_rt::{HostedServicesError, Runtime};
 
-fn main() {
+fn main() -> Result<(), HostedServicesError> {
     Runtime::default()
         .register(pilatus_axum_rt::register)
         .register(pilatus_tick_rt::register)
         .register(register)
-        .run();
+        .run()
 }
 
 extern "C" fn register(c: &mut ServiceCollection) {

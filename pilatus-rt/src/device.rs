@@ -16,6 +16,7 @@ use pilatus::device::InfallibleParamApplier;
 use pilatus::device::RecipeRunner;
 use pilatus::device::RecipeServiceParamApplier;
 use pilatus::device::WithInfallibleParamUpdate;
+use pilatus::ReadySignal;
 use pilatus::Variables;
 use pilatus::{
     device::{ActorSystem, DeviceId, FinalizeRecipeExecution},
@@ -59,6 +60,7 @@ pub(super) fn register_services(c: &mut ServiceCollection) {
 type RunJob = Sender<(RecipeId, StartRecipeOptions, Sender<anyhow::Result<()>>)>;
 
 async fn run_devices_from_service(
+    ready: ReadySignal,
     (runner, recipe_service, actor_system, shutdown): (
         RecipeRunnerImpl,
         Arc<RecipeServiceImpl>,
@@ -66,7 +68,7 @@ async fn run_devices_from_service(
         SystemShutdown,
     ),
 ) -> Result<(), anyhow::Error> {
-    let (r1, r2) = tokio::join!(runner.run_active_recipe(recipe_service), async {
+    let (r1, r2) = tokio::join!(runner.run_active_recipe(recipe_service, ready), async {
         shutdown.await;
         runner.set_next(None)?;
         actor_system.forget_senders();
@@ -115,7 +117,13 @@ impl RecipeRunnerImpl {
         Ok(())
     }
 
-    async fn run_active_recipe(&self, rs: Arc<RecipeServiceImpl>) -> Result<(), anyhow::Error> {
+    /// Signals `ready` once the devices of the first recipe are spawned and the next recipe can be started
+    async fn run_active_recipe(
+        &self,
+        rs: Arc<RecipeServiceImpl>,
+        ready: ReadySignal,
+    ) -> Result<(), anyhow::Error> {
+        let mut ready = Some(ready);
         loop {
             let (recipe_id, active_devices, variables) = rs
                 .recipe_service_read()
@@ -136,6 +144,7 @@ impl RecipeRunnerImpl {
                     }
                     .apply(update)
                 },
+                ready.take(),
                 |info| info!(info),
                 |error| error!(error),
             )
@@ -163,6 +172,7 @@ impl RecipeRunnerImpl {
         active_devices: impl IntoIterator<Item = (DeviceId, DeviceConfig)>,
         variables: Variables,
         change_applier: ChangeApplier<'a>,
+        ready: Option<ReadySignal>,
         mut info_logger: impl FnMut(String),
         mut error_logger: impl FnMut(String),
     ) -> Result<(), anyhow::Error> {
@@ -195,6 +205,9 @@ impl RecipeRunnerImpl {
                     error!(message = %e, "Couldn't spawn Device '{device_type}' with id '{id}'");
                 }
             }
+        }
+        if let Some(ready) = ready {
+            ready.signal();
         }
 
         while !device_futures.is_empty() {
@@ -324,6 +337,7 @@ mod tests {
             DeviceSpawnerService::new(provider.get_all(), actor_system),
             Vec::new(),
         );
+        let (ready, ready_listener) = ReadySignal::new();
         runner
             .run_devices(
                 [
@@ -352,11 +366,13 @@ mod tests {
                     }
                     .boxed()
                 },
+                Some(ready),
                 move |x| messages_ref.push(x),
                 move |x| errors_ref.push(x),
             )
             .await
             .unwrap();
+        assert_eq!(Some(Ok(())), ready_listener.now_or_never());
 
         let mut messages_iter = messages.into_iter();
         let bar_msg = messages_iter.next().expect("has message for bar");

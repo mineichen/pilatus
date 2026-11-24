@@ -1,17 +1,21 @@
-use futures::{stream::FuturesUnordered, StreamExt};
-use minfac::{Resolvable, ServiceCollection, ServiceProvider};
 use std::{
     any::Any,
+    fmt::{self, Debug, Display},
+    future::Future,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tokio::runtime::Builder;
-use tracing::{error, info};
 
-use pilatus::{GenericConfig, HostedService, Recipe, Recipes, SystemTerminator};
+use minfac::{Resolvable, ServiceCollection, ServiceProvider};
+use pilatus::{GenericConfig, Recipe, Recipes, SystemTerminator};
 use serde_json::Value as JsonValue;
+use tokio::runtime::Builder;
+use tracing::info;
 
-use crate::metadata_future::MetadataFuture;
+use hosted_services::HostedServices;
+pub use hosted_services::HostedServicesError;
+
+mod hosted_services;
 
 pub struct Runtime {
     services: ServiceCollection,
@@ -133,12 +137,21 @@ impl TempConfiguredRuntime {
         self.dir.path()
     }
 
-    /// Like [`TempRuntime::run_until`], but for a pre-configured runtime.
-    pub fn run_until<T, TDeps, TFut, F>(self, f: F) -> T
+    /// Runs the runtime until the future returned by `f` finishes. Shuts the system down afterwards and returns once all [`HostedService`](pilatus::HostedService)s stopped.
+    ///
+    /// `f` is called once all [`HostedService`](pilatus::HostedService)s are ready (see [`pilatus::ReadySignal`]).
+    /// Services which stop before they are ready aren't waited for.
+    /// If a service neither signals nor stops, `f` is never called. Pending services are logged every 5s.
+    ///
+    /// Failing services don't stop the runtime. Their errors are logged immediately and returned once all services stopped.
+    /// The caller chooses the error type `E` (e.g. `testresult::TestError` or `anyhow::Error`). It's converted from [`RunUntilError`].
+    #[track_caller]
+    pub fn run_until<T, E, TDeps, TFut, F>(self, f: F) -> Result<T, E>
     where
         TDeps: Resolvable,
-        TFut: futures::Future<Output = T>,
+        TFut: Future<Output = Result<T, E>>,
         F: FnOnce(TDeps) -> TFut,
+        E: From<RunUntilError<E>>,
     {
         let deps = self
             .inner
@@ -146,13 +159,60 @@ impl TempConfiguredRuntime {
             .resolve::<TDeps>()
             .expect("Missing dependencies for TempConfiguredRuntime::run_until");
 
-        self.inner.run_until_finished(f(deps))
+        self.inner.run_until_finished(async move { f(deps).await })
     }
 
-    pub fn run(self, other: impl futures::Future<Output = ()>) {
-        self.inner.run(other);
+    /// Runs the runtime until all [`HostedService`](pilatus::HostedService)s stopped. Unlike [`TempConfiguredRuntime::run_until`], `other` doesn't shut the system down.
+    ///
+    /// `other` is polled once all [`HostedService`](pilatus::HostedService)s are ready. Errors are reported like in [`TempConfiguredRuntime::run_until`].
+    #[track_caller]
+    pub fn run<T, E>(self, other: impl Future<Output = Result<T, E>>) -> Result<T, E>
+    where
+        E: From<RunUntilError<E>>,
+    {
+        self.inner.run(other)
     }
 }
+
+/// Error of the `run*` methods of the runtime, which is converted into the error type of the caller
+///
+/// `E` only needs to implement [`Debug`], as e.g. `testresult::TestError` doesn't implement [`Display`].
+/// So [`Display`] uses the [`Debug`] representation of `E`.
+#[derive(Debug)]
+pub enum RunUntilError<E> {
+    /// The future (or closure) failed. All [`HostedService`](pilatus::HostedService)s succeeded
+    Until(E),
+    /// The future succeeded, but [`HostedService`](pilatus::HostedService)s failed
+    HostedService(HostedServicesError),
+    /// The future and [`HostedService`](pilatus::HostedService)s failed. The failure of the services might have caused the failure of the future
+    HostedServiceAndUntil(HostedServicesError, E),
+}
+
+impl<E: From<RunUntilError<E>>> RunUntilError<E> {
+    /// Combines the results of the future and the HostedServices into the error type of the caller
+    #[track_caller]
+    fn combine<T>(until: Result<T, E>, services: Result<(), HostedServicesError>) -> Result<T, E> {
+        let error = match (until, services) {
+            (Ok(x), Ok(())) => return Ok(x),
+            (Err(until), Ok(())) => Self::Until(until),
+            (Ok(_), Err(services)) => Self::HostedService(services),
+            (Err(until), Err(services)) => Self::HostedServiceAndUntil(services, until),
+        };
+        Err(error.into())
+    }
+}
+
+impl<E: Debug> Display for RunUntilError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Until(until) => write!(f, "{until:?}"),
+            Self::HostedService(services) => write!(f, "{services}"),
+            Self::HostedServiceAndUntil(services, until) => write!(f, "{until:?}; {services}"),
+        }
+    }
+}
+
+impl<E: Debug> std::error::Error for RunUntilError<E> {}
 
 impl Default for Runtime {
     fn default() -> Self {
@@ -225,8 +285,12 @@ impl Runtime {
 
         ConfiguredRuntime { tokio, provider }
     }
-    pub fn run(self) {
-        self.configure().run(async {})
+
+    /// Runs until all [`HostedService`](pilatus::HostedService)s stopped. Failing services don't stop the runtime.
+    /// Their errors are logged immediately and returned once all services stopped.
+    pub fn run(self) -> Result<(), HostedServicesError> {
+        let ((), services) = self.configure().run_and_return(async {});
+        services
     }
 }
 
@@ -236,62 +300,55 @@ pub struct ConfiguredRuntime {
 }
 
 impl ConfiguredRuntime {
-    pub fn run_until_finished<TFut: futures::Future>(self, other: TFut) -> TFut::Output {
+    /// Runs the runtime until `other` finishes. Shuts the system down afterwards and returns once all [`HostedService`](pilatus::HostedService)s stopped.
+    ///
+    /// `other` is polled once all [`HostedService`](pilatus::HostedService)s are ready (see [`pilatus::ReadySignal`]).
+    /// Services which stop before they are ready aren't waited for.
+    /// If a service neither signals nor stops, `other` is never polled. Pending services are logged every 5s.
+    ///
+    /// Failing services don't stop the runtime. Their errors are logged immediately and returned once all services stopped.
+    /// The caller chooses the error type `E` (e.g. `testresult::TestError` or `anyhow::Error`). It's converted from [`RunUntilError`].
+    #[track_caller]
+    pub fn run_until_finished<T, E>(self, other: impl Future<Output = Result<T, E>>) -> Result<T, E>
+    where
+        E: From<RunUntilError<E>>,
+    {
         let terminator = self
             .provider
             .get::<SystemTerminator>()
             .expect("Cannot create Runtime without create::register, which provides this type");
-        self.run_and_return(async move {
+        let (until, services) = self.run_and_return(async move {
             let r = other.await;
             terminator.shutdown();
             r
-        })
+        });
+        RunUntilError::combine(until, services)
     }
 
-    pub fn run(self, other: impl futures::Future<Output = ()>) {
-        self.run_and_return(other);
+    /// Runs the runtime until all [`HostedService`](pilatus::HostedService)s stopped. Unlike [`ConfiguredRuntime::run_until_finished`], `other` doesn't shut the system down.
+    ///
+    /// `other` is polled once all [`HostedService`](pilatus::HostedService)s are ready. Errors are reported like in [`ConfiguredRuntime::run_until_finished`].
+    #[track_caller]
+    pub fn run<T, E>(self, other: impl Future<Output = Result<T, E>>) -> Result<T, E>
+    where
+        E: From<RunUntilError<E>>,
+    {
+        let (until, services) = self.run_and_return(other);
+        RunUntilError::combine(until, services)
     }
 
-    fn run_and_return<TFut: futures::Future>(self, other: TFut) -> TFut::Output {
+    /// Polls `other` once all services are ready and returns once `other` finished and all services stopped
+    fn run_and_return<TFut: Future>(
+        self,
+        other: TFut,
+    ) -> (TFut::Output, Result<(), HostedServicesError>) {
         info!("Tokio runtime has started.");
-        let (r, _) = self.tokio.block_on(futures::future::join(other, async {
-            let mut tasks: FuturesUnordered<_> = self
-                .provider
-                .get_all::<HostedService>()
-                .filter_map(|i| match i.call((&self.provider).into()) {
-                    Ok(x) => {
-                        let name = i.get_name().to_string();
-                        Some(MetadataFuture::new(name, x))
-                    }
-                    Err(e) => {
-                        error!("Failed to call HostedService: {}", e);
-                        None
-                    }
-                })
-                .collect();
-            while let Some((name, finished)) = tasks.next().await {
-                let flattened = finished.map_err(anyhow::Error::from).and_then(|e| e);
-                match flattened {
-                    Ok(_) => {
-                        let mut remaining_tasks = tasks.iter();
-                        if let (Some(x), None) = (remaining_tasks.next(),remaining_tasks.next()) {
-                           let remaining_name = x.get_meta();
-                            info!(
-                                "HostedService '{name}' stopped. Just service '{remaining_name}' is remaining"
-                            );
-                        } else {
-                            let count = tasks.len();
-                            info!("HostedService '{name}' stopped. '{count}' remaining");    
-                        }
-                    }
-                    Err(e) => {
-                        error!("Hosted service '{name}' failed: {e:?}");
-                    }
-                }
-            }
-        }));
-
+        let result = self.tokio.block_on(async {
+            let mut services = HostedServices::spawn(&self.provider);
+            services.wait_until_ready().await;
+            futures::future::join(other, services.wait_until_stopped()).await
+        });
         info!("Tokio runtime has ended.");
-        r
+        result
     }
 }

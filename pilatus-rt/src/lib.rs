@@ -19,7 +19,7 @@ pub use recipe::TokioFileService;
 pub use recipe::*;
 pub use tracing::TracingState;
 
-pub use runtime::Runtime;
+pub use runtime::{HostedServicesError, RunUntilError, Runtime};
 // Helpers for integration tests
 pub use runtime::{TempConfiguredRuntime, TempRuntime};
 

@@ -4,7 +4,9 @@ use anyhow::{Context, Result};
 use axum::routing::get_service;
 use futures::{channel::oneshot, FutureExt};
 use minfac::{AllRegistered, Registered, ServiceCollection, WeakServiceProvider};
-use pilatus::{prelude::*, GenericConfig, OnceExtractor, SystemShutdown, TracingTopic};
+use pilatus::{
+    prelude::*, GenericConfig, OnceExtractor, ReadySignal, SystemShutdown, TracingTopic,
+};
 use pilatus_axum::MinfacRouter;
 use serde::Deserialize;
 use tokio::net::TcpListener;
@@ -70,6 +72,7 @@ impl Default for WebConfig {
 }
 
 async fn axum_service(
+    ready: ReadySignal,
     ((provider, private_router), config, shutdown, private_state): (
         (WeakServiceProvider, PrivateRouter),
         GenericConfig,
@@ -101,6 +104,9 @@ async fn axum_service(
         .extract_unchecked()
         .send(listener.local_addr()?)
         .expect("Receiver is stored within DI-Container");
+    // Earliest possible point: `bind` calls listen(), so the OS accepts and queues connections from now on.
+    // They are answered as soon as `axum::serve` runs. Before `bind`, connections would be refused.
+    ready.signal();
 
     let router = if let Some(x) = &web_config.fallback_path {
         private_router.0.fallback_service(get_service(
