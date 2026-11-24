@@ -1,4 +1,4 @@
-#v0.2
+# v0.2.0
 - Add `RelativeResourcePath(Buf)`. Deprecate `RelativeFilePath` (misleading name, it contained a PathBuf)
 - `RelativeDirPathError` and `RelativeFilePathError` contain the constructor input instead of `String`
 - Remove `sealedstruct::Seal` and `PercentageRaw` from `Percentage`

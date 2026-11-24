@@ -34,6 +34,18 @@
           "miri"
         ];
 
+        # Crates published to crates.io. Each contains a copy of the root README.md and LICENSE.
+        releaseCrates = toString [
+          "pilatus"
+          "pilatus-rt"
+          "pilatus-axum"
+          "pilatus-axum-rt"
+          "pilatus-engineering"
+          "pilatus-engineering-rt"
+          "pilatus-emulation-camera"
+          "pilatus-emulation-camera-rt"
+        ];
+
         # Common build inputs
         commonBuildInputs = [
           pkgs.pkg-config
@@ -163,14 +175,31 @@
         apps.copy-release-files = {
           type = "app";
           program = writeShellScriptWithError "copy-release-files" ''
-            cp README.md LICENSE pilatus
-            cp README.md LICENSE pilatus-rt
-            cp README.md LICENSE pilatus-axum
-            cp README.md LICENSE pilatus-axum-rt
-            cp README.md LICENSE pilatus-engineering
-            cp README.md LICENSE pilatus-engineering-rt
-            cp README.md LICENSE pilatus-emulation-camera
-            cp README.md LICENSE pilatus-emulation-camera-rt
+            for crate in ${releaseCrates}; do
+              cp README.md LICENSE "$crate"
+            done
+          '';
+        };
+
+        # Publishes all workspace crates to crates.io in dependency order.
+        # Extra arguments are passed to cargo, e.g. `nix run .#publish -- --dry-run`.
+        # If RELEASE_TAG is set (CI), it must match the workspace version, e.g. `v0.2.0`.
+        apps.publish = {
+          type = "app";
+          program = writeShellScriptWithError "publish" ''
+            export PATH="${stableToolchain}/bin:$PATH"
+            version=$(cargo pkgid -p pilatus | sed 's/.*[#@]//')
+            if [ -n "''${RELEASE_TAG:-}" ] && [ "$RELEASE_TAG" != "v$version" ]; then
+              echo "Tag '$RELEASE_TAG' does not match workspace version '$version'" >&2
+              exit 1
+            fi
+            for crate in ${releaseCrates}; do
+              if ! cmp -s README.md "$crate/README.md" || ! cmp -s LICENSE "$crate/LICENSE"; then
+                echo "$crate/README.md or $crate/LICENSE is outdated. Run 'nix run .#copy-release-files' and commit." >&2
+                exit 1
+              fi
+            done
+            cargo publish --workspace "$@"
           '';
         };
 
