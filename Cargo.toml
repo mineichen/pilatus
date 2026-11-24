@@ -41,7 +41,7 @@ pilatus-rt = { version = "0.1.0", path = "pilatus-rt" }
 pilatus-axum = { version = "0.1.0", path = "pilatus-axum" }
 pilatus-axum-rt = { version = "0.1.0", path = "pilatus-axum-rt" }
 pilatus-emulation-camera = { version = "0.1.0", path = "pilatus-emulation-camera" }
-pilatus-emulation-camera-rt = { version = "0.1.0", path = "pilatus-emulation-camera-rt" }
+#pilatus-emulation-camera-rt = { version = "0.1.0", path = "pilatus-emulation-camera-rt" }
 pilatus-engineering = { version = "0.1.0", path = "pilatus-engineering" }
 pilatus-engineering-rt = { version = "0.1.0", path = "pilatus-engineering-rt" }
 pilatus-tick = { path = "examples/tick" }
@@ -56,7 +56,7 @@ tokio = "1"
 tracing = "0.1"
 uuid = "1"
 
-[patch.crates-io]
-imbuf = { path = "../imbuf/imbuf" }
-imbuf-image = { path = "../imbuf/imbuf-image" }
+#[patch.crates-io]
+#imbuf = { path = "../imbuf/imbuf" }
+#imbuf-image = { path = "../imbuf/imbuf-image" }
 # sealedstruct = { path = "../sealedstruct/sealedstruct" }
