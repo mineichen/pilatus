@@ -23,7 +23,7 @@
 
         # Stable toolchain for regular tests
         stableToolchain = with inputs.fenix.packages.${system}; combine [
-          stable.toolchain
+          (stable.withComponents [ "cargo" "clippy" "rust-analyzer" "rust-src" "rust-std" "rustc" "rustfmt" ])
         ];
 
         # Nightly toolchain for Miri

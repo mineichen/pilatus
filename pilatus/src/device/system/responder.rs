@@ -1,3 +1,4 @@
+use futures_util::stream::AbortHandle;
 use tracing::trace;
 
 use crate::device::{ActorMessage, ActorResult};
@@ -5,6 +6,9 @@ use crate::device::{ActorMessage, ActorResult};
 pub struct ActorRequestResponder<TMsg: ActorMessage> {
     start_time: std::time::Instant,
     response_channel: futures_channel::oneshot::Sender<ActorResult<TMsg>>,
+    /// Aborts what a `WithAbort` handler continues to calculate (e.g. in `Step2`), when the
+    /// request is cancelled
+    abort: Option<AbortHandle>,
 }
 
 impl<TMsg: ActorMessage> ActorRequestResponder<TMsg> {
@@ -12,7 +16,19 @@ impl<TMsg: ActorMessage> ActorRequestResponder<TMsg> {
         Self {
             response_channel,
             start_time: std::time::Instant::now(),
+            abort: None,
         }
+    }
+
+    pub(super) fn with_abort(self, abort: AbortHandle) -> Self {
+        Self {
+            abort: Some(abort),
+            ..self
+        }
+    }
+
+    pub(super) fn take_abort(&mut self) -> Option<AbortHandle> {
+        self.abort.take()
     }
 
     pub fn respond(self, r: ActorResult<TMsg>) {

@@ -1,3 +1,6 @@
+# v0.3.0
+- A `WithAbort` handler which returns `Step2` can be aborted while its future runs: The `AbortRegistration` is triggered when the request is cancelled, and the future still runs to its end, so it can clean up. Before, the `AbortHandle` was dropped as soon as the handler returned `Step2`, so the request couldn't be aborted anymore
+
 # v0.2.0
 - Add `RelativeResourcePath(Buf)`. Deprecate `RelativeFilePath` (misleading name, it contained a PathBuf)
 - `RelativeDirPathError` and `RelativeFilePathError` contain the constructor input instead of `String`

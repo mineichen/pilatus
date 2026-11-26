@@ -86,16 +86,17 @@ where
         let future = self.0(state, msg, abort_registration).fuse();
 
         async move {
-            select(std::pin::pin!(future), ctx.cancellation())
-                .then(move |r| match r {
-                    Either::Left((x, _)) => std::future::ready(x).left_future(),
-                    Either::Right((_, other)) => {
-                        abort_handle.abort();
-                        other.right_future()
-                    }
-                })
-                .await
-                .handle_as_result(ctx)
+            match select(std::pin::pin!(future), ctx.cancellation()).await {
+                // What continues without the state (e.g. `Step2`) can still be aborted
+                Either::Left((result, cancellation)) => {
+                    drop(cancellation);
+                    result.handle_as_result(ctx.with_abort(abort_handle))
+                }
+                Either::Right(((), other)) => {
+                    abort_handle.abort();
+                    other.await.handle_as_result(ctx)
+                }
+            }
         }
         .boxed()
     }
